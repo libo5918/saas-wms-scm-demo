@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: scm-mdm
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:scm_mdm;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+  sql:
+    init:
+      mode: always
+server:
+  port: 18082
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath*:mapper/*.xml
+knife4j:
+  enable: true

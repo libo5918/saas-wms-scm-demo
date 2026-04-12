@@ -1,0 +1,56 @@
+﻿<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>saas-wms-scm-demo</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>saas-wms-scm-demo</name>
+    <description>Enterprise SaaS SCM/WMS interview training project</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <revision>1.0.0-SNAPSHOT</revision>
+        <spring.boot.version>3.5.0</spring.boot.version>
+        <spring.cloud.version>2025.0.0</spring.cloud.version>
+        <spring.cloud.alibaba.version>2025.0.0.0</spring.cloud.alibaba.version>
+        <mybatis.spring.boot.version>3.0.4</mybatis.spring.boot.version>
+        <mybatis.plus.version>3.5.12</mybatis.plus.version>
+        <mysql.version>9.3.0</mysql.version>
+        <knife4j.version>4.5.0</knife4j.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <modules>
+        <module>scm-dependencies</module>
+        <module>scm-common</module>
+        <module>scm-gateway</module>
+        <module>scm-auth</module>
+        <module>scm-mdm</module>
+        <module>scm-purchase</module>
+        <module>scm-inventory</module>
+    </modules>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring.boot.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

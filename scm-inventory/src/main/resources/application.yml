@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: scm-inventory
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:13306/scm_inventory?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+  sql:
+    init:
+      mode: always
+server:
+  port: 18084
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+knife4j:
+  enable: true

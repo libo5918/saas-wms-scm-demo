@@ -1,0 +1,5 @@
+﻿spring:
+  application:
+    name: scm-purchase
+server:
+  port: 18083
