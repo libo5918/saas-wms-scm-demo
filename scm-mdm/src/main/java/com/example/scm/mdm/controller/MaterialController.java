@@ -35,35 +35,35 @@ public class MaterialController {
     }
 
     @PostMapping({"", "/"})
-    @Operation(summary = "Create material", description = "Create material master data under current tenant.")
+    @Operation(summary = "创建物料", description = "在当前租户下创建物料主数据。")
     public Result<MaterialVO> create(@Valid @RequestBody CreateMaterialRequest request) {
         log.info("Receive create material request, materialCode={}", request.getMaterialCode());
         return Result.success(materialService.create(request));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update material", description = "Update material basic attributes by id.")
+    @Operation(summary = "修改物料", description = "根据物料ID修改物料基础属性。")
     public Result<MaterialVO> update(@PathVariable("id") Long id, @Valid @RequestBody UpdateMaterialRequest request) {
         log.info("Receive update material request, id={}", id);
         return Result.success(materialService.update(id, request));
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get material detail", description = "Query one material under current tenant by id.")
+    @Operation(summary = "查询物料详情", description = "根据物料ID查询当前租户下的物料详情。")
     public Result<MaterialVO> getById(@PathVariable("id") Long id) {
         log.info("Receive get material detail request, id={}", id);
         return Result.success(materialService.getById(id));
     }
 
     @GetMapping({"", "/"})
-    @Operation(summary = "List materials", description = "Query all non-deleted materials under current tenant.")
+    @Operation(summary = "查询物料列表", description = "查询当前租户下全部未删除的物料。")
     public Result<List<MaterialVO>> list() {
         log.info("Receive list materials request");
         return Result.success(materialService.list());
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Delete material", description = "Logical delete only, no physical deletion.")
+    @Operation(summary = "删除物料", description = "逻辑删除物料，不做物理删除。")
     public Result<Void> delete(@PathVariable("id") Long id) {
         log.info("Receive delete material request, id={}", id);
         materialService.delete(id);

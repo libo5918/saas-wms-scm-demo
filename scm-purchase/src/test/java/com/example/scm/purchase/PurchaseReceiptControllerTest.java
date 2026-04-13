@@ -54,7 +54,9 @@ class PurchaseReceiptControllerTest {
 
         when(purchaseReceiptService.create(any())).thenReturn(receipt);
         when(purchaseReceiptService.retryStockIn(1L)).thenReturn(receipt);
+        when(purchaseReceiptService.cancel(1L)).thenReturn(receipt);
         when(purchaseReceiptService.getById(1L)).thenReturn(receipt);
+        when(purchaseReceiptService.getByReceiptNo("RCV-001")).thenReturn(receipt);
         when(purchaseReceiptService.list()).thenReturn(List.of(receipt));
 
         String requestBody = """
@@ -89,8 +91,21 @@ class PurchaseReceiptControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.receiptStatus").value("STOCK_IN_SUCCESS"));
 
+        mockMvc.perform(post("/api/v1/purchase-receipts/1/cancel")
+                        .header("X-Tenant-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1));
+
         mockMvc.perform(get("/api/v1/purchase-receipts/1")
                         .header("X-Tenant-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.receiptNo").value("RCV-001"));
+
+        mockMvc.perform(get("/api/v1/purchase-receipts/by-receipt-no")
+                        .header("X-Tenant-Id", "1")
+                        .param("receiptNo", "RCV-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.receiptNo").value("RCV-001"));

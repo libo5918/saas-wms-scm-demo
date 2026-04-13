@@ -1,4 +1,4 @@
-﻿-- saas-wms-scm-demo 第一版表结构
+-- saas-wms-scm 第一版表结构
 -- 使用方式：先创建数据库，再按服务边界执行本文件中的 DDL
 
 CREATE DATABASE IF NOT EXISTS scm_auth DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

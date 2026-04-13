@@ -1,7 +1,7 @@
-﻿USE scm_auth;
+USE scm_auth;
 
 INSERT INTO sys_tenant(tenant_code, tenant_name, status, created_by, updated_by, deleted)
-VALUES ('TENANT_DEMO', '默认演示租户', 1, 1, 1, 0)
+VALUES ('TENANT_DEFAULT', '默认租户', 1, 1, 1, 0)
 ON DUPLICATE KEY UPDATE tenant_name = VALUES(tenant_name), status = VALUES(status), updated_by = VALUES(updated_by);
 
 INSERT INTO sys_user(tenant_id, username, password, nickname, status, created_by, updated_by, deleted)

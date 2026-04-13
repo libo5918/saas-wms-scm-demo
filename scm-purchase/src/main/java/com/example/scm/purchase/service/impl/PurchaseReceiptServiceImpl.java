@@ -8,6 +8,7 @@ import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
 import com.example.scm.purchase.entity.PurchaseReceipt;
 import com.example.scm.purchase.entity.PurchaseReceiptItem;
+import com.example.scm.purchase.entity.PurchaseReceiptStatus;
 import com.example.scm.purchase.mapper.PurchaseReceiptItemMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptMapper;
 import com.example.scm.purchase.service.PurchaseReceiptService;
@@ -36,29 +37,7 @@ import java.util.List;
 @Slf4j
 public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
 
-    /**
-     * 当前阶段的系统操作人。
-     */
     private static final long SYSTEM_OPERATOR_ID = 1L;
-
-    /**
-     * 新创建但尚未完成库存联动的状态。
-     */
-    private static final String CREATED_STATUS = "CREATED";
-
-    /**
-     * 库存入库成功后的状态。
-     */
-    private static final String STOCK_IN_SUCCESS_STATUS = "STOCK_IN_SUCCESS";
-
-    /**
-     * 库存入库失败后的状态。
-     */
-    private static final String STOCK_IN_FAILED_STATUS = "STOCK_IN_FAILED";
-
-    /**
-     * 失败原因在数据库中的最大长度。
-     */
     private static final int FAILURE_REASON_MAX_LENGTH = 255;
 
     private final PurchaseReceiptMapper purchaseReceiptMapper;
@@ -79,16 +58,6 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    /**
-     * 创建收货单并联动库存。
-     *
-     * <p>这里先做收货侧幂等控制：</p>
-     * <p>1. 如果同一单号已经成功入库，直接返回已有结果，避免重复联动库存。</p>
-     * <p>2. 如果同一单号存在但尚未成功，则判定为重复创建并拒绝。</p>
-     *
-     * <p>真正的库存调用失败时，会把收货单回写为 STOCK_IN_FAILED，
-     * 同时保留 failureReason，最后再把异常继续抛给上层。</p>
-     */
     @Override
     public PurchaseReceiptVO create(CreatePurchaseReceiptRequest request) {
         Long tenantId = TenantContext.getRequiredTenantId();
@@ -96,7 +65,7 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
 
         PurchaseReceipt existingReceipt = purchaseReceiptMapper.selectByReceiptNo(tenantId, request.getReceiptNo()).orElse(null);
         if (existingReceipt != null) {
-            if (STOCK_IN_SUCCESS_STATUS.equals(existingReceipt.getReceiptStatus())) {
+            if (toStatus(existingReceipt).isStockInSuccess()) {
                 log.info("Skip duplicate purchase receipt create, tenantId={}, receiptId={}, receiptNo={}, status={}",
                         tenantId, existingReceipt.getId(), existingReceipt.getReceiptNo(), existingReceipt.getReceiptStatus());
                 return getById(existingReceipt.getId());
@@ -111,36 +80,6 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         return processStockIn(tenantId, receipt);
     }
 
-    /**
-     * 对失败的收货单重试库存入库。
-     *
-     * <p>重试动作只会在原单据上继续推进，不会新建新的收货单。</p>
-     */
-    @Override
-    public PurchaseReceiptVO retryStockIn(Long id) {
-        Long tenantId = TenantContext.getRequiredTenantId();
-        log.info("Start retry purchase receipt stock-in, tenantId={}, receiptId={}", tenantId, id);
-
-        PurchaseReceipt receipt = purchaseReceiptMapper.selectById(tenantId, id)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Purchase receipt not found"));
-
-        if (STOCK_IN_SUCCESS_STATUS.equals(receipt.getReceiptStatus())) {
-            log.info("Skip retry for successful purchase receipt, tenantId={}, receiptId={}, receiptNo={}",
-                    tenantId, receipt.getId(), receipt.getReceiptNo());
-            return toVO(receipt, purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId()));
-        }
-        if (!STOCK_IN_FAILED_STATUS.equals(receipt.getReceiptStatus())) {
-            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only failed purchase receipt can retry stock-in");
-        }
-
-        return processStockIn(tenantId, receipt);
-    }
-
-    /**
-     * 查询收货单详情。
-     *
-     * <p>详情会返回单头、状态、失败原因和全部明细。</p>
-     */
     @Override
     public PurchaseReceiptVO getById(Long id) {
         Long tenantId = TenantContext.getRequiredTenantId();
@@ -150,9 +89,15 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         return toVO(receipt, purchaseReceiptItemMapper.selectByReceiptId(tenantId, id));
     }
 
-    /**
-     * 查询当前租户下的收货单列表。
-     */
+    @Override
+    public PurchaseReceiptVO getByReceiptNo(String receiptNo) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Query purchase receipt detail by receiptNo, tenantId={}, receiptNo={}", tenantId, receiptNo);
+        PurchaseReceipt receipt = purchaseReceiptMapper.selectByReceiptNo(tenantId, receiptNo)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Purchase receipt not found"));
+        return toVO(receipt, purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId()));
+    }
+
     @Override
     public List<PurchaseReceiptVO> list() {
         Long tenantId = TenantContext.getRequiredTenantId();
@@ -162,13 +107,48 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
                 .toList();
     }
 
-    /**
-     * 在本地事务内创建收货单头和明细。
-     *
-     * <p>这一步只负责采购库落单，不做远程库存调用。</p>
-     */
+    @Override
+    public PurchaseReceiptVO retryStockIn(Long id) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Start retry purchase receipt stock-in, tenantId={}, receiptId={}", tenantId, id);
+
+        PurchaseReceipt receipt = purchaseReceiptMapper.selectById(tenantId, id)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Purchase receipt not found"));
+
+        PurchaseReceiptStatus receiptStatus = toStatus(receipt);
+        if (receiptStatus.isStockInSuccess()) {
+            log.info("Skip retry for successful purchase receipt, tenantId={}, receiptId={}, receiptNo={}",
+                    tenantId, receipt.getId(), receipt.getReceiptNo());
+            return toVO(receipt, purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId()));
+        }
+        if (!receiptStatus.canRetryStockIn()) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only failed purchase receipt can retry stock-in");
+        }
+
+        return processStockIn(tenantId, receipt);
+    }
+
+    @Override
+    public PurchaseReceiptVO cancel(Long id) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Start cancel purchase receipt, tenantId={}, receiptId={}", tenantId, id);
+
+        PurchaseReceipt receipt = purchaseReceiptMapper.selectById(tenantId, id)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Purchase receipt not found"));
+
+        PurchaseReceiptStatus receiptStatus = toStatus(receipt);
+        if (!receiptStatus.canCancel()) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only pending or failed purchase receipt can be cancelled");
+        }
+
+        updateReceiptStatus(tenantId, receipt.getId(), PurchaseReceiptStatus.CANCELLED, null);
+        log.info("Cancel purchase receipt success, tenantId={}, receiptId={}, receiptNo={}",
+                tenantId, receipt.getId(), receipt.getReceiptNo());
+        return getById(receipt.getId());
+    }
+
     private PurchaseReceipt createReceiptInTransaction(Long tenantId, CreatePurchaseReceiptRequest request) {
-        PurchaseReceipt receipt = purchaseReceiptAssembler.toNewReceipt(tenantId, SYSTEM_OPERATOR_ID, CREATED_STATUS, request);
+        PurchaseReceipt receipt = purchaseReceiptAssembler.toNewReceipt(tenantId, SYSTEM_OPERATOR_ID, PurchaseReceiptStatus.CREATED.name(), request);
         purchaseReceiptMapper.insert(receipt);
 
         List<PurchaseReceiptItem> items = new ArrayList<>();
@@ -182,23 +162,18 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         return receipt;
     }
 
-    /**
-     * 执行库存入库并回写收货单状态。
-     *
-     * <p>创建和重试都走这段逻辑，保证状态机和失败处理保持一致。</p>
-     */
     private PurchaseReceiptVO processStockIn(Long tenantId, PurchaseReceipt receipt) {
         List<PurchaseReceiptItem> items = purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId());
         try {
             log.info("Call inventory stock-in, tenantId={}, receiptId={}, receiptNo={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo());
             inventoryStockInClient.stockIn(tenantId, SYSTEM_OPERATOR_ID, receipt, items);
-            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_SUCCESS_STATUS, null);
+            updateReceiptStatus(tenantId, receipt.getId(), PurchaseReceiptStatus.STOCK_IN_SUCCESS, null);
             log.info("Purchase receipt stock-in success, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
         } catch (BusinessException ex) {
             String failureReason = truncateFailureReason(ex.getMessage());
-            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_FAILED_STATUS, failureReason);
+            updateReceiptStatus(tenantId, receipt.getId(), PurchaseReceiptStatus.STOCK_IN_FAILED, failureReason);
             log.error("Purchase receipt stock-in failed, tenantId={}, receiptId={}, receiptNo={}, reason={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo(), failureReason, ex);
             throw ex;
@@ -206,23 +181,14 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         return getById(receipt.getId());
     }
 
-    /**
-     * 回写收货单状态。
-     *
-     * <p>单独放在事务模板里执行，确保无论库存成功还是失败，
-     * 收货单状态都能稳定落库。</p>
-     */
-    private void updateReceiptStatus(Long tenantId, Long receiptId, String receiptStatus, String failureReason) {
+    private void updateReceiptStatus(Long tenantId, Long receiptId, PurchaseReceiptStatus receiptStatus, String failureReason) {
         Integer affected = transactionTemplate.execute(status ->
-                purchaseReceiptMapper.updateStatus(tenantId, receiptId, receiptStatus, failureReason, SYSTEM_OPERATOR_ID));
+                purchaseReceiptMapper.updateStatus(tenantId, receiptId, receiptStatus.name(), failureReason, SYSTEM_OPERATOR_ID));
         if (affected == null || affected == 0) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Update purchase receipt status failed");
         }
     }
 
-    /**
-     * 截断失败原因，避免超出数据库字段长度。
-     */
     private String truncateFailureReason(String failureReason) {
         if (failureReason == null || failureReason.isBlank()) {
             return null;
@@ -232,10 +198,15 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
                 : failureReason.substring(0, FAILURE_REASON_MAX_LENGTH);
     }
 
-    /**
-     * 把单头和明细转换成返回对象。
-     */
     private PurchaseReceiptVO toVO(PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
         return purchaseReceiptAssembler.toVO(receipt, items);
+    }
+
+    private PurchaseReceiptStatus toStatus(PurchaseReceipt receipt) {
+        try {
+            return PurchaseReceiptStatus.valueOf(receipt.getReceiptStatus());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Unknown purchase receipt status: " + receipt.getReceiptStatus());
+        }
     }
 }

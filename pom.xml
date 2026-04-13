@@ -3,11 +3,11 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
-    <artifactId>saas-wms-scm-demo</artifactId>
+    <artifactId>saas-wms-scm</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>saas-wms-scm-demo</name>
+    <name>saas-wms-scm</name>
     <description>Enterprise SaaS SCM/WMS interview training project</description>
 
     <properties>

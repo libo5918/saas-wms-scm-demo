@@ -7,6 +7,7 @@ import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
 import com.example.scm.purchase.entity.PurchaseReceipt;
 import com.example.scm.purchase.entity.PurchaseReceiptItem;
+import com.example.scm.purchase.entity.PurchaseReceiptStatus;
 import com.example.scm.purchase.mapper.PurchaseReceiptItemMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptMapper;
 import com.example.scm.purchase.service.impl.PurchaseReceiptServiceImpl;
@@ -58,10 +59,10 @@ class PurchaseReceiptServiceImplTest {
         when(receiptMapper.selectByReceiptNo(1L, "RCV-1001")).thenReturn(Optional.empty());
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
         when(itemMapper.selectByReceiptId(1L, 1L)).thenReturn(List.of(buildItem(1L, 1L, 3001L, "8")));
-        when(receiptMapper.updateStatus(1L, 1L, "STOCK_IN_SUCCESS", null, 1L)).thenReturn(1);
+        when(receiptMapper.updateStatus(1L, 1L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L)).thenReturn(1);
 
         ArgumentCaptor<PurchaseReceipt> receiptCaptor = ArgumentCaptor.forClass(PurchaseReceipt.class);
-        when(receiptMapper.selectById(1L, 1L)).thenReturn(Optional.of(buildReceipt(1L, "RCV-1001", "STOCK_IN_SUCCESS", null)));
+        when(receiptMapper.selectById(1L, 1L)).thenReturn(Optional.of(buildReceipt(1L, "RCV-1001", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
         org.mockito.Mockito.doAnswer(invocation -> {
             PurchaseReceipt receipt = invocation.getArgument(0);
             receipt.setId(1L);
@@ -71,8 +72,8 @@ class PurchaseReceiptServiceImplTest {
         service.create(request);
 
         verify(inventoryClient, times(1)).stockIn(eq(1L), eq(1L), any(PurchaseReceipt.class), any(List.class));
-        verify(receiptMapper).updateStatus(1L, 1L, "STOCK_IN_SUCCESS", null, 1L);
-        assertEquals("CREATED", receiptCaptor.getValue().getReceiptStatus());
+        verify(receiptMapper).updateStatus(1L, 1L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L);
+        assertEquals(PurchaseReceiptStatus.CREATED.name(), receiptCaptor.getValue().getReceiptStatus());
     }
 
     @Test
@@ -95,7 +96,7 @@ class PurchaseReceiptServiceImplTest {
         when(receiptMapper.selectByReceiptNo(1L, "RCV-1002")).thenReturn(Optional.empty());
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
         when(itemMapper.selectByReceiptId(1L, 2L)).thenReturn(List.of(buildItem(11L, 2L, 3001L, "5")));
-        when(receiptMapper.updateStatus(1L, 2L, "STOCK_IN_FAILED", "Inventory unavailable", 1L)).thenReturn(1);
+        when(receiptMapper.updateStatus(1L, 2L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
         org.mockito.Mockito.doAnswer(invocation -> {
             PurchaseReceipt receipt = invocation.getArgument(0);
             receipt.setId(2L);
@@ -108,7 +109,7 @@ class PurchaseReceiptServiceImplTest {
         BusinessException exception = assertThrows(BusinessException.class, () -> service.create(request));
 
         assertEquals("Inventory unavailable", exception.getMessage());
-        verify(receiptMapper).updateStatus(1L, 2L, "STOCK_IN_FAILED", "Inventory unavailable", 1L);
+        verify(receiptMapper).updateStatus(1L, 2L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L);
     }
 
     @Test
@@ -127,18 +128,18 @@ class PurchaseReceiptServiceImplTest {
 
         TenantContext.setTenantId(1L);
 
-        PurchaseReceipt failedReceipt = buildReceipt(3L, "RCV-1003", "STOCK_IN_FAILED", "Inventory unavailable");
+        PurchaseReceipt failedReceipt = buildReceipt(3L, "RCV-1003", PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable");
         when(receiptMapper.selectById(1L, 3L))
                 .thenReturn(Optional.of(failedReceipt))
-                .thenReturn(Optional.of(buildReceipt(3L, "RCV-1003", "STOCK_IN_SUCCESS", null)));
+                .thenReturn(Optional.of(buildReceipt(3L, "RCV-1003", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
         when(itemMapper.selectByReceiptId(1L, 3L)).thenReturn(List.of(buildItem(31L, 3L, 3001L, "6")));
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
-        when(receiptMapper.updateStatus(1L, 3L, "STOCK_IN_SUCCESS", null, 1L)).thenReturn(1);
+        when(receiptMapper.updateStatus(1L, 3L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L)).thenReturn(1);
 
         service.retryStockIn(3L);
 
         verify(inventoryClient).stockIn(eq(1L), eq(1L), any(PurchaseReceipt.class), any(List.class));
-        verify(receiptMapper).updateStatus(1L, 3L, "STOCK_IN_SUCCESS", null, 1L);
+        verify(receiptMapper).updateStatus(1L, 3L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L);
     }
 
     @Test
@@ -157,10 +158,10 @@ class PurchaseReceiptServiceImplTest {
 
         TenantContext.setTenantId(1L);
 
-        when(receiptMapper.selectById(1L, 4L)).thenReturn(Optional.of(buildReceipt(4L, "RCV-1004", "STOCK_IN_FAILED", "Old reason")));
+        when(receiptMapper.selectById(1L, 4L)).thenReturn(Optional.of(buildReceipt(4L, "RCV-1004", PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Old reason")));
         when(itemMapper.selectByReceiptId(1L, 4L)).thenReturn(List.of(buildItem(41L, 4L, 3001L, "7")));
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
-        when(receiptMapper.updateStatus(1L, 4L, "STOCK_IN_FAILED", "Inventory unavailable", 1L)).thenReturn(1);
+        when(receiptMapper.updateStatus(1L, 4L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
         doThrow(new BusinessException("500", "Inventory unavailable"))
                 .when(inventoryClient)
                 .stockIn(eq(1L), eq(1L), any(PurchaseReceipt.class), any(List.class));
@@ -168,7 +169,7 @@ class PurchaseReceiptServiceImplTest {
         BusinessException exception = assertThrows(BusinessException.class, () -> service.retryStockIn(4L));
 
         assertEquals("Inventory unavailable", exception.getMessage());
-        verify(receiptMapper).updateStatus(1L, 4L, "STOCK_IN_FAILED", "Inventory unavailable", 1L);
+        verify(receiptMapper).updateStatus(1L, 4L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L);
     }
 
     @Test
@@ -187,13 +188,66 @@ class PurchaseReceiptServiceImplTest {
 
         TenantContext.setTenantId(1L);
 
-        when(receiptMapper.selectById(1L, 5L)).thenReturn(Optional.of(buildReceipt(5L, "RCV-1005", "STOCK_IN_SUCCESS", null)));
+        when(receiptMapper.selectById(1L, 5L)).thenReturn(Optional.of(buildReceipt(5L, "RCV-1005", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
         when(itemMapper.selectByReceiptId(1L, 5L)).thenReturn(List.of(buildItem(51L, 5L, 3001L, "4")));
 
         service.retryStockIn(5L);
 
         verify(inventoryClient, never()).stockIn(eq(1L), eq(1L), any(PurchaseReceipt.class), any(List.class));
         verify(receiptMapper, never()).updateStatus(eq(1L), eq(5L), any(), any(), eq(1L));
+    }
+
+    @Test
+    void shouldCancelFailedReceipt() {
+        PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
+        PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
+        InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
+                receiptMapper,
+                itemMapper,
+                new PurchaseReceiptAssembler(),
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+
+        when(receiptMapper.selectById(1L, 6L))
+                .thenReturn(Optional.of(buildReceipt(6L, "RCV-1006", PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable")))
+                .thenReturn(Optional.of(buildReceipt(6L, "RCV-1006", PurchaseReceiptStatus.CANCELLED.name(), null)));
+        when(itemMapper.selectByReceiptId(1L, 6L)).thenReturn(List.of(buildItem(61L, 6L, 3001L, "3")));
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(receiptMapper.updateStatus(1L, 6L, PurchaseReceiptStatus.CANCELLED.name(), null, 1L)).thenReturn(1);
+
+        service.cancel(6L);
+
+        verify(receiptMapper).updateStatus(1L, 6L, PurchaseReceiptStatus.CANCELLED.name(), null, 1L);
+        verify(inventoryClient, never()).stockIn(eq(1L), eq(1L), any(PurchaseReceipt.class), any(List.class));
+    }
+
+    @Test
+    void shouldRejectCancelForSuccessfulReceipt() {
+        PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
+        PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
+        InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
+                receiptMapper,
+                itemMapper,
+                new PurchaseReceiptAssembler(),
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+
+        when(receiptMapper.selectById(1L, 7L)).thenReturn(Optional.of(buildReceipt(7L, "RCV-1007", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> service.cancel(7L));
+
+        assertEquals("Only pending or failed purchase receipt can be cancelled", exception.getMessage());
+        verify(receiptMapper, never()).updateStatus(eq(1L), eq(7L), any(), any(), eq(1L));
     }
 
     private CreatePurchaseReceiptRequest buildRequest(String receiptNo) {

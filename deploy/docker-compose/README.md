@@ -5,7 +5,7 @@
 ## 启动
 
 ```bash
-cd /mnt/e/ideaProject/saas-wms-scm-demo/deploy/docker-compose
+cd /mnt/e/ideaProject/saas-wms-scm/deploy/docker-compose
 docker compose -f infrastructure.yml up -d
 ```
 

@@ -18,9 +18,14 @@ public interface PurchaseReceiptService {
     PurchaseReceiptVO create(CreatePurchaseReceiptRequest request);
 
     /**
-     * 查询采购收货单详情。
+     * 按主键查询采购收货单详情。
      */
     PurchaseReceiptVO getById(Long id);
+
+    /**
+     * 按收货单号查询采购收货单详情。
+     */
+    PurchaseReceiptVO getByReceiptNo(String receiptNo);
 
     /**
      * 查询采购收货单列表。
@@ -33,4 +38,11 @@ public interface PurchaseReceiptService {
      * <p>该动作会在原单据上继续推进，而不是新建一张收货单。</p>
      */
     PurchaseReceiptVO retryStockIn(Long id);
+
+    /**
+     * 取消收货单。
+     *
+     * <p>只允许取消未完成或失败的收货单，成功单据不允许取消。</p>
+     */
+    PurchaseReceiptVO cancel(Long id);
 }

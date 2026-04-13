@@ -3,11 +3,13 @@ package com.example.scm.inventory.interfaces.assembler;
 import com.example.scm.inventory.application.command.StockInCommand;
 import com.example.scm.inventory.application.command.StockInItemCommand;
 import com.example.scm.inventory.application.query.InventoryBalanceDTO;
+import com.example.scm.inventory.application.query.InventoryTransactionRecordDTO;
 import com.example.scm.inventory.application.query.StockInLineResultDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
 import com.example.scm.inventory.interfaces.dto.StockInItemRequest;
 import com.example.scm.inventory.interfaces.dto.StockInRequest;
 import com.example.scm.inventory.interfaces.vo.InventoryBalanceVO;
+import com.example.scm.inventory.interfaces.vo.InventoryTransactionRecordVO;
 import com.example.scm.inventory.interfaces.vo.StockInLineVO;
 import com.example.scm.inventory.interfaces.vo.StockInResultVO;
 import org.springframework.stereotype.Component;
@@ -45,6 +47,21 @@ public class InventoryStockAssembler {
         vo.setLockedQty(dto.getLockedQty());
         vo.setAvailableQty(dto.getAvailableQty());
         vo.setVersion(dto.getVersion());
+        return vo;
+    }
+
+    public InventoryTransactionRecordVO toTxnRecordVO(InventoryTransactionRecordDTO dto) {
+        InventoryTransactionRecordVO vo = new InventoryTransactionRecordVO();
+        vo.setTxnNo(dto.getTxnNo());
+        vo.setBizType(dto.getBizType());
+        vo.setBizNo(dto.getBizNo());
+        vo.setMaterialId(dto.getMaterialId());
+        vo.setWarehouseId(dto.getWarehouseId());
+        vo.setLocationId(dto.getLocationId());
+        vo.setTxnDirection(dto.getTxnDirection());
+        vo.setTxnQty(dto.getTxnQty());
+        vo.setBeforeQty(dto.getBeforeQty());
+        vo.setAfterQty(dto.getAfterQty());
         return vo;
     }
 
