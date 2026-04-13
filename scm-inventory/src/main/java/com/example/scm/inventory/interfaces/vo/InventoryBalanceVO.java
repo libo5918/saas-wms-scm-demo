@@ -1,15 +1,31 @@
 package com.example.scm.inventory.interfaces.vo;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.math.BigDecimal;
 
+@Schema(description = "库存余额展示对象。")
 public class InventoryBalanceVO {
 
+    @Schema(description = "物料ID。")
     private Long materialId;
+
+    @Schema(description = "仓库ID。")
     private Long warehouseId;
+
+    @Schema(description = "库位ID。")
     private Long locationId;
+
+    @Schema(description = "现存数量。")
     private BigDecimal onHandQty;
+
+    @Schema(description = "锁定数量。")
     private BigDecimal lockedQty;
+
+    @Schema(description = "可用数量。")
     private BigDecimal availableQty;
+
+    @Schema(description = "乐观锁版本号。")
     private Long version;
 
     public Long getMaterialId() {

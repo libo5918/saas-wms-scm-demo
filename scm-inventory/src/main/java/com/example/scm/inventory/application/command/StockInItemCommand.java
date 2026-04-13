@@ -1,12 +1,22 @@
 package com.example.scm.inventory.application.command;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.math.BigDecimal;
 
+@Schema(description = "库存入库应用命令明细，描述单个库存维度上的入库数据。")
 public class StockInItemCommand {
 
+    @Schema(description = "物料ID。")
     private Long materialId;
+
+    @Schema(description = "仓库ID。")
     private Long warehouseId;
+
+    @Schema(description = "库位ID。")
     private Long locationId;
+
+    @Schema(description = "本次入库数量。")
     private BigDecimal quantity;
 
     public Long getMaterialId() {
