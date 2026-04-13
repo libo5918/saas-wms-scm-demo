@@ -32,6 +32,10 @@ public class InventoryBalanceRepositoryImpl implements InventoryBalanceRepositor
     }
 
     @Override
+    /**
+     * 保存库存余额聚合。
+     * 首次落库执行 insert，已有记录执行 updateById。
+     */
     public InventoryBalance save(InventoryBalance inventoryBalance) {
         InventoryBalancePO po = toPO(inventoryBalance);
         if (po.getId() == null) {
@@ -43,6 +47,9 @@ public class InventoryBalanceRepositoryImpl implements InventoryBalanceRepositor
         return inventoryBalance;
     }
 
+    /**
+     * 将持久化对象转换为领域聚合。
+     */
     private InventoryBalance toDomain(InventoryBalancePO po) {
         InventoryBalance balance = new InventoryBalance();
         balance.setId(po.getId());
@@ -56,6 +63,9 @@ public class InventoryBalanceRepositoryImpl implements InventoryBalanceRepositor
         return balance;
     }
 
+    /**
+     * 将领域聚合转换为持久化对象。
+     */
     private InventoryBalancePO toPO(InventoryBalance balance) {
         InventoryBalancePO po = new InventoryBalancePO();
         po.setId(balance.getId());

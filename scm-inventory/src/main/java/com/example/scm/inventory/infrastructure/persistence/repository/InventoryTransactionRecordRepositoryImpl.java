@@ -26,6 +26,26 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
                                        Long materialId,
                                        Long warehouseId,
                                        Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.IN);
+    }
+
+    @Override
+    public boolean existsStockOutRecord(Long tenantId,
+                                        String bizType,
+                                        String bizNo,
+                                        Long materialId,
+                                        Long warehouseId,
+                                        Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.OUT);
+    }
+
+    private boolean existsRecord(Long tenantId,
+                                 String bizType,
+                                 String bizNo,
+                                 Long materialId,
+                                 Long warehouseId,
+                                 Long locationId,
+                                 InventoryTransactionDirection direction) {
         LambdaQueryWrapper<InventoryTxnRecordPO> queryWrapper = new LambdaQueryWrapper<InventoryTxnRecordPO>()
                 .eq(InventoryTxnRecordPO::getTenantId, tenantId)
                 .eq(InventoryTxnRecordPO::getBizType, bizType)
@@ -33,12 +53,15 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
                 .eq(InventoryTxnRecordPO::getMaterialId, materialId)
                 .eq(InventoryTxnRecordPO::getWarehouseId, warehouseId)
                 .eq(InventoryTxnRecordPO::getLocationId, locationId)
-                .eq(InventoryTxnRecordPO::getTxnDirection, InventoryTransactionDirection.IN.name())
+                .eq(InventoryTxnRecordPO::getTxnDirection, direction.name())
                 .last("LIMIT 1");
         return inventoryTxnRecordMapper.selectCount(queryWrapper) > 0;
     }
 
     @Override
+    /**
+     * 保存库存流水记录，始终执行插入，不做覆盖更新。
+     */
     public void save(InventoryTransactionRecord inventoryTransactionRecord) {
         InventoryTxnRecordPO po = toPO(inventoryTransactionRecord);
         inventoryTxnRecordMapper.insert(po);
@@ -56,6 +79,9 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
                 .toList();
     }
 
+    /**
+     * 将领域实体转换为持久化对象。
+     */
     private InventoryTxnRecordPO toPO(InventoryTransactionRecord inventoryTransactionRecord) {
         InventoryTxnRecordPO po = new InventoryTxnRecordPO();
         po.setTenantId(inventoryTransactionRecord.getTenantId());
@@ -72,6 +98,9 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
         return po;
     }
 
+    /**
+     * 将持久化对象转换为领域实体。
+     */
     private InventoryTransactionRecord toDomain(InventoryTxnRecordPO po) {
         InventoryTransactionRecord record = new InventoryTransactionRecord();
         record.setId(po.getId());

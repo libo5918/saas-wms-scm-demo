@@ -4,14 +4,18 @@ import com.example.scm.common.core.Result;
 import com.example.scm.inventory.application.query.InventoryBalanceDTO;
 import com.example.scm.inventory.application.query.InventoryTransactionRecordDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
+import com.example.scm.inventory.application.query.StockOutResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
 import com.example.scm.inventory.application.service.InventoryStockInApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
 import com.example.scm.inventory.interfaces.assembler.InventoryStockAssembler;
 import com.example.scm.inventory.interfaces.dto.StockInRequest;
+import com.example.scm.inventory.interfaces.dto.StockOutRequest;
 import com.example.scm.inventory.interfaces.vo.InventoryBalanceVO;
 import com.example.scm.inventory.interfaces.vo.InventoryTransactionRecordVO;
 import com.example.scm.inventory.interfaces.vo.StockInResultVO;
+import com.example.scm.inventory.interfaces.vo.StockOutResultVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,15 +36,18 @@ import java.util.List;
 public class InventoryStockController {
 
     private final InventoryStockInApplicationService inventoryStockInApplicationService;
+    private final InventoryStockOutApplicationService inventoryStockOutApplicationService;
     private final InventoryBalanceQueryService inventoryBalanceQueryService;
     private final InventoryTransactionRecordQueryService inventoryTransactionRecordQueryService;
     private final InventoryStockAssembler inventoryStockAssembler;
 
     public InventoryStockController(InventoryStockInApplicationService inventoryStockInApplicationService,
+                                    InventoryStockOutApplicationService inventoryStockOutApplicationService,
                                     InventoryBalanceQueryService inventoryBalanceQueryService,
                                     InventoryTransactionRecordQueryService inventoryTransactionRecordQueryService,
                                     InventoryStockAssembler inventoryStockAssembler) {
         this.inventoryStockInApplicationService = inventoryStockInApplicationService;
+        this.inventoryStockOutApplicationService = inventoryStockOutApplicationService;
         this.inventoryBalanceQueryService = inventoryBalanceQueryService;
         this.inventoryTransactionRecordQueryService = inventoryTransactionRecordQueryService;
         this.inventoryStockAssembler = inventoryStockAssembler;
@@ -52,6 +59,15 @@ public class InventoryStockController {
         log.info("Receive stock-in request, bizType={}, bizNo={}, itemCount={}",
                 request.getBizType(), request.getBizNo(), request.getItems().size());
         StockInResultDTO result = inventoryStockInApplicationService.stockIn(inventoryStockAssembler.toCommand(request));
+        return Result.success(inventoryStockAssembler.toResultVO(result));
+    }
+
+    @PostMapping("/stock-outs")
+    @Operation(summary = "执行库存出库", description = "根据业务单执行库存出库并生成库存流水。")
+    public Result<StockOutResultVO> stockOut(@Valid @RequestBody StockOutRequest request) {
+        log.info("Receive stock-out request, bizType={}, bizNo={}, itemCount={}",
+                request.getBizType(), request.getBizNo(), request.getItems().size());
+        StockOutResultDTO result = inventoryStockOutApplicationService.stockOut(inventoryStockAssembler.toCommand(request));
         return Result.success(inventoryStockAssembler.toResultVO(result));
     }
 

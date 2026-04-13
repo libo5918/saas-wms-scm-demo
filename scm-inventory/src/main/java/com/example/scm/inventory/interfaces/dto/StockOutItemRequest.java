@@ -1,13 +1,13 @@
 package com.example.scm.inventory.interfaces.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 
-@Schema(description = "库存入库明细请求，描述单个库存维度上的入库数量。")
-public class StockInItemRequest {
+@Schema(description = "库存出库明细请求，描述单个库存维度上的出库数量。")
+public class StockOutItemRequest {
 
     @Schema(description = "物料ID。")
     @NotNull(message = "materialId cannot be null")
@@ -21,9 +21,9 @@ public class StockInItemRequest {
     @NotNull(message = "locationId cannot be null")
     private Long locationId;
 
-    @Schema(description = "本次入库数量。")
+    @Schema(description = "本次出库数量。")
     @NotNull(message = "quantity cannot be null")
-    @Positive(message = "quantity must be greater than zero")
+    @DecimalMin(value = "0.0001", message = "quantity must be greater than zero")
     private BigDecimal quantity;
 
     public Long getMaterialId() {

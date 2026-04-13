@@ -5,7 +5,7 @@ import com.example.scm.inventory.infrastructure.persistence.po.InventoryBalanceP
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * 库存余额 MyBatis-Plus Mapper，负责 `inventory_balance` 表基础 CRUD。
+ * 库存余额 MyBatis-Plus Mapper，负责 `inventory_balance` 表基础持久化。
  */
 @Mapper
 public interface InventoryBalanceMapper extends BaseMapper<InventoryBalancePO> {

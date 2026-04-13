@@ -1,29 +1,12 @@
-package com.example.scm.inventory.interfaces.dto;
-
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+package com.example.scm.inventory.application.command;
 
 import java.math.BigDecimal;
 
-@Schema(description = "库存入库明细请求，描述单个库存维度上的入库数量。")
-public class StockInItemRequest {
+public class StockOutItemCommand {
 
-    @Schema(description = "物料ID。")
-    @NotNull(message = "materialId cannot be null")
     private Long materialId;
-
-    @Schema(description = "仓库ID。")
-    @NotNull(message = "warehouseId cannot be null")
     private Long warehouseId;
-
-    @Schema(description = "库位ID。")
-    @NotNull(message = "locationId cannot be null")
     private Long locationId;
-
-    @Schema(description = "本次入库数量。")
-    @NotNull(message = "quantity cannot be null")
-    @Positive(message = "quantity must be greater than zero")
     private BigDecimal quantity;
 
     public Long getMaterialId() {

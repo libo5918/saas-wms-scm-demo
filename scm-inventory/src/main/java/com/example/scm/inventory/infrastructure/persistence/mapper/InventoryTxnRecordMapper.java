@@ -5,7 +5,7 @@ import com.example.scm.inventory.infrastructure.persistence.po.InventoryTxnRecor
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * 库存流水 MyBatis-Plus Mapper，负责 `inventory_txn_record` 表基础 CRUD。
+ * 库存流水 MyBatis-Plus Mapper，负责 `inventory_txn_record` 表基础持久化。
  */
 @Mapper
 public interface InventoryTxnRecordMapper extends BaseMapper<InventoryTxnRecordPO> {

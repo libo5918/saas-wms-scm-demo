@@ -9,10 +9,10 @@ import jakarta.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
-@Schema(description = "库存入库请求，描述一次业务单触发的入库动作。")
-public class StockInRequest {
+@Schema(description = "库存出库请求，描述一次业务单触发的出库动作。")
+public class StockOutRequest {
 
-    @Schema(description = "业务类型，例如 PURCHASE_RECEIPT。")
+    @Schema(description = "业务类型，例如 SALES_ORDER。")
     @NotBlank(message = "bizType cannot be blank")
     private String bizType;
 
@@ -24,10 +24,10 @@ public class StockInRequest {
     @NotNull(message = "operatorId cannot be null")
     private Long operatorId;
 
-    @Schema(description = "入库明细列表。")
+    @Schema(description = "出库明细列表。")
     @Valid
     @NotEmpty(message = "items cannot be empty")
-    private List<StockInItemRequest> items = new ArrayList<>();
+    private List<StockOutItemRequest> items = new ArrayList<>();
 
     public String getBizType() {
         return bizType;
@@ -53,11 +53,11 @@ public class StockInRequest {
         this.operatorId = operatorId;
     }
 
-    public List<StockInItemRequest> getItems() {
+    public List<StockOutItemRequest> getItems() {
         return items;
     }
 
-    public void setItems(List<StockInItemRequest> items) {
+    public void setItems(List<StockOutItemRequest> items) {
         this.items = items;
     }
 }
