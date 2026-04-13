@@ -20,7 +20,6 @@ public final class TenantContext {
         if (tenantId == null) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Missing tenant context");
         }
-        System.out.println("123");
         return tenantId;
     }
 

@@ -9,6 +9,9 @@ import com.example.scm.inventory.domain.inventory.repository.InventoryBalanceRep
 import com.example.scm.inventory.domain.inventory.valueobject.InventoryKey;
 import org.springframework.stereotype.Service;
 
+/**
+ * 库存余额查询服务，负责把库存聚合转换为查询结果。
+ */
 @Service
 public class InventoryBalanceQueryService {
 
@@ -18,6 +21,9 @@ public class InventoryBalanceQueryService {
         this.inventoryBalanceRepository = inventoryBalanceRepository;
     }
 
+    /**
+     * 按物料、仓库、库位查询库存余额。
+     */
     public InventoryBalanceDTO getBalance(Long materialId, Long warehouseId, Long locationId) {
         Long tenantId = TenantContext.getRequiredTenantId();
         InventoryKey inventoryKey = new InventoryKey(tenantId, materialId, warehouseId, locationId);

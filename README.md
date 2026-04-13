@@ -62,14 +62,19 @@
 - 持久化层同时演示两种 MyBatis 写法：
   `insert/update/delete` 写在 `Mapper` 注解上；
   `select` 写在 `resources/mapper/*.xml` 中。
-- 默认可直接本地启动，使用内存 H2。
-- 如需切换 MySQL，可启用 `mysql` profile。
+- 默认连接本地 MySQL：`127.0.0.1:3306/scm_mdm`。
 
 ### `scm-inventory`
 
 - 已完成库存入库第一版 DDD 模型。
 - 已落地应用层、领域层、基础设施层、接口层。
 - 支持库存入库、库存余额查询、库存流水落库、基础幂等校验。
+- 默认连接本地 MySQL：`127.0.0.1:3306/scm_inventory`。
+
+### `scm-purchase`
+
+- 已完成采购收货单第一版创建、详情、列表接口。
+- 默认连接本地 MySQL：`127.0.0.1:3306/scm_purchase`。
 
 ## 架构原则
 
@@ -99,19 +104,19 @@ git commit -m "init: bootstrap saas-wms-scm-demo"
 
 ## 启动说明
 
-### 直接启动 `ScmMdmApplication`
+启动前请确认本地 MySQL 已可访问：
 
-默认配置现在使用 H2 内存库，可以直接在 IDE 中运行 `ScmMdmApplication`。
+- 地址：`127.0.0.1:3306`
+- 用户名：`root`
+- 密码：`123456`
 
-### 切换到 MySQL
+服务默认会连接以下数据库，并在启动时执行各自模块的 `schema.sql`：
 
-如果你要连本地 Docker MySQL：
+- `scm_mdm`
+- `scm_inventory`
+- `scm_purchase`
 
-```bash
-mvn -pl scm-mdm -am spring-boot:run -DskipTests -Dspring-boot.run.profiles=mysql
-```
-
-IDE 中则添加 `spring.profiles.active=mysql`。
+当前 JDBC URL 已带 `createDatabaseIfNotExist=true`，本地 MySQL 账号有建库权限时可直接启动。
 
 ## 下一步
 

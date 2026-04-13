@@ -9,11 +9,16 @@ import com.example.scm.inventory.application.query.StockInLineResultDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
 import com.example.scm.inventory.domain.inventory.entity.InventoryTransactionRecord;
 import com.example.scm.inventory.domain.inventory.service.InventoryStockInDomainService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 库存入库应用服务，负责编排业务单入库流程。
+ */
 @Service
+@Slf4j
 public class InventoryStockInApplicationService {
 
     private final InventoryStockInDomainService inventoryStockInDomainService;
@@ -22,10 +27,15 @@ public class InventoryStockInApplicationService {
         this.inventoryStockInDomainService = inventoryStockInDomainService;
     }
 
+    /**
+     * 按业务单执行库存入库，并返回入库结果。
+     */
     @Transactional
     public StockInResultDTO stockIn(StockInCommand command) {
         validateCommand(command);
         Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Start stock-in application flow, tenantId={}, bizType={}, bizNo={}, itemCount={}",
+                tenantId, command.getBizType(), command.getBizNo(), command.getItems().size());
 
         StockInResultDTO result = new StockInResultDTO();
         result.setBizType(command.getBizType());
@@ -52,10 +62,18 @@ public class InventoryStockInApplicationService {
             line.setBeforeQty(transactionRecord.getBeforeQty());
             line.setAfterQty(transactionRecord.getAfterQty());
             result.getLines().add(line);
+            log.info("Stock-in line success, tenantId={}, txnNo={}, materialId={}, warehouseId={}, locationId={}, qty={}",
+                    tenantId, transactionRecord.getTxnNo(), transactionRecord.getMaterialId(),
+                    transactionRecord.getWarehouseId(), transactionRecord.getLocationId(), transactionRecord.getTxnQty());
         }
+        log.info("Finish stock-in application flow, tenantId={}, bizType={}, bizNo={}, lineCount={}",
+                tenantId, result.getBizType(), result.getBizNo(), result.getLines().size());
         return result;
     }
 
+    /**
+     * 校验应用服务层入参完整性。
+     */
     private void validateCommand(StockInCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

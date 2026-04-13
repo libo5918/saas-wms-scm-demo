@@ -4,9 +4,15 @@ import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.inventory.domain.inventory.entity.InventoryTransactionRecord;
 import com.example.scm.inventory.domain.inventory.valueobject.InventoryKey;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
+@Getter
+@Setter
+@Schema(description = "库存余额聚合根，负责维护某个库存维度上的数量状态。")
 public class InventoryBalance {
 
     private Long id;
@@ -54,69 +60,5 @@ public class InventoryBalance {
                 beforeQty,
                 afterQty
         );
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public InventoryKey getInventoryKey() {
-        return inventoryKey;
-    }
-
-    public void setInventoryKey(InventoryKey inventoryKey) {
-        this.inventoryKey = inventoryKey;
-    }
-
-    public BigDecimal getOnHandQty() {
-        return onHandQty;
-    }
-
-    public void setOnHandQty(BigDecimal onHandQty) {
-        this.onHandQty = onHandQty;
-    }
-
-    public BigDecimal getLockedQty() {
-        return lockedQty;
-    }
-
-    public void setLockedQty(BigDecimal lockedQty) {
-        this.lockedQty = lockedQty;
-    }
-
-    public BigDecimal getAvailableQty() {
-        return availableQty;
-    }
-
-    public void setAvailableQty(BigDecimal availableQty) {
-        this.availableQty = availableQty;
-    }
-
-    public Long getVersion() {
-        return version;
-    }
-
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-
-    public Long getCreatedBy() {
-        return createdBy;
-    }
-
-    public void setCreatedBy(Long createdBy) {
-        this.createdBy = createdBy;
-    }
-
-    public Long getUpdatedBy() {
-        return updatedBy;
-    }
-
-    public void setUpdatedBy(Long updatedBy) {
-        this.updatedBy = updatedBy;
     }
 }

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.scm.purchase.mapper.PurchaseReceiptMapper">
+
+    <resultMap id="purchaseReceiptResultMap" type="com.example.scm.purchase.entity.PurchaseReceipt">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="receiptNo" column="receipt_no"/>
+        <result property="purchaseOrderId" column="purchase_order_id"/>
+        <result property="warehouseId" column="warehouse_id"/>
+        <result property="receiptStatus" column="receipt_status"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="purchaseReceiptResultMap">
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM purchase_receipt
+        WHERE id = #{id} AND tenant_id = #{tenantId} AND deleted = 0
+    </select>
+
+    <select id="selectByReceiptNo" resultMap="purchaseReceiptResultMap">
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM purchase_receipt
+        WHERE receipt_no = #{receiptNo} AND tenant_id = #{tenantId} AND deleted = 0
+    </select>
+
+    <select id="selectByTenantId" resultMap="purchaseReceiptResultMap">
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM purchase_receipt
+        WHERE tenant_id = #{tenantId} AND deleted = 0
+        ORDER BY id DESC
+    </select>
+</mapper>
