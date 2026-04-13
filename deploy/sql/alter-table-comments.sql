@@ -20,6 +20,8 @@ ALTER TABLE mdm_material ADD INDEX idx_mdm_material_tenant_status (tenant_id, st
 
 USE scm_purchase;
 
+ALTER TABLE purchase_receipt
+    ADD COLUMN IF NOT EXISTS failure_reason VARCHAR(255) DEFAULT NULL COMMENT '入库失败原因' AFTER receipt_status;
 ALTER TABLE purchase_receipt COMMENT = '采购收货单头表：记录一次采购到货的单据信息';
 ALTER TABLE purchase_receipt
     MODIFY COLUMN id BIGINT AUTO_INCREMENT COMMENT '主键ID',
@@ -28,6 +30,7 @@ ALTER TABLE purchase_receipt
     MODIFY COLUMN purchase_order_id BIGINT NOT NULL COMMENT '采购订单ID',
     MODIFY COLUMN warehouse_id BIGINT NOT NULL COMMENT '仓库ID',
     MODIFY COLUMN receipt_status VARCHAR(32) NOT NULL COMMENT '收货单状态',
+    MODIFY COLUMN failure_reason VARCHAR(255) DEFAULT NULL COMMENT '入库失败原因',
     MODIFY COLUMN created_by BIGINT DEFAULT NULL COMMENT '创建人',
     MODIFY COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     MODIFY COLUMN updated_by BIGINT DEFAULT NULL COMMENT '更新人',

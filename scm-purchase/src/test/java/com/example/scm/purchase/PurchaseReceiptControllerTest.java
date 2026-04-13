@@ -49,6 +49,7 @@ class PurchaseReceiptControllerTest {
         receipt.setPurchaseOrderId(5001L);
         receipt.setWarehouseId(2001L);
         receipt.setReceiptStatus("STOCK_IN_SUCCESS");
+        receipt.setFailureReason(null);
         receipt.setItems(List.of(item));
 
         when(purchaseReceiptService.create(any())).thenReturn(receipt);

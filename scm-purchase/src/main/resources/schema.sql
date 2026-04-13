@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS purchase_receipt (
     purchase_order_id BIGINT NOT NULL COMMENT '采购订单ID',
     warehouse_id BIGINT NOT NULL COMMENT '仓库ID',
     receipt_status VARCHAR(32) NOT NULL COMMENT '收货单状态',
+    failure_reason VARCHAR(255) DEFAULT NULL COMMENT '入库失败原因',
     created_by BIGINT DEFAULT NULL COMMENT '创建人',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_by BIGINT DEFAULT NULL COMMENT '更新人',

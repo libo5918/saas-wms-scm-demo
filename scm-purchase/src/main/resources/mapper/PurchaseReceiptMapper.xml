@@ -11,6 +11,7 @@
         <result property="purchaseOrderId" column="purchase_order_id"/>
         <result property="warehouseId" column="warehouse_id"/>
         <result property="receiptStatus" column="receipt_status"/>
+        <result property="failureReason" column="failure_reason"/>
         <result property="createdBy" column="created_by"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedBy" column="updated_by"/>
@@ -19,21 +20,21 @@
     </resultMap>
 
     <select id="selectById" resultMap="purchaseReceiptResultMap">
-        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status, failure_reason,
                created_by, created_at, updated_by, updated_at, deleted
         FROM purchase_receipt
         WHERE id = #{id} AND tenant_id = #{tenantId} AND deleted = 0
     </select>
 
     <select id="selectByReceiptNo" resultMap="purchaseReceiptResultMap">
-        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status, failure_reason,
                created_by, created_at, updated_by, updated_at, deleted
         FROM purchase_receipt
         WHERE receipt_no = #{receiptNo} AND tenant_id = #{tenantId} AND deleted = 0
     </select>
 
     <select id="selectByTenantId" resultMap="purchaseReceiptResultMap">
-        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status,
+        SELECT id, tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status, failure_reason,
                created_by, created_at, updated_by, updated_at, deleted
         FROM purchase_receipt
         WHERE tenant_id = #{tenantId} AND deleted = 0
