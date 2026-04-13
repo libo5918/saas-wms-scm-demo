@@ -36,7 +36,7 @@ class PurchaseReceiptControllerTest {
     private PurchaseReceiptService purchaseReceiptService;
 
     @Test
-    void shouldCreateAndQueryReceipt() throws Exception {
+    void shouldCreateRetryAndQueryReceipt() throws Exception {
         PurchaseReceiptItemVO item = new PurchaseReceiptItemVO();
         item.setId(11L);
         item.setMaterialId(1001L);
@@ -53,6 +53,7 @@ class PurchaseReceiptControllerTest {
         receipt.setItems(List.of(item));
 
         when(purchaseReceiptService.create(any())).thenReturn(receipt);
+        when(purchaseReceiptService.retryStockIn(1L)).thenReturn(receipt);
         when(purchaseReceiptService.getById(1L)).thenReturn(receipt);
         when(purchaseReceiptService.list()).thenReturn(List.of(receipt));
 
@@ -80,6 +81,13 @@ class PurchaseReceiptControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.receiptStatus").value("STOCK_IN_SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].materialId").value(1001));
+
+        mockMvc.perform(post("/api/v1/purchase-receipts/1/retry-stock-in")
+                        .header("X-Tenant-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.receiptStatus").value("STOCK_IN_SUCCESS"));
 
         mockMvc.perform(get("/api/v1/purchase-receipts/1")
                         .header("X-Tenant-Id", "1"))

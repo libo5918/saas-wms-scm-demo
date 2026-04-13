@@ -36,6 +36,13 @@ public class PurchaseReceiptController {
         return Result.success(purchaseReceiptService.create(request));
     }
 
+    @PostMapping("/{id}/retry-stock-in")
+    @Operation(summary = "Retry purchase receipt stock-in", description = "Retry inventory stock-in on the same failed purchase receipt.")
+    public Result<PurchaseReceiptVO> retryStockIn(@PathVariable("id") Long id) {
+        log.info("Receive retry purchase receipt stock-in request, id={}", id);
+        return Result.success(purchaseReceiptService.retryStockIn(id));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get purchase receipt detail", description = "Query header and items by receipt id.")
     public Result<PurchaseReceiptVO> getById(@PathVariable("id") Long id) {

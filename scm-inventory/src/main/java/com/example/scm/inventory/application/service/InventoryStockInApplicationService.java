@@ -52,7 +52,6 @@ public class InventoryStockInApplicationService {
                     item.getLocationId(),
                     item.getQuantity()
             );
-            int i=1/0;
             StockInLineResultDTO line = new StockInLineResultDTO();
             line.setTxnNo(transactionRecord.getTxnNo());
             line.setMaterialId(transactionRecord.getMaterialId());

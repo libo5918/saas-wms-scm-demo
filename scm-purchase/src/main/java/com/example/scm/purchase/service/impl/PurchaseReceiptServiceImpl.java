@@ -108,24 +108,32 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         if (receipt == null) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Create purchase receipt failed");
         }
-        List<PurchaseReceiptItem> items = purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId());
+        return processStockIn(tenantId, receipt);
+    }
 
-        try {
-            log.info("Call inventory stock-in after receipt creation, tenantId={}, receiptId={}, receiptNo={}",
+    /**
+     * 对失败的收货单重试库存入库。
+     *
+     * <p>重试动作只会在原单据上继续推进，不会新建新的收货单。</p>
+     */
+    @Override
+    public PurchaseReceiptVO retryStockIn(Long id) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Start retry purchase receipt stock-in, tenantId={}, receiptId={}", tenantId, id);
+
+        PurchaseReceipt receipt = purchaseReceiptMapper.selectById(tenantId, id)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Purchase receipt not found"));
+
+        if (STOCK_IN_SUCCESS_STATUS.equals(receipt.getReceiptStatus())) {
+            log.info("Skip retry for successful purchase receipt, tenantId={}, receiptId={}, receiptNo={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo());
-            inventoryStockInClient.stockIn(tenantId, SYSTEM_OPERATOR_ID, receipt, items);
-            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_SUCCESS_STATUS, null);
-            log.info("Create purchase receipt and stock-in success, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
-                    tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
-        } catch (BusinessException ex) {
-            String failureReason = truncateFailureReason(ex.getMessage());
-            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_FAILED_STATUS, failureReason);
-            log.error("Create purchase receipt but stock-in failed, tenantId={}, receiptId={}, receiptNo={}, reason={}",
-                    tenantId, receipt.getId(), receipt.getReceiptNo(), failureReason, ex);
-            throw ex;
+            return toVO(receipt, purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId()));
+        }
+        if (!STOCK_IN_FAILED_STATUS.equals(receipt.getReceiptStatus())) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only failed purchase receipt can retry stock-in");
         }
 
-        return getById(receipt.getId());
+        return processStockIn(tenantId, receipt);
     }
 
     /**
@@ -172,6 +180,30 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         log.info("Create purchase receipt persisted, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
                 tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
         return receipt;
+    }
+
+    /**
+     * 执行库存入库并回写收货单状态。
+     *
+     * <p>创建和重试都走这段逻辑，保证状态机和失败处理保持一致。</p>
+     */
+    private PurchaseReceiptVO processStockIn(Long tenantId, PurchaseReceipt receipt) {
+        List<PurchaseReceiptItem> items = purchaseReceiptItemMapper.selectByReceiptId(tenantId, receipt.getId());
+        try {
+            log.info("Call inventory stock-in, tenantId={}, receiptId={}, receiptNo={}",
+                    tenantId, receipt.getId(), receipt.getReceiptNo());
+            inventoryStockInClient.stockIn(tenantId, SYSTEM_OPERATOR_ID, receipt, items);
+            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_SUCCESS_STATUS, null);
+            log.info("Purchase receipt stock-in success, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
+                    tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
+        } catch (BusinessException ex) {
+            String failureReason = truncateFailureReason(ex.getMessage());
+            updateReceiptStatus(tenantId, receipt.getId(), STOCK_IN_FAILED_STATUS, failureReason);
+            log.error("Purchase receipt stock-in failed, tenantId={}, receiptId={}, receiptNo={}, reason={}",
+                    tenantId, receipt.getId(), receipt.getReceiptNo(), failureReason, ex);
+            throw ex;
+        }
+        return getById(receipt.getId());
     }
 
     /**
