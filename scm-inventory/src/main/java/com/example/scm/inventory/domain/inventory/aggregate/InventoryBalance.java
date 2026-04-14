@@ -132,4 +132,62 @@ public class InventoryBalance {
                 afterQty
         );
     }
+
+    public InventoryTransactionRecord lock(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-lock quantity must be greater than zero");
+        }
+        if (availableQty.compareTo(quantity) < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Insufficient available inventory");
+        }
+
+        BigDecimal beforeQty = lockedQty;
+        BigDecimal afterQty = beforeQty.add(quantity);
+        this.lockedQty = afterQty;
+        this.availableQty = availableQty.subtract(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.lock(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
+    public InventoryTransactionRecord unlock(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-unlock quantity must be greater than zero");
+        }
+        if (lockedQty.compareTo(quantity) < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Insufficient locked inventory");
+        }
+
+        BigDecimal beforeQty = lockedQty;
+        BigDecimal afterQty = beforeQty.subtract(quantity);
+        this.lockedQty = afterQty;
+        this.availableQty = availableQty.add(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.unlock(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
 }

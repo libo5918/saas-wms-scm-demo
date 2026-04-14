@@ -26,6 +26,20 @@ public interface InventoryTransactionRecordRepository {
                                  Long warehouseId,
                                  Long locationId);
 
+    boolean existsLockRecord(Long tenantId,
+                             String bizType,
+                             String bizNo,
+                             Long materialId,
+                             Long warehouseId,
+                             Long locationId);
+
+    boolean existsUnlockRecord(Long tenantId,
+                               String bizType,
+                               String bizNo,
+                               Long materialId,
+                               Long warehouseId,
+                               Long locationId);
+
     /**
      * 保存库存流水记录。
      */

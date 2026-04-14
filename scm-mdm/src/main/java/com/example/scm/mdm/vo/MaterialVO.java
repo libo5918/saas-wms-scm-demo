@@ -1,13 +1,29 @@
 package com.example.scm.mdm.vo;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "物料返回视图。")
 public class MaterialVO {
 
+    @Schema(description = "物料主键ID。")
     private Long id;
+
+    @Schema(description = "物料编码。")
     private String materialCode;
+
+    @Schema(description = "物料名称。")
     private String materialName;
+
+    @Schema(description = "物料规格。")
     private String materialSpec;
+
+    @Schema(description = "计量单位。")
     private String unit;
+
+    @Schema(description = "物料类型。")
     private String materialType;
+
+    @Schema(description = "物料状态。")
     private Integer status;
 
     public Long getId() {

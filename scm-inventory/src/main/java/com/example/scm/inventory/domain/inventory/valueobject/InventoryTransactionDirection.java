@@ -9,5 +9,11 @@ public enum InventoryTransactionDirection {
     IN,
 
     @Schema(description = "出库")
-    OUT
+    OUT,
+
+    @Schema(description = "锁库")
+    LOCK,
+
+    @Schema(description = "解锁")
+    UNLOCK
 }

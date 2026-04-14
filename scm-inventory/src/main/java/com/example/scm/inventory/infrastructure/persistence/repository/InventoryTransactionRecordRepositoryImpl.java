@@ -39,6 +39,26 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
         return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.OUT);
     }
 
+    @Override
+    public boolean existsLockRecord(Long tenantId,
+                                    String bizType,
+                                    String bizNo,
+                                    Long materialId,
+                                    Long warehouseId,
+                                    Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.LOCK);
+    }
+
+    @Override
+    public boolean existsUnlockRecord(Long tenantId,
+                                      String bizType,
+                                      String bizNo,
+                                      Long materialId,
+                                      Long warehouseId,
+                                      Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.UNLOCK);
+    }
+
     private boolean existsRecord(Long tenantId,
                                  String bizType,
                                  String bizNo,

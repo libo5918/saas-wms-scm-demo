@@ -1,12 +1,22 @@
 package com.example.scm.purchase.vo;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.math.BigDecimal;
 
+@Schema(description = "采购收货单明细返回视图。")
 public class PurchaseReceiptItemVO {
 
+    @Schema(description = "明细主键ID。")
     private Long id;
+
+    @Schema(description = "物料ID。")
     private Long materialId;
+
+    @Schema(description = "库位ID。")
     private Long locationId;
+
+    @Schema(description = "收货数量。")
     private BigDecimal receiptQty;
 
     public Long getId() {

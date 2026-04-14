@@ -103,4 +103,54 @@ public class InventoryTransactionRecord {
         record.afterQty = afterQty;
         return record;
     }
+
+    public static InventoryTransactionRecord lock(Long tenantId,
+                                                  String txnNo,
+                                                  String bizType,
+                                                  String bizNo,
+                                                  Long materialId,
+                                                  Long warehouseId,
+                                                  Long locationId,
+                                                  BigDecimal txnQty,
+                                                  BigDecimal beforeQty,
+                                                  BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.LOCK;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
+
+    public static InventoryTransactionRecord unlock(Long tenantId,
+                                                    String txnNo,
+                                                    String bizType,
+                                                    String bizNo,
+                                                    Long materialId,
+                                                    Long warehouseId,
+                                                    Long locationId,
+                                                    BigDecimal txnQty,
+                                                    BigDecimal beforeQty,
+                                                    BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.UNLOCK;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
 }

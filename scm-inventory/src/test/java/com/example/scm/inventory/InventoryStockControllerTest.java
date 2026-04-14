@@ -7,11 +7,17 @@ import com.example.scm.inventory.application.query.InventoryBalanceDTO;
 import com.example.scm.inventory.application.query.InventoryTransactionRecordDTO;
 import com.example.scm.inventory.application.query.StockInLineResultDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
+import com.example.scm.inventory.application.query.StockLockLineResultDTO;
+import com.example.scm.inventory.application.query.StockLockResultDTO;
 import com.example.scm.inventory.application.query.StockOutLineResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
+import com.example.scm.inventory.application.query.StockUnlockLineResultDTO;
+import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
 import com.example.scm.inventory.application.service.InventoryStockInApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockLockApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
 import com.example.scm.inventory.interfaces.assembler.InventoryStockAssembler;
 import com.example.scm.inventory.interfaces.controller.InventoryStockController;
@@ -44,7 +50,13 @@ class InventoryStockControllerTest {
     private InventoryStockInApplicationService inventoryStockInApplicationService;
 
     @MockBean
+    private InventoryStockLockApplicationService inventoryStockLockApplicationService;
+
+    @MockBean
     private InventoryStockOutApplicationService inventoryStockOutApplicationService;
+
+    @MockBean
+    private InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
 
     @MockBean
     private InventoryBalanceQueryService inventoryBalanceQueryService;
@@ -136,6 +148,92 @@ class InventoryStockControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.bizNo").value("SO-001"))
                 .andExpect(jsonPath("$.data.lines[0].txnNo").value("OUT-TEST-001"));
+    }
+
+    @Test
+    void shouldLockSuccessfully() throws Exception {
+        StockLockLineResultDTO line = new StockLockLineResultDTO();
+        line.setTxnNo("LOCK-TEST-001");
+        line.setMaterialId(1001L);
+        line.setWarehouseId(2001L);
+        line.setLocationId(3001L);
+        line.setQuantity(new BigDecimal("3"));
+        line.setBeforeQty(BigDecimal.ZERO);
+        line.setAfterQty(new BigDecimal("3"));
+
+        StockLockResultDTO result = new StockLockResultDTO();
+        result.setBizType("SALES_ORDER");
+        result.setBizNo("SO-LOCK-001");
+        result.setLines(List.of(line));
+        when(inventoryStockLockApplicationService.lock(any())).thenReturn(result);
+
+        String requestBody = """
+                {
+                  "bizType":"SALES_ORDER",
+                  "bizNo":"SO-LOCK-001",
+                  "operatorId":1,
+                  "items":[
+                    {
+                      "materialId":1001,
+                      "warehouseId":2001,
+                      "locationId":3001,
+                      "quantity":3
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/inventory/locks")
+                        .header("X-Tenant-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bizNo").value("SO-LOCK-001"))
+                .andExpect(jsonPath("$.data.lines[0].txnNo").value("LOCK-TEST-001"));
+    }
+
+    @Test
+    void shouldUnlockSuccessfully() throws Exception {
+        StockUnlockLineResultDTO line = new StockUnlockLineResultDTO();
+        line.setTxnNo("UNLOCK-TEST-001");
+        line.setMaterialId(1001L);
+        line.setWarehouseId(2001L);
+        line.setLocationId(3001L);
+        line.setQuantity(new BigDecimal("2"));
+        line.setBeforeQty(new BigDecimal("3"));
+        line.setAfterQty(new BigDecimal("1"));
+
+        StockUnlockResultDTO result = new StockUnlockResultDTO();
+        result.setBizType("SALES_ORDER");
+        result.setBizNo("SO-LOCK-001");
+        result.setLines(List.of(line));
+        when(inventoryStockUnlockApplicationService.unlock(any())).thenReturn(result);
+
+        String requestBody = """
+                {
+                  "bizType":"SALES_ORDER",
+                  "bizNo":"SO-LOCK-001",
+                  "operatorId":1,
+                  "items":[
+                    {
+                      "materialId":1001,
+                      "warehouseId":2001,
+                      "locationId":3001,
+                      "quantity":2
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/inventory/unlocks")
+                        .header("X-Tenant-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bizNo").value("SO-LOCK-001"))
+                .andExpect(jsonPath("$.data.lines[0].txnNo").value("UNLOCK-TEST-001"));
     }
 
     @Test
