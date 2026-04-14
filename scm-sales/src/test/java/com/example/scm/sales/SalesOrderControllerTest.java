@@ -36,7 +36,7 @@ class SalesOrderControllerTest {
     private SalesOrderService salesOrderService;
 
     @Test
-    void shouldCreateRetryShipCancelAndQueryOrder() throws Exception {
+    void shouldCreateRetryAndQueryOrder() throws Exception {
         SalesOrderItemVO item = new SalesOrderItemVO();
         item.setId(11L);
         item.setMaterialId(1L);
@@ -53,6 +53,7 @@ class SalesOrderControllerTest {
         when(salesOrderService.create(any())).thenReturn(order);
         when(salesOrderService.retryLock(1L)).thenReturn(order);
         when(salesOrderService.ship(1L)).thenReturn(order);
+        when(salesOrderService.retryShip(1L)).thenReturn(order);
         when(salesOrderService.cancel(1L)).thenReturn(order);
         when(salesOrderService.getById(1L)).thenReturn(order);
         when(salesOrderService.getByOrderNo("SO-001")).thenReturn(order);
@@ -86,6 +87,11 @@ class SalesOrderControllerTest {
                 .andExpect(jsonPath("$.data.orderNo").value("SO-001"));
 
         mockMvc.perform(post("/api/v1/sales-orders/1/ship")
+                        .header("X-Tenant-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value("SO-001"));
+
+        mockMvc.perform(post("/api/v1/sales-orders/1/retry-ship")
                         .header("X-Tenant-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderNo").value("SO-001"));

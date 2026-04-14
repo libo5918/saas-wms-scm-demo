@@ -12,5 +12,6 @@ public interface SalesOrderService {
     List<SalesOrderVO> list();
     SalesOrderVO retryLock(Long id);
     SalesOrderVO ship(Long id);
+    SalesOrderVO retryShip(Long id);
     SalesOrderVO cancel(Long id);
 }

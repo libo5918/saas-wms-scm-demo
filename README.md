@@ -5,8 +5,8 @@
 ## 当前范围
 
 - 只做后端与中间件集成，不做前端页面
-- 默认本地 MySQL 开发
-- 先用同步 HTTP 编排把主链路跑通，再逐步补状态机、幂等、测试和 DDD 分层
+- 默认使用本地 MySQL
+- 先用同步 HTTP 编排打通主链路，再逐步补状态机、幂等、测试和 DDD 分层
 
 ## 服务与模块
 
@@ -24,12 +24,12 @@
 - `scm-inventory`
   - 库存域
   - 当前已落地 DDD 第一版模型
-  - 已支持入库、出库、锁库、解锁、库存余额查询、按业务单查库存流水
+  - 已支持入库、普通出库、锁库、解锁、锁定库存出库、库存余额查询、按业务单查库存流水
 
 - `scm-sales`
   - 销售域最小骨架
-  - 当前已落地销售单创建、查询、发货、取消
-  - 已打通 `sales order -> inventory lock/out/unlock`
+  - 当前已落地销售单创建、查询、锁库失败重试、发货、发货失败重试、取消
+  - 已打通 `sales order -> inventory lock / locked-stock-out / unlock`
 
 - `scm-auth`
   - 认证与租户基础服务骨架
@@ -46,7 +46,7 @@
   - 全局异常处理、租户请求头拦截、Web 公共配置
 
 - `scm-common-mybatis`
-  - 传统 MyBatis 公共封装预留
+  - MyBatis 公共封装预留
 
 - `scm-common-redis`
   - Redis 公共封装预留
@@ -89,14 +89,15 @@
   - `infrastructure`
 - 库存动作
   - 入库
-  - 出库
+  - 普通出库
   - 锁库
   - 解锁
+  - 锁定库存出库
 - 查询能力
   - 库存余额查询
-  - 按业务单查库存流水
+  - 按业务单查询库存流水
 - 幂等控制
-  - 同业务单同库存维度重复动作会拒绝
+  - 同业务单同库存维度重复动作会被拦截
 
 ### scm-sales
 
@@ -105,10 +106,13 @@
   - `CREATED`
   - `LOCK_SUCCESS`
   - `LOCK_FAILED`
+  - `SHIP_FAILED`
   - `SHIPPED`
   - `CANCELLED`
 - 自动调用库存锁库
-- 发货时自动调用库存出库
+- 锁库失败后保留失败单据并记录 `failureReason`
+- 发货时调用锁定库存出库
+- 发货失败后保留失败单据并记录 `failureReason`
 - 取消时如果已锁库则自动解锁
 
 ## 主链路
@@ -124,13 +128,15 @@
 
 ### 销售下单到库存联动
 
-1. 创建销售单
+1. 创建销售订单
 2. 先落销售单头和明细
 3. 调用库存服务执行锁库
 4. 成功则回写 `LOCK_SUCCESS`
 5. 失败则回写 `LOCK_FAILED` 和 `failureReason`
-6. 发货时调用库存出库
-7. 取消时如果已锁库则调用库存解锁
+6. 发货时调用锁定库存出库
+7. 发货成功后回写 `SHIPPED`
+8. 发货失败则回写 `SHIP_FAILED` 和 `failureReason`
+9. 取消时如果已锁库则调用库存解锁
 
 ## 关键接口
 
@@ -155,9 +161,9 @@
 
 - `POST /api/v1/inventory/stock-ins`
 - `POST /api/v1/inventory/stock-outs`
-- `POST /api/v1/inventory/locked-stock-outs`
 - `POST /api/v1/inventory/locks`
 - `POST /api/v1/inventory/unlocks`
+- `POST /api/v1/inventory/locked-stock-outs`
 - `GET /api/v1/inventory/balances`
 - `GET /api/v1/inventory/txn-records`
 
@@ -166,6 +172,7 @@
 - `POST /api/v1/sales-orders`
 - `POST /api/v1/sales-orders/{id}/retry-lock`
 - `POST /api/v1/sales-orders/{id}/ship`
+- `POST /api/v1/sales-orders/{id}/retry-ship`
 - `POST /api/v1/sales-orders/{id}/cancel`
 - `GET /api/v1/sales-orders/{id}`
 - `GET /api/v1/sales-orders/by-order-no`
@@ -241,21 +248,35 @@
 }
 ```
 
-### 3. 销售订单发货
+### 3. 重试销售单锁库
+
+```text
+POST /api/v1/sales-orders/{id}/retry-lock
+Header: X-Tenant-Id: 1
+```
+
+### 4. 销售单发货
 
 ```text
 POST /api/v1/sales-orders/{id}/ship
 Header: X-Tenant-Id: 1
 ```
 
-### 4. 销售订单取消
+### 5. 重试销售单发货
+
+```text
+POST /api/v1/sales-orders/{id}/retry-ship
+Header: X-Tenant-Id: 1
+```
+
+### 6. 销售单取消
 
 ```text
 POST /api/v1/sales-orders/{id}/cancel
 Header: X-Tenant-Id: 1
 ```
 
-### 5. 查询库存流水
+### 7. 查询库存流水
 
 ```text
 GET /api/v1/inventory/txn-records?bizType=SALES_ORDER&bizNo=SO-1001
@@ -273,7 +294,6 @@ Header: X-Tenant-Id: 1
 
 ## 下一步
 
-1. 补销售域的失败重试与更细状态流转
-2. 评估把 `purchase` / `sales` 对 `inventory` 的同步 HTTP 编排升级为事件驱动
-3. 在库存域补库存调整、移库、盘点
-4. 继续补联调测试和演示数据
+1. 评估把 `purchase` / `sales` 对 `inventory` 的同步 HTTP 编排升级为事件驱动
+2. 在库存域继续补库存调整、移库、盘点
+3. 继续补联调测试和演示数据

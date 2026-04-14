@@ -110,10 +110,22 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         if (!toStatus(order).canShip()) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only locked sales order can ship");
         }
-        List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
-        inventoryReservationClient.stockOut(tenantId, SYSTEM_OPERATOR_ID, order, items);
-        updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIPPED, null);
-        return getById(order.getId());
+        return processShip(tenantId, order);
+    }
+
+    @Override
+    public SalesOrderVO retryShip(Long id) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        SalesOrder order = salesOrderMapper.selectById(tenantId, id)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Sales order not found"));
+        SalesOrderStatus status = toStatus(order);
+        if (status == SalesOrderStatus.SHIPPED) {
+            return getById(order.getId());
+        }
+        if (!status.canRetryShip()) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Only failed sales order can retry ship");
+        }
+        return processShip(tenantId, order);
     }
 
     @Override
@@ -153,6 +165,18 @@ public class SalesOrderServiceImpl implements SalesOrderService {
             updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.LOCK_SUCCESS, null);
         } catch (BusinessException ex) {
             updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.LOCK_FAILED, truncateFailureReason(ex.getMessage()));
+            throw ex;
+        }
+        return getById(order.getId());
+    }
+
+    private SalesOrderVO processShip(Long tenantId, SalesOrder order) {
+        List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
+        try {
+            inventoryReservationClient.stockOut(tenantId, SYSTEM_OPERATOR_ID, order, items);
+            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIPPED, null);
+        } catch (BusinessException ex) {
+            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIP_FAILED, truncateFailureReason(ex.getMessage()));
             throw ex;
         }
         return getById(order.getId());

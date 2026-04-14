@@ -43,13 +43,19 @@ public class SalesOrderController {
     }
 
     @PostMapping("/{id}/ship")
-    @Operation(summary = "销售订单发货", description = "对已锁库的销售订单执行出库发货。")
+    @Operation(summary = "销售订单发货", description = "对已锁库的销售订单执行发货出库。")
     public Result<SalesOrderVO> ship(@PathVariable("id") Long id) {
         return Result.success(salesOrderService.ship(id));
     }
 
+    @PostMapping("/{id}/retry-ship")
+    @Operation(summary = "重试销售订单发货", description = "针对发货失败的销售订单重新触发锁定库存出库。")
+    public Result<SalesOrderVO> retryShip(@PathVariable("id") Long id) {
+        return Result.success(salesOrderService.retryShip(id));
+    }
+
     @PostMapping("/{id}/cancel")
-    @Operation(summary = "取消销售订单", description = "取消销售订单，已锁库时自动解锁库存。")
+    @Operation(summary = "取消销售订单", description = "取消销售订单，已锁库时自动释放锁定库存。")
     public Result<SalesOrderVO> cancel(@PathVariable("id") Long id) {
         return Result.success(salesOrderService.cancel(id));
     }
