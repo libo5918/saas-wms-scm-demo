@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.scm.sales.mapper.SalesOrderMapper">
+
+    <resultMap id="salesOrderResultMap" type="com.example.scm.sales.entity.SalesOrder">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="warehouseId" column="warehouse_id"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="failureReason" column="failure_reason"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="salesOrderResultMap">
+        SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM sales_order
+        WHERE id = #{id} AND tenant_id = #{tenantId} AND deleted = 0
+    </select>
+
+    <select id="selectByOrderNo" resultMap="salesOrderResultMap">
+        SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM sales_order
+        WHERE order_no = #{orderNo} AND tenant_id = #{tenantId} AND deleted = 0
+    </select>
+
+    <select id="selectByTenantId" resultMap="salesOrderResultMap">
+        SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,
+               created_by, created_at, updated_by, updated_at, deleted
+        FROM sales_order
+        WHERE tenant_id = #{tenantId} AND deleted = 0
+        ORDER BY id DESC
+    </select>
+</mapper>

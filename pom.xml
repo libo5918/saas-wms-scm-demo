@@ -32,6 +32,7 @@
         <module>scm-mdm</module>
         <module>scm-purchase</module>
         <module>scm-inventory</module>
+        <module>scm-sales</module>
     </modules>
 
     <build>

@@ -8,6 +8,7 @@ import com.example.scm.inventory.application.query.StockLockResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
+import com.example.scm.inventory.application.service.InventoryLockedStockOutApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockInApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockLockApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
@@ -45,6 +46,7 @@ public class InventoryStockController {
 
     private final InventoryStockInApplicationService inventoryStockInApplicationService;
     private final InventoryStockLockApplicationService inventoryStockLockApplicationService;
+    private final InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService;
     private final InventoryStockOutApplicationService inventoryStockOutApplicationService;
     private final InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
     private final InventoryBalanceQueryService inventoryBalanceQueryService;
@@ -53,6 +55,7 @@ public class InventoryStockController {
 
     public InventoryStockController(InventoryStockInApplicationService inventoryStockInApplicationService,
                                     InventoryStockLockApplicationService inventoryStockLockApplicationService,
+                                    InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService,
                                     InventoryStockOutApplicationService inventoryStockOutApplicationService,
                                     InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService,
                                     InventoryBalanceQueryService inventoryBalanceQueryService,
@@ -60,6 +63,7 @@ public class InventoryStockController {
                                     InventoryStockAssembler inventoryStockAssembler) {
         this.inventoryStockInApplicationService = inventoryStockInApplicationService;
         this.inventoryStockLockApplicationService = inventoryStockLockApplicationService;
+        this.inventoryLockedStockOutApplicationService = inventoryLockedStockOutApplicationService;
         this.inventoryStockOutApplicationService = inventoryStockOutApplicationService;
         this.inventoryStockUnlockApplicationService = inventoryStockUnlockApplicationService;
         this.inventoryBalanceQueryService = inventoryBalanceQueryService;
@@ -86,11 +90,20 @@ public class InventoryStockController {
     }
 
     @PostMapping("/stock-outs")
-    @Operation(summary = "执行库存出库", description = "根据业务单执行库存出库并生成库存流水。")
+    @Operation(summary = "执行库存出库", description = "根据业务单直接扣减现存和可用库存，并生成库存流水。")
     public Result<StockOutResultVO> stockOut(@Valid @RequestBody StockOutRequest request) {
         log.info("Receive stock-out request, bizType={}, bizNo={}, itemCount={}",
                 request.getBizType(), request.getBizNo(), request.getItems().size());
         StockOutResultDTO result = inventoryStockOutApplicationService.stockOut(inventoryStockAssembler.toCommand(request));
+        return Result.success(inventoryStockAssembler.toResultVO(result));
+    }
+
+    @PostMapping("/locked-stock-outs")
+    @Operation(summary = "执行锁定库存出库", description = "针对已锁库业务消耗锁定库存并完成发货出库。")
+    public Result<StockOutResultVO> lockedStockOut(@Valid @RequestBody StockOutRequest request) {
+        log.info("Receive locked stock-out request, bizType={}, bizNo={}, itemCount={}",
+                request.getBizType(), request.getBizNo(), request.getItems().size());
+        StockOutResultDTO result = inventoryLockedStockOutApplicationService.stockOut(inventoryStockAssembler.toCommand(request));
         return Result.success(inventoryStockAssembler.toResultVO(result));
     }
 

@@ -133,6 +133,46 @@ public class InventoryBalance {
         );
     }
 
+    /**
+     * 执行锁定库存出库。
+     * 该动作用于先锁库后发货的场景，发货时应消耗锁定数量，而不是再次占用可用库存。
+     *
+     * @param txnNo 流水号
+     * @param bizType 业务类型
+     * @param bizNo 业务单号
+     * @param quantity 出库数量
+     * @param operatorId 操作人
+     * @return 出库流水实体
+     */
+    public InventoryTransactionRecord lockedStockOut(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "locked stock-out quantity must be greater than zero");
+        }
+        if (lockedQty.compareTo(quantity) < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Insufficient locked inventory");
+        }
+
+        BigDecimal beforeQty = onHandQty;
+        BigDecimal afterQty = beforeQty.subtract(quantity);
+        this.onHandQty = afterQty;
+        this.lockedQty = lockedQty.subtract(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.stockOut(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
     public InventoryTransactionRecord lock(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
         if (quantity == null || quantity.signum() <= 0) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-lock quantity must be greater than zero");
