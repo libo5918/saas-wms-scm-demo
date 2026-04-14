@@ -27,3 +27,6 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 knife4j:
   enable: true
+integration:
+  mdm:
+    base-url: http://127.0.0.1:18082

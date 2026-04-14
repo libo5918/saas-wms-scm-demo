@@ -31,3 +31,5 @@ knife4j:
 integration:
   inventory:
     base-url: http://127.0.0.1:18084
+  mdm:
+    base-url: http://127.0.0.1:18082

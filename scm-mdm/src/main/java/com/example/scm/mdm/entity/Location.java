@@ -8,31 +8,28 @@ import java.time.LocalDateTime;
 
 @Getter
 @Setter
-@Schema(description = "物料主数据实体")
-public class Material {
+@Schema(description = "库位主数据实体")
+public class Location {
 
-    @Schema(description = "物料主键ID")
+    @Schema(description = "库位主键ID")
     private Long id;
 
     @Schema(description = "租户ID")
     private Long tenantId;
 
-    @Schema(description = "物料编码")
-    private String materialCode;
+    @Schema(description = "所属仓库ID")
+    private Long warehouseId;
 
-    @Schema(description = "物料名称")
-    private String materialName;
+    @Schema(description = "库位编码")
+    private String locationCode;
 
-    @Schema(description = "物料规格")
-    private String materialSpec;
+    @Schema(description = "库位名称")
+    private String locationName;
 
-    @Schema(description = "计量单位")
-    private String unit;
+    @Schema(description = "库位类型")
+    private String locationType;
 
-    @Schema(description = "物料类型")
-    private String materialType;
-
-    @Schema(description = "物料状态")
+    @Schema(description = "库位状态")
     private Integer status;
 
     @Schema(description = "创建人")

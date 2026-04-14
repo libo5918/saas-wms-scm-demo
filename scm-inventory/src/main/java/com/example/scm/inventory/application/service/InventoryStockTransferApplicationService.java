@@ -21,9 +21,15 @@ import org.springframework.util.StringUtils;
 @Slf4j
 public class InventoryStockTransferApplicationService {
 
+    private final MaterialValidationService materialValidationService;
+    private final StorageValidationService storageValidationService;
     private final InventoryStockTransferDomainService inventoryStockTransferDomainService;
 
-    public InventoryStockTransferApplicationService(InventoryStockTransferDomainService inventoryStockTransferDomainService) {
+    public InventoryStockTransferApplicationService(MaterialValidationService materialValidationService,
+                                                    StorageValidationService storageValidationService,
+                                                    InventoryStockTransferDomainService inventoryStockTransferDomainService) {
+        this.materialValidationService = materialValidationService;
+        this.storageValidationService = storageValidationService;
         this.inventoryStockTransferDomainService = inventoryStockTransferDomainService;
     }
 
@@ -42,6 +48,9 @@ public class InventoryStockTransferApplicationService {
         result.setBizNo(command.getBizNo());
 
         for (StockTransferItemCommand item : command.getItems()) {
+            materialValidationService.validateMaterialEnabled(tenantId, item.getMaterialId());
+            storageValidationService.validateStorageEnabled(tenantId, item.getFromWarehouseId(), item.getFromLocationId());
+            storageValidationService.validateStorageEnabled(tenantId, item.getToWarehouseId(), item.getToLocationId());
             InventoryStockTransferDomainService.TransferExecutionResult executionResult = inventoryStockTransferDomainService.transfer(
                     tenantId,
                     command.getBizType(),

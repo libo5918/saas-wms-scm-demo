@@ -1,14 +1,14 @@
 package com.example.scm.mdm.constant;
 
-public final class MaterialStatus {
+public final class MasterDataStatus {
 
     public static final int DISABLED = 0;
     public static final int ENABLED = 1;
 
-    private MaterialStatus() {
+    private MasterDataStatus() {
     }
 
     public static boolean isValid(Integer status) {
-        return MasterDataStatus.isValid(status);
+        return status != null && (status == DISABLED || status == ENABLED);
     }
 }

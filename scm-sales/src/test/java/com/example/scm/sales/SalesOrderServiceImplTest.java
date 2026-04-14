@@ -3,6 +3,7 @@ package com.example.scm.sales;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.sales.client.InventoryReservationClient;
+import com.example.scm.sales.client.MaterialClient;
 import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
 import com.example.scm.sales.dto.CreateSalesOrderRequest;
 import com.example.scm.sales.entity.SalesOrder;
@@ -44,11 +45,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -78,11 +81,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -112,11 +117,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -140,11 +147,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -169,11 +178,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -199,11 +210,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -228,11 +241,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -257,11 +272,13 @@ class SalesOrderServiceImplTest {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );

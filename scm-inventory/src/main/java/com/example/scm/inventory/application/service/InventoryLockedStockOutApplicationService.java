@@ -22,9 +22,15 @@ import org.springframework.util.StringUtils;
 @Slf4j
 public class InventoryLockedStockOutApplicationService {
 
+    private final MaterialValidationService materialValidationService;
+    private final StorageValidationService storageValidationService;
     private final InventoryLockedStockOutDomainService inventoryLockedStockOutDomainService;
 
-    public InventoryLockedStockOutApplicationService(InventoryLockedStockOutDomainService inventoryLockedStockOutDomainService) {
+    public InventoryLockedStockOutApplicationService(MaterialValidationService materialValidationService,
+                                                     StorageValidationService storageValidationService,
+                                                     InventoryLockedStockOutDomainService inventoryLockedStockOutDomainService) {
+        this.materialValidationService = materialValidationService;
+        this.storageValidationService = storageValidationService;
         this.inventoryLockedStockOutDomainService = inventoryLockedStockOutDomainService;
     }
 
@@ -43,6 +49,8 @@ public class InventoryLockedStockOutApplicationService {
         result.setBizNo(command.getBizNo());
 
         for (StockOutItemCommand item : command.getItems()) {
+            materialValidationService.validateMaterialEnabled(tenantId, item.getMaterialId());
+            storageValidationService.validateStorageEnabled(tenantId, item.getWarehouseId(), item.getLocationId());
             InventoryTransactionRecord transactionRecord = inventoryLockedStockOutDomainService.stockOut(
                     tenantId,
                     command.getBizType(),

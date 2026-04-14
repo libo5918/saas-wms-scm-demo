@@ -4,6 +4,7 @@ import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.purchase.client.InventoryStockInClient;
+import com.example.scm.purchase.client.MaterialClient;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
 import com.example.scm.purchase.entity.PurchaseReceipt;
@@ -43,17 +44,20 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
     private final PurchaseReceiptMapper purchaseReceiptMapper;
     private final PurchaseReceiptItemMapper purchaseReceiptItemMapper;
     private final PurchaseReceiptAssembler purchaseReceiptAssembler;
+    private final MaterialClient materialClient;
     private final InventoryStockInClient inventoryStockInClient;
     private final TransactionTemplate transactionTemplate;
 
     public PurchaseReceiptServiceImpl(PurchaseReceiptMapper purchaseReceiptMapper,
                                       PurchaseReceiptItemMapper purchaseReceiptItemMapper,
                                       PurchaseReceiptAssembler purchaseReceiptAssembler,
+                                      MaterialClient materialClient,
                                       InventoryStockInClient inventoryStockInClient,
                                       TransactionTemplate transactionTemplate) {
         this.purchaseReceiptMapper = purchaseReceiptMapper;
         this.purchaseReceiptItemMapper = purchaseReceiptItemMapper;
         this.purchaseReceiptAssembler = purchaseReceiptAssembler;
+        this.materialClient = materialClient;
         this.inventoryStockInClient = inventoryStockInClient;
         this.transactionTemplate = transactionTemplate;
     }
@@ -72,6 +76,8 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
             }
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Receipt no already exists");
         }
+
+        validateMaterials(tenantId, request.getItems());
 
         PurchaseReceipt receipt = transactionTemplate.execute(status -> createReceiptInTransaction(tenantId, request));
         if (receipt == null) {
@@ -160,6 +166,12 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         log.info("Create purchase receipt persisted, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
                 tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
         return receipt;
+    }
+
+    private void validateMaterials(Long tenantId, List<CreatePurchaseReceiptItemRequest> items) {
+        for (CreatePurchaseReceiptItemRequest item : items) {
+            materialClient.validateMaterialEnabled(tenantId, item.getMaterialId());
+        }
     }
 
     private PurchaseReceiptVO processStockIn(Long tenantId, PurchaseReceipt receipt) {

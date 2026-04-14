@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,13 +22,12 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/materials")
-@Tag(name = "MDM-Material")
+@Tag(name = "物料主数据", description = "物料主数据管理接口")
 @Slf4j
 public class MaterialController {
 
     private final MaterialService materialService;
 
-    @Autowired
     public MaterialController(MaterialService materialService) {
         this.materialService = materialService;
     }

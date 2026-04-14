@@ -23,9 +23,15 @@ import org.springframework.util.StringUtils;
 @Slf4j
 public class InventoryStockAdjustApplicationService {
 
+    private final MaterialValidationService materialValidationService;
+    private final StorageValidationService storageValidationService;
     private final InventoryStockAdjustDomainService inventoryStockAdjustDomainService;
 
-    public InventoryStockAdjustApplicationService(InventoryStockAdjustDomainService inventoryStockAdjustDomainService) {
+    public InventoryStockAdjustApplicationService(MaterialValidationService materialValidationService,
+                                                  StorageValidationService storageValidationService,
+                                                  InventoryStockAdjustDomainService inventoryStockAdjustDomainService) {
+        this.materialValidationService = materialValidationService;
+        this.storageValidationService = storageValidationService;
         this.inventoryStockAdjustDomainService = inventoryStockAdjustDomainService;
     }
 
@@ -46,6 +52,8 @@ public class InventoryStockAdjustApplicationService {
         result.setAdjustType(command.getAdjustType());
 
         for (StockAdjustItemCommand item : command.getItems()) {
+            materialValidationService.validateMaterialEnabled(tenantId, item.getMaterialId());
+            storageValidationService.validateStorageEnabled(tenantId, item.getWarehouseId(), item.getLocationId());
             InventoryTransactionRecord transactionRecord = inventoryStockAdjustDomainService.adjust(
                     tenantId,
                     command.getBizType(),

@@ -19,9 +19,15 @@ import org.springframework.util.StringUtils;
 @Service
 public class InventoryStocktakeApplicationService {
 
+    private final MaterialValidationService materialValidationService;
+    private final StorageValidationService storageValidationService;
     private final InventoryStocktakeDomainService inventoryStocktakeDomainService;
 
-    public InventoryStocktakeApplicationService(InventoryStocktakeDomainService inventoryStocktakeDomainService) {
+    public InventoryStocktakeApplicationService(MaterialValidationService materialValidationService,
+                                                StorageValidationService storageValidationService,
+                                                InventoryStocktakeDomainService inventoryStocktakeDomainService) {
+        this.materialValidationService = materialValidationService;
+        this.storageValidationService = storageValidationService;
         this.inventoryStocktakeDomainService = inventoryStocktakeDomainService;
     }
 
@@ -38,6 +44,8 @@ public class InventoryStocktakeApplicationService {
         result.setBizNo(command.getBizNo());
 
         for (StocktakeItemCommand item : command.getItems()) {
+            materialValidationService.validateMaterialEnabled(tenantId, item.getMaterialId());
+            storageValidationService.validateStorageEnabled(tenantId, item.getWarehouseId(), item.getLocationId());
             InventoryStocktakeDomainService.StocktakeExecutionResult executionResult = inventoryStocktakeDomainService.stocktake(
                     tenantId,
                     command.getBizType(),

@@ -3,6 +3,7 @@ package com.example.scm.purchase;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.purchase.client.InventoryStockInClient;
+import com.example.scm.purchase.client.MaterialClient;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
 import com.example.scm.purchase.entity.PurchaseReceipt;
@@ -45,11 +46,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -82,11 +85,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -118,11 +123,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -148,11 +155,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -178,11 +187,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -203,11 +214,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -232,11 +245,13 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
+                materialClient,
                 inventoryClient,
                 transactionTemplate
         );

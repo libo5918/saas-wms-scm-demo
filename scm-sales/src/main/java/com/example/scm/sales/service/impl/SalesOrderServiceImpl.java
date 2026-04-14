@@ -4,6 +4,7 @@ import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.sales.client.InventoryReservationClient;
+import com.example.scm.sales.client.MaterialClient;
 import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
 import com.example.scm.sales.dto.CreateSalesOrderRequest;
 import com.example.scm.sales.entity.SalesOrder;
@@ -31,17 +32,20 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     private final SalesOrderMapper salesOrderMapper;
     private final SalesOrderItemMapper salesOrderItemMapper;
     private final SalesOrderAssembler salesOrderAssembler;
+    private final MaterialClient materialClient;
     private final InventoryReservationClient inventoryReservationClient;
     private final TransactionTemplate transactionTemplate;
 
     public SalesOrderServiceImpl(SalesOrderMapper salesOrderMapper,
                                  SalesOrderItemMapper salesOrderItemMapper,
                                  SalesOrderAssembler salesOrderAssembler,
+                                 MaterialClient materialClient,
                                  InventoryReservationClient inventoryReservationClient,
                                  TransactionTemplate transactionTemplate) {
         this.salesOrderMapper = salesOrderMapper;
         this.salesOrderItemMapper = salesOrderItemMapper;
         this.salesOrderAssembler = salesOrderAssembler;
+        this.materialClient = materialClient;
         this.inventoryReservationClient = inventoryReservationClient;
         this.transactionTemplate = transactionTemplate;
     }
@@ -56,6 +60,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
             }
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Order no already exists");
         }
+        validateMaterials(tenantId, request.getItems());
         SalesOrder order = transactionTemplate.execute(status -> createOrderInTransaction(tenantId, request));
         if (order == null) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Create sales order failed");
@@ -156,6 +161,12 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         log.info("Create sales order persisted, tenantId={}, orderId={}, orderNo={}, itemCount={}",
                 tenantId, order.getId(), order.getOrderNo(), items.size());
         return order;
+    }
+
+    private void validateMaterials(Long tenantId, List<CreateSalesOrderItemRequest> items) {
+        for (CreateSalesOrderItemRequest item : items) {
+            materialClient.validateMaterialEnabled(tenantId, item.getMaterialId());
+        }
     }
 
     private SalesOrderVO processLock(Long tenantId, SalesOrder order) {

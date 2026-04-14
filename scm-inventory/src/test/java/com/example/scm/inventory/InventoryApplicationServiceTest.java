@@ -31,8 +31,10 @@ import com.example.scm.inventory.application.service.InventoryStockLockApplicati
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockTransferApplicationService;
 import com.example.scm.inventory.application.service.InventoryStocktakeApplicationService;
+import com.example.scm.inventory.application.service.MaterialValidationService;
 import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
+import com.example.scm.inventory.application.service.StorageValidationService;
 import com.example.scm.inventory.domain.inventory.aggregate.InventoryBalance;
 import com.example.scm.inventory.domain.inventory.entity.InventoryTransactionRecord;
 import com.example.scm.inventory.domain.inventory.repository.InventoryBalanceRepository;
@@ -82,6 +84,10 @@ class InventoryApplicationServiceTest {
     private InventoryStockTransferDomainService inventoryStockTransferDomainService;
     @Mock
     private InventoryStocktakeDomainService inventoryStocktakeDomainService;
+    @Mock
+    private MaterialValidationService materialValidationService;
+    @Mock
+    private StorageValidationService storageValidationService;
     @Mock
     private InventoryBalanceRepository inventoryBalanceRepository;
     @Mock
