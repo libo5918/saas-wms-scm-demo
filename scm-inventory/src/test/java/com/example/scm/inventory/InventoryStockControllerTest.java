@@ -15,6 +15,8 @@ import com.example.scm.inventory.application.query.StockOutLineResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
 import com.example.scm.inventory.application.query.StockTransferLineResultDTO;
 import com.example.scm.inventory.application.query.StockTransferResultDTO;
+import com.example.scm.inventory.application.query.StocktakeLineResultDTO;
+import com.example.scm.inventory.application.query.StocktakeResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockLineResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
@@ -24,6 +26,7 @@ import com.example.scm.inventory.application.service.InventoryStockInApplication
 import com.example.scm.inventory.application.service.InventoryStockLockApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockTransferApplicationService;
+import com.example.scm.inventory.application.service.InventoryStocktakeApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
 import com.example.scm.inventory.interfaces.assembler.InventoryStockAssembler;
@@ -70,6 +73,9 @@ class InventoryStockControllerTest {
 
     @MockBean
     private InventoryStockTransferApplicationService inventoryStockTransferApplicationService;
+
+    @MockBean
+    private InventoryStocktakeApplicationService inventoryStocktakeApplicationService;
 
     @MockBean
     private InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
@@ -304,6 +310,51 @@ class InventoryStockControllerTest {
                 .andExpect(jsonPath("$.data.bizNo").value("TRF-001"))
                 .andExpect(jsonPath("$.data.lines[0].moveOutTxnNo").value("MOVEOUT-TEST-001"))
                 .andExpect(jsonPath("$.data.lines[0].moveInTxnNo").value("MOVEIN-TEST-001"));
+    }
+
+    @Test
+    void shouldStocktakeSuccessfully() throws Exception {
+        StocktakeLineResultDTO line = new StocktakeLineResultDTO();
+        line.setTxnNo("STKIN-TEST-001");
+        line.setMaterialId(1001L);
+        line.setWarehouseId(2001L);
+        line.setLocationId(3001L);
+        line.setSystemQty(new BigDecimal("10"));
+        line.setCountedQty(new BigDecimal("12"));
+        line.setVarianceQty(new BigDecimal("2"));
+        line.setAdjustType("INCREASE");
+
+        StocktakeResultDTO result = new StocktakeResultDTO();
+        result.setBizType("STOCKTAKE");
+        result.setBizNo("STK-001");
+        result.setLines(List.of(line));
+        when(inventoryStocktakeApplicationService.stocktake(any())).thenReturn(result);
+
+        String requestBody = """
+                {
+                  "bizType":"STOCKTAKE",
+                  "bizNo":"STK-001",
+                  "operatorId":1,
+                  "items":[
+                    {
+                      "materialId":1001,
+                      "warehouseId":2001,
+                      "locationId":3001,
+                      "countedQty":12
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/inventory/stocktakes")
+                        .header("X-Tenant-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bizNo").value("STK-001"))
+                .andExpect(jsonPath("$.data.lines[0].txnNo").value("STKIN-TEST-001"))
+                .andExpect(jsonPath("$.data.lines[0].adjustType").value("INCREASE"));
     }
 
     @Test

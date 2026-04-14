@@ -13,6 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 库存移库应用服务。
+ * 负责组织源库位移出、目标库位移入，并返回移库执行结果。
+ */
 @Service
 @Slf4j
 public class InventoryStockTransferApplicationService {
@@ -23,6 +27,9 @@ public class InventoryStockTransferApplicationService {
         this.inventoryStockTransferDomainService = inventoryStockTransferDomainService;
     }
 
+    /**
+     * 执行库存移库。
+     */
     @Transactional
     public StockTransferResultDTO transfer(StockTransferCommand command) {
         validateCommand(command);
@@ -68,6 +75,9 @@ public class InventoryStockTransferApplicationService {
         return result;
     }
 
+    /**
+     * 校验移库请求的基本完整性。
+     */
     private void validateCommand(StockTransferCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

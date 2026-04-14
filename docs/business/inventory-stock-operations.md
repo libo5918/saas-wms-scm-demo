@@ -50,6 +50,9 @@
 - 用途：处理盘盈、盘亏或人工修正
 - 说明：`adjustType` 目前支持 `INCREASE`、`DECREASE`
 
+这个接口是“直接调整”接口，不是“先盘点再推导差异”的接口。
+调用方必须自己明确告诉系统本次是增量调整还是减量调整，以及调整数量是多少。
+
 请求字段：
 
 - `bizType`：业务类型，示例 `MANUAL_ADJUST`
@@ -111,22 +114,99 @@
 - `DECREASE` 会扣减现存和可用库存，不允许扣成负数
 - 每条明细都会生成一条库存流水
 
-### 3. 库存锁定
+### 3. 库存盘点
+
+- 方法：`POST /api/v1/inventory/stocktakes`
+- 用途：按实盘数量执行盘点，并由系统自动推导库存差异
+
+这个接口和 `/adjustments` 的区别：
+
+- `/adjustments`：调用方直接传“调多少、往哪个方向调”
+- `/stocktakes`：调用方只传“盘出来是多少”，系统自己计算差异
+
+盘点计算规则：
+
+- `varianceQty = countedQty - systemQty`
+- `varianceQty > 0`：自动执行 `INCREASE`
+- `varianceQty < 0`：自动执行 `DECREASE`
+- `varianceQty = 0`：返回 `adjustType = NONE`，不生成调整流水
+
+请求字段：
+
+- `bizType`：业务类型，示例 `STOCKTAKE`
+- `bizNo`：业务单号，示例 `STK-001`
+- `operatorId`：操作人 ID
+- `items`：盘点明细
+
+明细字段：
+
+- `materialId`：物料 ID
+- `warehouseId`：仓库 ID
+- `locationId`：库位 ID
+- `countedQty`：实盘数量，必须大于等于 `0`
+
+请求示例：
+
+```json
+{
+  "bizType": "STOCKTAKE",
+  "bizNo": "STK-001",
+  "operatorId": 1,
+  "items": [
+    {
+      "materialId": 1,
+      "warehouseId": 2001,
+      "locationId": 3001,
+      "countedQty": 8
+    }
+  ]
+}
+```
+
+响应 `data` 示例：
+
+```json
+{
+  "bizType": "STOCKTAKE",
+  "bizNo": "STK-001",
+  "lines": [
+    {
+      "txnNo": "STKOUT-STOCKTAKE-20260415024058-STK-001-120013001",
+      "materialId": 1,
+      "warehouseId": 2001,
+      "locationId": 3001,
+      "systemQty": 10,
+      "countedQty": 8,
+      "varianceQty": -2,
+      "adjustType": "DECREASE"
+    }
+  ]
+}
+```
+
+适用场景：
+
+- 仓库盘点
+- 循环盘点
+- 月末盘库
+- 实盘后自动调账
+
+### 4. 库存锁定
 
 - 方法：`POST /api/v1/inventory/locks`
 - 用途：按业务单锁定可用库存
 
-### 4. 普通出库
+### 5. 普通出库
 
 - 方法：`POST /api/v1/inventory/stock-outs`
 - 用途：直接扣减现存和可用库存
 
-### 5. 锁定库存出库
+### 6. 锁定库存出库
 
 - 方法：`POST /api/v1/inventory/locked-stock-outs`
 - 用途：消耗已锁定库存完成出库
 
-### 6. 库存移库
+### 7. 库存移库
 
 - 方法：`POST /api/v1/inventory/transfers`
 - 用途：将库存从源仓位移动到目标仓位
@@ -198,12 +278,12 @@
 - 源库位库存不足时移库失败
 - 目标库位不存在余额记录时会自动建立库存维度记录
 
-### 7. 库存解锁
+### 8. 库存解锁
 
 - 方法：`POST /api/v1/inventory/unlocks`
 - 用途：释放已锁定库存
 
-### 8. 查询库存余额
+### 9. 查询库存余额
 
 - 方法：`GET /api/v1/inventory/balances`
 - 用途：查询指定物料在仓库/库位维度下的库存余额
@@ -221,7 +301,7 @@ GET /api/v1/inventory/balances?materialId=1&warehouseId=2001&locationId=3001
 Header: X-Tenant-Id: 1
 ```
 
-### 9. 查询库存流水
+### 10. 查询库存流水
 
 - 方法：`GET /api/v1/inventory/txn-records`
 - 用途：按业务类型和业务单号查询库存流水

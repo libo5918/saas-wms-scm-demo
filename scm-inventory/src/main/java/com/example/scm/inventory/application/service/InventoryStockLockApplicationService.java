@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 库存锁库应用服务。
+ * 负责按业务单冻结可用库存，并将领域结果组装成接口输出。
+ */
 @Service
 @Slf4j
 public class InventoryStockLockApplicationService {
@@ -24,6 +28,9 @@ public class InventoryStockLockApplicationService {
         this.inventoryStockLockDomainService = inventoryStockLockDomainService;
     }
 
+    /**
+     * 执行库存锁定。
+     */
     @Transactional
     public StockLockResultDTO lock(StockLockCommand command) {
         validateCommand(command);
@@ -52,6 +59,9 @@ public class InventoryStockLockApplicationService {
         return result;
     }
 
+    /**
+     * 校验锁库请求的基本完整性。
+     */
     private void validateCommand(StockLockCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

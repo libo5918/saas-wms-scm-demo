@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * 锁定库存出库应用服务。
- * 仅用于已锁库业务的发货流程，消耗锁定数量并扣减现存。
+ * 仅适用于已经完成锁库的业务发货流程，执行时会消耗锁定库存并扣减现存。
  */
 @Service
 @Slf4j
@@ -28,6 +28,9 @@ public class InventoryLockedStockOutApplicationService {
         this.inventoryLockedStockOutDomainService = inventoryLockedStockOutDomainService;
     }
 
+    /**
+     * 执行锁定库存出库。
+     */
     @Transactional
     public StockOutResultDTO stockOut(StockOutCommand command) {
         validateCommand(command);
@@ -69,6 +72,9 @@ public class InventoryLockedStockOutApplicationService {
         return result;
     }
 
+    /**
+     * 校验锁定库存出库请求的基本完整性。
+     */
     private void validateCommand(StockOutCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

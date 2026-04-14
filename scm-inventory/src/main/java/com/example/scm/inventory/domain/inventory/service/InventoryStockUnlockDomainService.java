@@ -14,6 +14,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/**
+ * 库存解锁领域服务。
+ * 负责解锁幂等校验、释放冻结库存以及生成解锁流水。
+ */
 @Service
 public class InventoryStockUnlockDomainService {
 
@@ -27,6 +31,9 @@ public class InventoryStockUnlockDomainService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 执行单条库存解锁。
+     */
     public InventoryTransactionRecord unlock(Long tenantId, String bizType, String bizNo, Long operatorId,
                                              Long materialId, Long warehouseId, Long locationId, BigDecimal quantity) {
         validateArguments(tenantId, bizType, bizNo, operatorId, materialId, warehouseId, locationId, quantity);
@@ -42,6 +49,9 @@ public class InventoryStockUnlockDomainService {
         return record;
     }
 
+    /**
+     * 校验入参与基础业务规则。
+     */
     private void validateArguments(Long tenantId, String bizType, String bizNo, Long operatorId,
                                    Long materialId, Long warehouseId, Long locationId, BigDecimal quantity) {
         if (tenantId == null || operatorId == null || materialId == null || warehouseId == null || locationId == null) {
@@ -55,6 +65,9 @@ public class InventoryStockUnlockDomainService {
         }
     }
 
+    /**
+     * 生成库存流水号。
+     */
     private String generateTxnNo(String prefix, String bizType, String bizNo, Long materialId, Long warehouseId, Long locationId) {
         return prefix + "-" + bizType.toUpperCase() + "-" + TXN_TIME_FORMATTER.format(LocalDateTime.now())
                 + "-" + bizNo + "-" + materialId + warehouseId + locationId;

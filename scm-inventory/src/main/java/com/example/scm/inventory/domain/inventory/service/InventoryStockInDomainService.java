@@ -17,6 +17,10 @@ import java.time.format.DateTimeFormatter;
 /**
  * 库存入库领域服务，负责幂等校验、库存聚合变更和流水生成。
  */
+/**
+ * 库存入库领域服务。
+ * 负责入库幂等校验、库存余额变更以及库存流水生成。
+ */
 @Service
 public class InventoryStockInDomainService {
 
@@ -31,6 +35,9 @@ public class InventoryStockInDomainService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 执行单条库存入库。
+     */
     /**
      * 执行单条库存入库。
      */
@@ -63,6 +70,9 @@ public class InventoryStockInDomainService {
     /**
      * 校验领域服务入参和基本业务规则。
      */
+    /**
+     * 校验入参与基础业务规则。
+     */
     private void validateArguments(Long tenantId,
                                    String bizType,
                                    String bizNo,
@@ -82,6 +92,9 @@ public class InventoryStockInDomainService {
         }
     }
 
+    /**
+     * 生成库存流水号。
+     */
     /**
      * 生成库存流水号。
      */

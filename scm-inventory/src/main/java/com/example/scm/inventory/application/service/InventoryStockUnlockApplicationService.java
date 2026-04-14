@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 库存解锁应用服务。
+ * 负责释放已冻结库存，并将领域结果转换为接口层返回对象。
+ */
 @Service
 @Slf4j
 public class InventoryStockUnlockApplicationService {
@@ -24,6 +28,9 @@ public class InventoryStockUnlockApplicationService {
         this.inventoryStockUnlockDomainService = inventoryStockUnlockDomainService;
     }
 
+    /**
+     * 执行库存解锁。
+     */
     @Transactional
     public StockUnlockResultDTO unlock(StockUnlockCommand command) {
         validateCommand(command);
@@ -52,6 +59,9 @@ public class InventoryStockUnlockApplicationService {
         return result;
     }
 
+    /**
+     * 校验解锁请求的基本完整性。
+     */
     private void validateCommand(StockUnlockCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

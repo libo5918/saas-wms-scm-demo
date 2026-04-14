@@ -14,6 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+/**
+ * 库存调整应用服务。
+ * 适用于调用方已经明确知道调整方向和调整数量的场景，
+ * 例如人工修正、审批后的盘盈盘亏处理、外部系统下发调账结果。
+ */
 @Service
 @Slf4j
 public class InventoryStockAdjustApplicationService {
@@ -24,6 +29,10 @@ public class InventoryStockAdjustApplicationService {
         this.inventoryStockAdjustDomainService = inventoryStockAdjustDomainService;
     }
 
+    /**
+     * 执行库存调整。
+     * 这里不会根据当前库存自动推导差异，只会按调用方给出的调整方向和数量直接调账。
+     */
     @Transactional
     public StockAdjustResultDTO adjust(StockAdjustCommand command) {
         validateCommand(command);
@@ -64,6 +73,9 @@ public class InventoryStockAdjustApplicationService {
         return result;
     }
 
+    /**
+     * 校验库存调整请求的基本完整性。
+     */
     private void validateCommand(StockAdjustCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");

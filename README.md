@@ -24,7 +24,7 @@
 - `scm-inventory`
   - 库存域
   - 当前已落地 DDD 第一版模型
-  - 已支持入库、普通出库、锁库、解锁、锁定库存出库、库存余额查询、按业务单查库存流水
+  - 已支持入库、库存调整、盘点、普通出库、锁库、解锁、锁定库存出库、移库、库存余额查询、按业务单查库存流水
 
 - `scm-sales`
   - 销售域最小骨架
@@ -89,10 +89,13 @@
   - `infrastructure`
 - 库存动作
   - 入库
+  - 库存调整
+  - 盘点
   - 普通出库
   - 锁库
   - 解锁
   - 锁定库存出库
+  - 移库
 - 查询能力
   - 库存余额查询
   - 按业务单查询库存流水
@@ -160,10 +163,13 @@
 ### scm-inventory
 
 - `POST /api/v1/inventory/stock-ins`
+- `POST /api/v1/inventory/adjustments`
 - `POST /api/v1/inventory/stock-outs`
 - `POST /api/v1/inventory/locks`
 - `POST /api/v1/inventory/unlocks`
 - `POST /api/v1/inventory/locked-stock-outs`
+- `POST /api/v1/inventory/transfers`
+- `POST /api/v1/inventory/stocktakes`
 - `GET /api/v1/inventory/balances`
 - `GET /api/v1/inventory/txn-records`
 
@@ -281,6 +287,63 @@ Header: X-Tenant-Id: 1
 ```text
 GET /api/v1/inventory/txn-records?bizType=SALES_ORDER&bizNo=SO-1001
 Header: X-Tenant-Id: 1
+```
+
+### 8. 执行库存调整
+
+```json
+{
+  "bizType": "MANUAL_ADJUST",
+  "bizNo": "ADJ-001",
+  "adjustType": "INCREASE",
+  "operatorId": 1,
+  "items": [
+    {
+      "materialId": 1,
+      "warehouseId": 2001,
+      "locationId": 3001,
+      "quantity": 5
+    }
+  ]
+}
+```
+
+### 9. 执行库存盘点
+
+```json
+{
+  "bizType": "STOCKTAKE",
+  "bizNo": "STK-001",
+  "operatorId": 1,
+  "items": [
+    {
+      "materialId": 1,
+      "warehouseId": 2001,
+      "locationId": 3001,
+      "countedQty": 8
+    }
+  ]
+}
+```
+
+### 10. 执行库存移库
+
+```json
+{
+  "bizType": "INVENTORY_TRANSFER",
+  "bizNo": "TRF-001",
+  "operatorId": 1,
+  "items": [
+    {
+      "materialId": 1,
+      "fromWarehouseId": 2001,
+      "fromLocationId": 3001,
+      "toWarehouseId": 2001,
+      "toLocationId": 3002,
+      "quantity": 3
+    }
+  ]
+}
 ```
 
 ## Git 管理建议

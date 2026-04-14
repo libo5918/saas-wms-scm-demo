@@ -10,6 +10,8 @@ import com.example.scm.inventory.application.command.StockOutCommand;
 import com.example.scm.inventory.application.command.StockOutItemCommand;
 import com.example.scm.inventory.application.command.StockTransferCommand;
 import com.example.scm.inventory.application.command.StockTransferItemCommand;
+import com.example.scm.inventory.application.command.StocktakeCommand;
+import com.example.scm.inventory.application.command.StocktakeItemCommand;
 import com.example.scm.inventory.application.command.StockUnlockCommand;
 import com.example.scm.inventory.application.command.StockUnlockItemCommand;
 import com.example.scm.inventory.application.query.InventoryBalanceDTO;
@@ -24,6 +26,8 @@ import com.example.scm.inventory.application.query.StockOutLineResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
 import com.example.scm.inventory.application.query.StockTransferLineResultDTO;
 import com.example.scm.inventory.application.query.StockTransferResultDTO;
+import com.example.scm.inventory.application.query.StocktakeLineResultDTO;
+import com.example.scm.inventory.application.query.StocktakeResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockLineResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.interfaces.dto.StockInItemRequest;
@@ -36,6 +40,8 @@ import com.example.scm.inventory.interfaces.dto.StockOutItemRequest;
 import com.example.scm.inventory.interfaces.dto.StockOutRequest;
 import com.example.scm.inventory.interfaces.dto.StockTransferItemRequest;
 import com.example.scm.inventory.interfaces.dto.StockTransferRequest;
+import com.example.scm.inventory.interfaces.dto.StocktakeItemRequest;
+import com.example.scm.inventory.interfaces.dto.StocktakeRequest;
 import com.example.scm.inventory.interfaces.dto.StockUnlockItemRequest;
 import com.example.scm.inventory.interfaces.dto.StockUnlockRequest;
 import com.example.scm.inventory.interfaces.vo.InventoryBalanceVO;
@@ -50,6 +56,8 @@ import com.example.scm.inventory.interfaces.vo.StockOutLineVO;
 import com.example.scm.inventory.interfaces.vo.StockOutResultVO;
 import com.example.scm.inventory.interfaces.vo.StockTransferLineVO;
 import com.example.scm.inventory.interfaces.vo.StockTransferResultVO;
+import com.example.scm.inventory.interfaces.vo.StocktakeLineVO;
+import com.example.scm.inventory.interfaces.vo.StocktakeResultVO;
 import com.example.scm.inventory.interfaces.vo.StockUnlockLineVO;
 import com.example.scm.inventory.interfaces.vo.StockUnlockResultVO;
 import org.springframework.stereotype.Component;
@@ -108,6 +116,17 @@ public class InventoryStockAssembler {
         command.setBizNo(request.getBizNo());
         command.setOperatorId(request.getOperatorId());
         for (StockLockItemRequest item : request.getItems()) {
+            command.getItems().add(toItemCommand(item));
+        }
+        return command;
+    }
+
+    public StocktakeCommand toCommand(StocktakeRequest request) {
+        StocktakeCommand command = new StocktakeCommand();
+        command.setBizType(request.getBizType());
+        command.setBizNo(request.getBizNo());
+        command.setOperatorId(request.getOperatorId());
+        for (StocktakeItemRequest item : request.getItems()) {
             command.getItems().add(toItemCommand(item));
         }
         return command;
@@ -187,6 +206,16 @@ public class InventoryStockAssembler {
         return vo;
     }
 
+    public StocktakeResultVO toResultVO(StocktakeResultDTO result) {
+        StocktakeResultVO vo = new StocktakeResultVO();
+        vo.setBizType(result.getBizType());
+        vo.setBizNo(result.getBizNo());
+        for (StocktakeLineResultDTO line : result.getLines()) {
+            vo.getLines().add(toLineVO(line));
+        }
+        return vo;
+    }
+
     public StockUnlockResultVO toResultVO(StockUnlockResultDTO result) {
         StockUnlockResultVO vo = new StockUnlockResultVO();
         vo.setBizType(result.getBizType());
@@ -256,6 +285,15 @@ public class InventoryStockAssembler {
         command.setToWarehouseId(item.getToWarehouseId());
         command.setToLocationId(item.getToLocationId());
         command.setQuantity(item.getQuantity());
+        return command;
+    }
+
+    private StocktakeItemCommand toItemCommand(StocktakeItemRequest item) {
+        StocktakeItemCommand command = new StocktakeItemCommand();
+        command.setMaterialId(item.getMaterialId());
+        command.setWarehouseId(item.getWarehouseId());
+        command.setLocationId(item.getLocationId());
+        command.setCountedQty(item.getCountedQty());
         return command;
     }
 
@@ -342,6 +380,19 @@ public class InventoryStockAssembler {
         vo.setQuantity(line.getQuantity());
         vo.setBeforeQty(line.getBeforeQty());
         vo.setAfterQty(line.getAfterQty());
+        return vo;
+    }
+
+    private StocktakeLineVO toLineVO(StocktakeLineResultDTO line) {
+        StocktakeLineVO vo = new StocktakeLineVO();
+        vo.setTxnNo(line.getTxnNo());
+        vo.setMaterialId(line.getMaterialId());
+        vo.setWarehouseId(line.getWarehouseId());
+        vo.setLocationId(line.getLocationId());
+        vo.setSystemQty(line.getSystemQty());
+        vo.setCountedQty(line.getCountedQty());
+        vo.setVarianceQty(line.getVarianceQty());
+        vo.setAdjustType(line.getAdjustType());
         return vo;
     }
 }

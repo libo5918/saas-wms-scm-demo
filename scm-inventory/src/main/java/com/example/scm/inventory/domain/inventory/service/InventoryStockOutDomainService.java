@@ -17,6 +17,10 @@ import java.time.format.DateTimeFormatter;
 /**
  * 库存出库领域服务，负责幂等校验、库存扣减和流水生成。
  */
+/**
+ * 库存出库领域服务。
+ * 负责出库幂等校验、库存扣减以及库存流水生成。
+ */
 @Service
 public class InventoryStockOutDomainService {
 
@@ -31,6 +35,9 @@ public class InventoryStockOutDomainService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 执行单条库存出库。
+     */
     /**
      * 执行单条库存出库。
      */
@@ -60,6 +67,9 @@ public class InventoryStockOutDomainService {
         return record;
     }
 
+    /**
+     * 校验入参与基础业务规则。
+     */
     private void validateArguments(Long tenantId,
                                    String bizType,
                                    String bizNo,
@@ -79,6 +89,9 @@ public class InventoryStockOutDomainService {
         }
     }
 
+    /**
+     * 生成库存流水号。
+     */
     private String generateTxnNo(String bizType, String bizNo, Long materialId, Long warehouseId, Long locationId) {
         return "OUT-" + bizType.toUpperCase() + "-" + TXN_TIME_FORMATTER.format(LocalDateTime.now())
                 + "-" + bizNo + "-" + materialId + warehouseId + locationId;

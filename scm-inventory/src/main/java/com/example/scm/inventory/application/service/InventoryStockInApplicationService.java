@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
- * 库存入库应用服务，负责编排业务单入库流程。
+ * 库存入库应用服务。
+ * 负责组织业务单入库流程，并将领域层返回结果转换为接口输出 DTO。
  */
 @Service
 @Slf4j
@@ -71,7 +72,7 @@ public class InventoryStockInApplicationService {
     }
 
     /**
-     * 校验应用服务层入参完整性。
+     * 校验入库请求的基本完整性。
      */
     private void validateCommand(StockInCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {

@@ -15,12 +15,13 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * 库存调整领域服务。
- * 负责按指定方向执行直接调账，并生成对应调整流水。
+ * 库存盘点领域服务。
+ * 负责比较账面数量与实盘数量，并在存在差异时生成对应调整流水。
  */
 @Service
-public class InventoryStockAdjustDomainService {
+public class InventoryStocktakeDomainService {
 
+    public static final String ADJUST_TYPE_NONE = "NONE";
     public static final String ADJUST_TYPE_INCREASE = "INCREASE";
     public static final String ADJUST_TYPE_DECREASE = "DECREASE";
     private static final DateTimeFormatter TXN_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -28,61 +29,70 @@ public class InventoryStockAdjustDomainService {
     private final InventoryBalanceRepository inventoryBalanceRepository;
     private final InventoryTransactionRecordRepository inventoryTransactionRecordRepository;
 
-    public InventoryStockAdjustDomainService(InventoryBalanceRepository inventoryBalanceRepository,
-                                             InventoryTransactionRecordRepository inventoryTransactionRecordRepository) {
+    public InventoryStocktakeDomainService(InventoryBalanceRepository inventoryBalanceRepository,
+                                           InventoryTransactionRecordRepository inventoryTransactionRecordRepository) {
         this.inventoryBalanceRepository = inventoryBalanceRepository;
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
     /**
-     * 执行单条库存调整。
+     * 执行单条库存盘点。
      */
-    public InventoryTransactionRecord adjust(Long tenantId,
-                                             String bizType,
-                                             String bizNo,
-                                             String adjustType,
-                                             Long operatorId,
-                                             Long materialId,
-                                             Long warehouseId,
-                                             Long locationId,
-                                             BigDecimal quantity) {
-        validateArguments(tenantId, bizType, bizNo, adjustType, operatorId, materialId, warehouseId, locationId, quantity);
-
+    public StocktakeExecutionResult stocktake(Long tenantId,
+                                              String bizType,
+                                              String bizNo,
+                                              Long operatorId,
+                                              Long materialId,
+                                              Long warehouseId,
+                                              Long locationId,
+                                              BigDecimal countedQty) {
+        // 盘点遵循“先实盘、后调账”：
+        // 1. 读取当前账面库存
+        // 2. 将账面库存与实盘数量比较
+        // 3. 推导增量调整、减量调整或无差异
+        // 4. 仅在存在差异时落调整流水
+        validateArguments(tenantId, bizType, bizNo, operatorId, materialId, warehouseId, locationId, countedQty);
         InventoryKey inventoryKey = new InventoryKey(tenantId, materialId, warehouseId, locationId);
         InventoryBalance balance = inventoryBalanceRepository.findByKey(inventoryKey)
                 .orElseGet(() -> InventoryBalance.initialize(inventoryKey, operatorId));
+        BigDecimal systemQty = balance.getOnHandQty();
+        BigDecimal varianceQty = countedQty.subtract(systemQty);
 
-        if (ADJUST_TYPE_INCREASE.equals(adjustType)) {
+        if (varianceQty.signum() == 0) {
+            return new StocktakeExecutionResult(systemQty, countedQty, varianceQty, ADJUST_TYPE_NONE, null);
+        }
+
+        if (varianceQty.signum() > 0) {
             if (inventoryTransactionRecordRepository.existsAdjustInRecord(
                     tenantId, bizType, bizNo, materialId, warehouseId, locationId)) {
-                throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Duplicate stock-adjust request");
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Duplicate stocktake request");
             }
             InventoryTransactionRecord record = balance.adjustIn(
-                    generateTxnNo("ADJIN", bizType, bizNo, materialId, warehouseId, locationId),
+                    generateTxnNo("STKIN", bizType, bizNo, materialId, warehouseId, locationId),
                     bizType,
                     bizNo,
-                    quantity,
+                    varianceQty,
                     operatorId
             );
             inventoryBalanceRepository.save(balance);
             inventoryTransactionRecordRepository.save(record);
-            return record;
+            return new StocktakeExecutionResult(systemQty, countedQty, varianceQty, ADJUST_TYPE_INCREASE, record);
         }
 
         if (inventoryTransactionRecordRepository.existsAdjustOutRecord(
                 tenantId, bizType, bizNo, materialId, warehouseId, locationId)) {
-            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Duplicate stock-adjust request");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Duplicate stocktake request");
         }
         InventoryTransactionRecord record = balance.adjustOut(
-                generateTxnNo("ADJOUT", bizType, bizNo, materialId, warehouseId, locationId),
+                generateTxnNo("STKOUT", bizType, bizNo, materialId, warehouseId, locationId),
                 bizType,
                 bizNo,
-                quantity,
+                varianceQty.abs(),
                 operatorId
         );
         inventoryBalanceRepository.save(balance);
         inventoryTransactionRecordRepository.save(record);
-        return record;
+        return new StocktakeExecutionResult(systemQty, countedQty, varianceQty, ADJUST_TYPE_DECREASE, record);
     }
 
     /**
@@ -91,23 +101,19 @@ public class InventoryStockAdjustDomainService {
     private void validateArguments(Long tenantId,
                                    String bizType,
                                    String bizNo,
-                                   String adjustType,
                                    Long operatorId,
                                    Long materialId,
                                    Long warehouseId,
                                    Long locationId,
-                                   BigDecimal quantity) {
+                                   BigDecimal countedQty) {
         if (tenantId == null || operatorId == null || materialId == null || warehouseId == null || locationId == null) {
-            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-adjust arguments cannot be null");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stocktake arguments cannot be null");
         }
         if (!StringUtils.hasText(bizType) || !StringUtils.hasText(bizNo)) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType and bizNo cannot be blank");
         }
-        if (!ADJUST_TYPE_INCREASE.equals(adjustType) && !ADJUST_TYPE_DECREASE.equals(adjustType)) {
-            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "adjustType must be INCREASE or DECREASE");
-        }
-        if (quantity == null || quantity.signum() <= 0) {
-            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-adjust quantity must be greater than zero");
+        if (countedQty == null || countedQty.signum() < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "countedQty cannot be negative");
         }
     }
 
@@ -117,5 +123,15 @@ public class InventoryStockAdjustDomainService {
     private String generateTxnNo(String prefix, String bizType, String bizNo, Long materialId, Long warehouseId, Long locationId) {
         return prefix + "-" + bizType.toUpperCase() + "-" + TXN_TIME_FORMATTER.format(LocalDateTime.now())
                 + "-" + bizNo + "-" + materialId + warehouseId + locationId;
+    }
+
+    /**
+     * 盘点执行结果，包含账面数量、实盘数量、差异数量、调整类型以及可选的调整流水。
+     */
+    public record StocktakeExecutionResult(BigDecimal systemQty,
+                                           BigDecimal countedQty,
+                                           BigDecimal varianceQty,
+                                           String adjustType,
+                                           InventoryTransactionRecord transactionRecord) {
     }
 }

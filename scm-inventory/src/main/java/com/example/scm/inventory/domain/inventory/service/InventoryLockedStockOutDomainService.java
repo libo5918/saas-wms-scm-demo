@@ -18,6 +18,10 @@ import java.time.format.DateTimeFormatter;
  * 锁定库存出库领域服务。
  * 用于销售发货等已锁库业务，扣减现存和锁定数量，不再重复扣减可用数量。
  */
+/**
+ * 锁定库存出库领域服务。
+ * 负责消耗已锁定库存完成发货出库，并生成出库流水。
+ */
 @Service
 public class InventoryLockedStockOutDomainService {
 
@@ -32,6 +36,9 @@ public class InventoryLockedStockOutDomainService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 执行单条锁定库存出库。
+     */
     public InventoryTransactionRecord stockOut(Long tenantId,
                                                String bizType,
                                                String bizNo,
@@ -58,6 +65,9 @@ public class InventoryLockedStockOutDomainService {
         return record;
     }
 
+    /**
+     * 校验入参与基础业务规则。
+     */
     private void validateArguments(Long tenantId,
                                    String bizType,
                                    String bizNo,
@@ -77,6 +87,9 @@ public class InventoryLockedStockOutDomainService {
         }
     }
 
+    /**
+     * 生成库存流水号。
+     */
     private String generateTxnNo(String bizType, String bizNo, Long materialId, Long warehouseId, Long locationId) {
         return "OUT-LOCKED-" + bizType.toUpperCase() + "-" + TXN_TIME_FORMATTER.format(LocalDateTime.now())
                 + "-" + bizNo + "-" + materialId + warehouseId + locationId;

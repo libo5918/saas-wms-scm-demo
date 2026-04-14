@@ -14,6 +14,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/**
+ * 库存移库领域服务。
+ * 负责源库位移出、目标库位移入以及双流水落库。
+ */
 @Service
 public class InventoryStockTransferDomainService {
 
@@ -28,6 +32,9 @@ public class InventoryStockTransferDomainService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 执行单条库存移库。
+     */
     public TransferExecutionResult transfer(Long tenantId,
                                             String bizType,
                                             String bizNo,
@@ -77,6 +84,9 @@ public class InventoryStockTransferDomainService {
         return new TransferExecutionResult(moveOutRecord, moveInRecord);
     }
 
+    /**
+     * 校验入参与基础业务规则。
+     */
     private void validateArguments(Long tenantId,
                                    String bizType,
                                    String bizNo,
@@ -102,11 +112,17 @@ public class InventoryStockTransferDomainService {
         }
     }
 
+    /**
+     * 生成库存流水号。
+     */
     private String generateTxnNo(String prefix, String bizType, String bizNo, Long materialId, Long warehouseId, Long locationId) {
         return prefix + "-" + bizType.toUpperCase() + "-" + TXN_TIME_FORMATTER.format(LocalDateTime.now())
                 + "-" + bizNo + "-" + materialId + warehouseId + locationId;
     }
 
+    /**
+     * 移库执行结果，包含移出流水和移入流水。
+     */
     public record TransferExecutionResult(InventoryTransactionRecord moveOutRecord,
                                           InventoryTransactionRecord moveInRecord) {
     }

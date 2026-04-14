@@ -8,6 +8,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * 库存流水查询服务。
+ * 负责按业务单维度查询库存流水，并转换为查询 DTO。
+ */
 @Service
 public class InventoryTransactionRecordQueryService {
 
@@ -17,6 +21,9 @@ public class InventoryTransactionRecordQueryService {
         this.inventoryTransactionRecordRepository = inventoryTransactionRecordRepository;
     }
 
+    /**
+     * 按业务类型和业务单号查询库存流水。
+     */
     public List<InventoryTransactionRecordDTO> listByBizNo(String bizType, String bizNo) {
         Long tenantId = TenantContext.getRequiredTenantId();
         return inventoryTransactionRecordRepository.findByBizNo(tenantId, bizType, bizNo).stream()
@@ -24,6 +31,9 @@ public class InventoryTransactionRecordQueryService {
                 .toList();
     }
 
+    /**
+     * 将领域库存流水对象转换为查询 DTO。
+     */
     private InventoryTransactionRecordDTO toDTO(InventoryTransactionRecord record) {
         InventoryTransactionRecordDTO dto = new InventoryTransactionRecordDTO();
         dto.setTxnNo(record.getTxnNo());

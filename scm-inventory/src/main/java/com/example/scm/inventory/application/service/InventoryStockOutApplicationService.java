@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
- * 库存出库应用服务，负责编排业务单出库流程。
+ * 库存出库应用服务。
+ * 负责组织普通出库流程，并将领域层结果转换为接口输出 DTO。
  */
 @Service
 @Slf4j
@@ -71,6 +72,9 @@ public class InventoryStockOutApplicationService {
         return result;
     }
 
+    /**
+     * 校验出库请求的基本完整性。
+     */
     private void validateCommand(StockOutCommand command) {
         if (!StringUtils.hasText(command.getBizType())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "bizType cannot be blank");
