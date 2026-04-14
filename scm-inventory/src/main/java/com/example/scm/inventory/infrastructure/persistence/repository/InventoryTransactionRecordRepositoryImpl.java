@@ -59,6 +59,46 @@ public class InventoryTransactionRecordRepositoryImpl implements InventoryTransa
         return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.UNLOCK);
     }
 
+    @Override
+    public boolean existsAdjustInRecord(Long tenantId,
+                                        String bizType,
+                                        String bizNo,
+                                        Long materialId,
+                                        Long warehouseId,
+                                        Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.ADJUST_IN);
+    }
+
+    @Override
+    public boolean existsAdjustOutRecord(Long tenantId,
+                                         String bizType,
+                                         String bizNo,
+                                         Long materialId,
+                                         Long warehouseId,
+                                         Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.ADJUST_OUT);
+    }
+
+    @Override
+    public boolean existsMoveOutRecord(Long tenantId,
+                                       String bizType,
+                                       String bizNo,
+                                       Long materialId,
+                                       Long warehouseId,
+                                       Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.MOVE_OUT);
+    }
+
+    @Override
+    public boolean existsMoveInRecord(Long tenantId,
+                                      String bizType,
+                                      String bizNo,
+                                      Long materialId,
+                                      Long warehouseId,
+                                      Long locationId) {
+        return existsRecord(tenantId, bizType, bizNo, materialId, warehouseId, locationId, InventoryTransactionDirection.MOVE_IN);
+    }
+
     private boolean existsRecord(Long tenantId,
                                  String bizType,
                                  String bizNo,

@@ -3,27 +3,35 @@ package com.example.scm.inventory.interfaces.controller;
 import com.example.scm.common.core.Result;
 import com.example.scm.inventory.application.query.InventoryBalanceDTO;
 import com.example.scm.inventory.application.query.InventoryTransactionRecordDTO;
+import com.example.scm.inventory.application.query.StockAdjustResultDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
 import com.example.scm.inventory.application.query.StockLockResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
+import com.example.scm.inventory.application.query.StockTransferResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
 import com.example.scm.inventory.application.service.InventoryLockedStockOutApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockAdjustApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockInApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockLockApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockTransferApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
 import com.example.scm.inventory.interfaces.assembler.InventoryStockAssembler;
+import com.example.scm.inventory.interfaces.dto.StockAdjustRequest;
 import com.example.scm.inventory.interfaces.dto.StockInRequest;
 import com.example.scm.inventory.interfaces.dto.StockLockRequest;
 import com.example.scm.inventory.interfaces.dto.StockOutRequest;
+import com.example.scm.inventory.interfaces.dto.StockTransferRequest;
 import com.example.scm.inventory.interfaces.dto.StockUnlockRequest;
 import com.example.scm.inventory.interfaces.vo.InventoryBalanceVO;
 import com.example.scm.inventory.interfaces.vo.InventoryTransactionRecordVO;
+import com.example.scm.inventory.interfaces.vo.StockAdjustResultVO;
 import com.example.scm.inventory.interfaces.vo.StockInResultVO;
 import com.example.scm.inventory.interfaces.vo.StockLockResultVO;
 import com.example.scm.inventory.interfaces.vo.StockOutResultVO;
+import com.example.scm.inventory.interfaces.vo.StockTransferResultVO;
 import com.example.scm.inventory.interfaces.vo.StockUnlockResultVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,26 +53,32 @@ import java.util.List;
 public class InventoryStockController {
 
     private final InventoryStockInApplicationService inventoryStockInApplicationService;
+    private final InventoryStockAdjustApplicationService inventoryStockAdjustApplicationService;
     private final InventoryStockLockApplicationService inventoryStockLockApplicationService;
     private final InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService;
     private final InventoryStockOutApplicationService inventoryStockOutApplicationService;
+    private final InventoryStockTransferApplicationService inventoryStockTransferApplicationService;
     private final InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
     private final InventoryBalanceQueryService inventoryBalanceQueryService;
     private final InventoryTransactionRecordQueryService inventoryTransactionRecordQueryService;
     private final InventoryStockAssembler inventoryStockAssembler;
 
     public InventoryStockController(InventoryStockInApplicationService inventoryStockInApplicationService,
+                                    InventoryStockAdjustApplicationService inventoryStockAdjustApplicationService,
                                     InventoryStockLockApplicationService inventoryStockLockApplicationService,
                                     InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService,
                                     InventoryStockOutApplicationService inventoryStockOutApplicationService,
+                                    InventoryStockTransferApplicationService inventoryStockTransferApplicationService,
                                     InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService,
                                     InventoryBalanceQueryService inventoryBalanceQueryService,
                                     InventoryTransactionRecordQueryService inventoryTransactionRecordQueryService,
                                     InventoryStockAssembler inventoryStockAssembler) {
         this.inventoryStockInApplicationService = inventoryStockInApplicationService;
+        this.inventoryStockAdjustApplicationService = inventoryStockAdjustApplicationService;
         this.inventoryStockLockApplicationService = inventoryStockLockApplicationService;
         this.inventoryLockedStockOutApplicationService = inventoryLockedStockOutApplicationService;
         this.inventoryStockOutApplicationService = inventoryStockOutApplicationService;
+        this.inventoryStockTransferApplicationService = inventoryStockTransferApplicationService;
         this.inventoryStockUnlockApplicationService = inventoryStockUnlockApplicationService;
         this.inventoryBalanceQueryService = inventoryBalanceQueryService;
         this.inventoryTransactionRecordQueryService = inventoryTransactionRecordQueryService;
@@ -77,6 +91,15 @@ public class InventoryStockController {
         log.info("Receive stock-in request, bizType={}, bizNo={}, itemCount={}",
                 request.getBizType(), request.getBizNo(), request.getItems().size());
         StockInResultDTO result = inventoryStockInApplicationService.stockIn(inventoryStockAssembler.toCommand(request));
+        return Result.success(inventoryStockAssembler.toResultVO(result));
+    }
+
+    @PostMapping("/adjustments")
+    @Operation(summary = "执行库存调整", description = "针对盘盈盘亏或手工修正执行库存调整。")
+    public Result<StockAdjustResultVO> adjust(@Valid @RequestBody StockAdjustRequest request) {
+        log.info("Receive stock-adjust request, bizType={}, bizNo={}, adjustType={}, itemCount={}",
+                request.getBizType(), request.getBizNo(), request.getAdjustType(), request.getItems().size());
+        StockAdjustResultDTO result = inventoryStockAdjustApplicationService.adjust(inventoryStockAssembler.toCommand(request));
         return Result.success(inventoryStockAssembler.toResultVO(result));
     }
 
@@ -104,6 +127,15 @@ public class InventoryStockController {
         log.info("Receive locked stock-out request, bizType={}, bizNo={}, itemCount={}",
                 request.getBizType(), request.getBizNo(), request.getItems().size());
         StockOutResultDTO result = inventoryLockedStockOutApplicationService.stockOut(inventoryStockAssembler.toCommand(request));
+        return Result.success(inventoryStockAssembler.toResultVO(result));
+    }
+
+    @PostMapping("/transfers")
+    @Operation(summary = "执行库存移库", description = "将库存从源仓位转移到目标仓位，并生成移出、移入两条流水。")
+    public Result<StockTransferResultVO> transfer(@Valid @RequestBody StockTransferRequest request) {
+        log.info("Receive stock-transfer request, bizType={}, bizNo={}, itemCount={}",
+                request.getBizType(), request.getBizNo(), request.getItems().size());
+        StockTransferResultDTO result = inventoryStockTransferApplicationService.transfer(inventoryStockAssembler.toCommand(request));
         return Result.success(inventoryStockAssembler.toResultVO(result));
     }
 

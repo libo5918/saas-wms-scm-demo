@@ -15,5 +15,17 @@ public enum InventoryTransactionDirection {
     LOCK,
 
     @Schema(description = "解锁")
-    UNLOCK
+    UNLOCK,
+
+    @Schema(description = "调整入库")
+    ADJUST_IN,
+
+    @Schema(description = "调整出库")
+    ADJUST_OUT,
+
+    @Schema(description = "移库移出")
+    MOVE_OUT,
+
+    @Schema(description = "移库移入")
+    MOVE_IN
 }

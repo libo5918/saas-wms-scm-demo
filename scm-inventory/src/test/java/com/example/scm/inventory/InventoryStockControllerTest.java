@@ -5,19 +5,25 @@ import com.example.scm.common.web.TenantHeaderInterceptor;
 import com.example.scm.common.web.WebMvcConfiguration;
 import com.example.scm.inventory.application.query.InventoryBalanceDTO;
 import com.example.scm.inventory.application.query.InventoryTransactionRecordDTO;
+import com.example.scm.inventory.application.query.StockAdjustLineResultDTO;
+import com.example.scm.inventory.application.query.StockAdjustResultDTO;
 import com.example.scm.inventory.application.query.StockInLineResultDTO;
 import com.example.scm.inventory.application.query.StockInResultDTO;
 import com.example.scm.inventory.application.query.StockLockLineResultDTO;
 import com.example.scm.inventory.application.query.StockLockResultDTO;
 import com.example.scm.inventory.application.query.StockOutLineResultDTO;
 import com.example.scm.inventory.application.query.StockOutResultDTO;
+import com.example.scm.inventory.application.query.StockTransferLineResultDTO;
+import com.example.scm.inventory.application.query.StockTransferResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockLineResultDTO;
 import com.example.scm.inventory.application.query.StockUnlockResultDTO;
 import com.example.scm.inventory.application.service.InventoryBalanceQueryService;
 import com.example.scm.inventory.application.service.InventoryLockedStockOutApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockAdjustApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockInApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockLockApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockOutApplicationService;
+import com.example.scm.inventory.application.service.InventoryStockTransferApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.application.service.InventoryTransactionRecordQueryService;
 import com.example.scm.inventory.interfaces.assembler.InventoryStockAssembler;
@@ -51,6 +57,9 @@ class InventoryStockControllerTest {
     private InventoryStockInApplicationService inventoryStockInApplicationService;
 
     @MockBean
+    private InventoryStockAdjustApplicationService inventoryStockAdjustApplicationService;
+
+    @MockBean
     private InventoryStockLockApplicationService inventoryStockLockApplicationService;
 
     @MockBean
@@ -58,6 +67,9 @@ class InventoryStockControllerTest {
 
     @MockBean
     private InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService;
+
+    @MockBean
+    private InventoryStockTransferApplicationService inventoryStockTransferApplicationService;
 
     @MockBean
     private InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
@@ -109,6 +121,52 @@ class InventoryStockControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.bizNo").value("RCV-001"))
                 .andExpect(jsonPath("$.data.lines[0].txnNo").value("IN-TEST-001"));
+    }
+
+    @Test
+    void shouldAdjustSuccessfully() throws Exception {
+        StockAdjustLineResultDTO line = new StockAdjustLineResultDTO();
+        line.setTxnNo("ADJIN-TEST-001");
+        line.setMaterialId(1001L);
+        line.setWarehouseId(2001L);
+        line.setLocationId(3001L);
+        line.setQuantity(new BigDecimal("2"));
+        line.setBeforeQty(new BigDecimal("10"));
+        line.setAfterQty(new BigDecimal("12"));
+
+        StockAdjustResultDTO result = new StockAdjustResultDTO();
+        result.setBizType("MANUAL_ADJUST");
+        result.setBizNo("ADJ-001");
+        result.setAdjustType("INCREASE");
+        result.setLines(List.of(line));
+        when(inventoryStockAdjustApplicationService.adjust(any())).thenReturn(result);
+
+        String requestBody = """
+                {
+                  "bizType":"MANUAL_ADJUST",
+                  "bizNo":"ADJ-001",
+                  "adjustType":"INCREASE",
+                  "operatorId":1,
+                  "items":[
+                    {
+                      "materialId":1001,
+                      "warehouseId":2001,
+                      "locationId":3001,
+                      "quantity":2
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/inventory/adjustments")
+                        .header("X-Tenant-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bizNo").value("ADJ-001"))
+                .andExpect(jsonPath("$.data.adjustType").value("INCREASE"))
+                .andExpect(jsonPath("$.data.lines[0].txnNo").value("ADJIN-TEST-001"));
     }
 
     @Test
@@ -195,6 +253,57 @@ class InventoryStockControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.bizNo").value("SO-LOCK-001"))
                 .andExpect(jsonPath("$.data.lines[0].txnNo").value("OUT-LOCKED-TEST-001"));
+    }
+
+    @Test
+    void shouldTransferSuccessfully() throws Exception {
+        StockTransferLineResultDTO line = new StockTransferLineResultDTO();
+        line.setMoveOutTxnNo("MOVEOUT-TEST-001");
+        line.setMoveInTxnNo("MOVEIN-TEST-001");
+        line.setMaterialId(1001L);
+        line.setFromWarehouseId(2001L);
+        line.setFromLocationId(3001L);
+        line.setToWarehouseId(2002L);
+        line.setToLocationId(3002L);
+        line.setQuantity(new BigDecimal("3"));
+        line.setFromBeforeQty(new BigDecimal("10"));
+        line.setFromAfterQty(new BigDecimal("7"));
+        line.setToBeforeQty(new BigDecimal("1"));
+        line.setToAfterQty(new BigDecimal("4"));
+
+        StockTransferResultDTO result = new StockTransferResultDTO();
+        result.setBizType("INVENTORY_TRANSFER");
+        result.setBizNo("TRF-001");
+        result.setLines(List.of(line));
+        when(inventoryStockTransferApplicationService.transfer(any())).thenReturn(result);
+
+        String requestBody = """
+                {
+                  "bizType":"INVENTORY_TRANSFER",
+                  "bizNo":"TRF-001",
+                  "operatorId":1,
+                  "items":[
+                    {
+                      "materialId":1001,
+                      "fromWarehouseId":2001,
+                      "fromLocationId":3001,
+                      "toWarehouseId":2002,
+                      "toLocationId":3002,
+                      "quantity":3
+                    }
+                  ]
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/inventory/transfers")
+                        .header("X-Tenant-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.bizNo").value("TRF-001"))
+                .andExpect(jsonPath("$.data.lines[0].moveOutTxnNo").value("MOVEOUT-TEST-001"))
+                .andExpect(jsonPath("$.data.lines[0].moveInTxnNo").value("MOVEIN-TEST-001"));
     }
 
     @Test

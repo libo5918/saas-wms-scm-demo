@@ -153,4 +153,104 @@ public class InventoryTransactionRecord {
         record.afterQty = afterQty;
         return record;
     }
+
+    public static InventoryTransactionRecord adjustIn(Long tenantId,
+                                                      String txnNo,
+                                                      String bizType,
+                                                      String bizNo,
+                                                      Long materialId,
+                                                      Long warehouseId,
+                                                      Long locationId,
+                                                      BigDecimal txnQty,
+                                                      BigDecimal beforeQty,
+                                                      BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.ADJUST_IN;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
+
+    public static InventoryTransactionRecord adjustOut(Long tenantId,
+                                                       String txnNo,
+                                                       String bizType,
+                                                       String bizNo,
+                                                       Long materialId,
+                                                       Long warehouseId,
+                                                       Long locationId,
+                                                       BigDecimal txnQty,
+                                                       BigDecimal beforeQty,
+                                                       BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.ADJUST_OUT;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
+
+    public static InventoryTransactionRecord moveOut(Long tenantId,
+                                                     String txnNo,
+                                                     String bizType,
+                                                     String bizNo,
+                                                     Long materialId,
+                                                     Long warehouseId,
+                                                     Long locationId,
+                                                     BigDecimal txnQty,
+                                                     BigDecimal beforeQty,
+                                                     BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.MOVE_OUT;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
+
+    public static InventoryTransactionRecord moveIn(Long tenantId,
+                                                    String txnNo,
+                                                    String bizType,
+                                                    String bizNo,
+                                                    Long materialId,
+                                                    Long warehouseId,
+                                                    Long locationId,
+                                                    BigDecimal txnQty,
+                                                    BigDecimal beforeQty,
+                                                    BigDecimal afterQty) {
+        InventoryTransactionRecord record = new InventoryTransactionRecord();
+        record.tenantId = tenantId;
+        record.txnNo = txnNo;
+        record.bizType = bizType;
+        record.bizNo = bizNo;
+        record.materialId = materialId;
+        record.warehouseId = warehouseId;
+        record.locationId = locationId;
+        record.txnDirection = InventoryTransactionDirection.MOVE_IN;
+        record.txnQty = txnQty;
+        record.beforeQty = beforeQty;
+        record.afterQty = afterQty;
+        return record;
+    }
 }

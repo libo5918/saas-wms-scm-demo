@@ -173,6 +173,116 @@ public class InventoryBalance {
         );
     }
 
+    public InventoryTransactionRecord adjustIn(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "adjust-in quantity must be greater than zero");
+        }
+
+        BigDecimal beforeQty = onHandQty;
+        BigDecimal afterQty = beforeQty.add(quantity);
+        this.onHandQty = afterQty;
+        this.availableQty = availableQty.add(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.adjustIn(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
+    public InventoryTransactionRecord adjustOut(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "adjust-out quantity must be greater than zero");
+        }
+        if (availableQty.compareTo(quantity) < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Insufficient available inventory");
+        }
+
+        BigDecimal beforeQty = onHandQty;
+        BigDecimal afterQty = beforeQty.subtract(quantity);
+        this.onHandQty = afterQty;
+        this.availableQty = availableQty.subtract(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.adjustOut(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
+    public InventoryTransactionRecord moveOut(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "move-out quantity must be greater than zero");
+        }
+        if (availableQty.compareTo(quantity) < 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Insufficient available inventory");
+        }
+
+        BigDecimal beforeQty = onHandQty;
+        BigDecimal afterQty = beforeQty.subtract(quantity);
+        this.onHandQty = afterQty;
+        this.availableQty = availableQty.subtract(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.moveOut(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
+    public InventoryTransactionRecord moveIn(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "move-in quantity must be greater than zero");
+        }
+
+        BigDecimal beforeQty = onHandQty;
+        BigDecimal afterQty = beforeQty.add(quantity);
+        this.onHandQty = afterQty;
+        this.availableQty = availableQty.add(quantity);
+        this.updatedBy = operatorId;
+        this.version = version + 1;
+
+        return InventoryTransactionRecord.moveIn(
+                inventoryKey.getTenantId(),
+                txnNo,
+                bizType,
+                bizNo,
+                inventoryKey.getMaterialId(),
+                inventoryKey.getWarehouseId(),
+                inventoryKey.getLocationId(),
+                quantity,
+                beforeQty,
+                afterQty
+        );
+    }
+
     public InventoryTransactionRecord lock(String txnNo, String bizType, String bizNo, BigDecimal quantity, Long operatorId) {
         if (quantity == null || quantity.signum() <= 0) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "stock-lock quantity must be greater than zero");
