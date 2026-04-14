@@ -15,6 +15,7 @@ import com.example.scm.purchase.support.PurchaseReceiptAssembler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.stubbing.Answer;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
@@ -57,7 +58,7 @@ class PurchaseReceiptServiceImplTest {
         CreatePurchaseReceiptRequest request = buildRequest("RCV-1001");
 
         when(receiptMapper.selectByReceiptNo(1L, "RCV-1001")).thenReturn(Optional.empty());
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(itemMapper.selectByReceiptId(1L, 1L)).thenReturn(List.of(buildItem(1L, 1L, 3001L, "8")));
         when(receiptMapper.updateStatus(1L, 1L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L)).thenReturn(1);
 
@@ -94,7 +95,7 @@ class PurchaseReceiptServiceImplTest {
         CreatePurchaseReceiptRequest request = buildRequest("RCV-1002");
 
         when(receiptMapper.selectByReceiptNo(1L, "RCV-1002")).thenReturn(Optional.empty());
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(itemMapper.selectByReceiptId(1L, 2L)).thenReturn(List.of(buildItem(11L, 2L, 3001L, "5")));
         when(receiptMapper.updateStatus(1L, 2L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -133,7 +134,7 @@ class PurchaseReceiptServiceImplTest {
                 .thenReturn(Optional.of(failedReceipt))
                 .thenReturn(Optional.of(buildReceipt(3L, "RCV-1003", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
         when(itemMapper.selectByReceiptId(1L, 3L)).thenReturn(List.of(buildItem(31L, 3L, 3001L, "6")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(receiptMapper.updateStatus(1L, 3L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L)).thenReturn(1);
 
         service.retryStockIn(3L);
@@ -160,7 +161,7 @@ class PurchaseReceiptServiceImplTest {
 
         when(receiptMapper.selectById(1L, 4L)).thenReturn(Optional.of(buildReceipt(4L, "RCV-1004", PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Old reason")));
         when(itemMapper.selectByReceiptId(1L, 4L)).thenReturn(List.of(buildItem(41L, 4L, 3001L, "7")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(receiptMapper.updateStatus(1L, 4L, PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
         doThrow(new BusinessException("500", "Inventory unavailable"))
                 .when(inventoryClient)
@@ -217,7 +218,7 @@ class PurchaseReceiptServiceImplTest {
                 .thenReturn(Optional.of(buildReceipt(6L, "RCV-1006", PurchaseReceiptStatus.STOCK_IN_FAILED.name(), "Inventory unavailable")))
                 .thenReturn(Optional.of(buildReceipt(6L, "RCV-1006", PurchaseReceiptStatus.CANCELLED.name(), null)));
         when(itemMapper.selectByReceiptId(1L, 6L)).thenReturn(List.of(buildItem(61L, 6L, 3001L, "3")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(receiptMapper.updateStatus(1L, 6L, PurchaseReceiptStatus.CANCELLED.name(), null, 1L)).thenReturn(1);
 
         service.cancel(6L);
@@ -262,6 +263,11 @@ class PurchaseReceiptServiceImplTest {
         request.setWarehouseId(2001L);
         request.setItems(List.of(itemRequest));
         return request;
+    }
+
+    private <T> Answer<T> executeTransactionCallback() {
+        return invocation -> invocation.<org.springframework.transaction.support.TransactionCallback<T>>getArgument(0)
+                .doInTransaction(null);
     }
 
     private PurchaseReceipt buildReceipt(Long id, String receiptNo, String receiptStatus, String failureReason) {

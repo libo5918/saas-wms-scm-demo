@@ -3,6 +3,8 @@ package com.example.scm.sales;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.sales.client.InventoryReservationClient;
+import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
+import com.example.scm.sales.dto.CreateSalesOrderRequest;
 import com.example.scm.sales.entity.SalesOrder;
 import com.example.scm.sales.entity.SalesOrderItem;
 import com.example.scm.sales.entity.SalesOrderStatus;
@@ -12,6 +14,7 @@ import com.example.scm.sales.service.impl.SalesOrderServiceImpl;
 import com.example.scm.sales.support.SalesOrderAssembler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.stubbing.Answer;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
@@ -37,6 +40,102 @@ class SalesOrderServiceImplTest {
     }
 
     @Test
+    void shouldCreateOrderAndLockSuccessfully() {
+        SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
+        SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
+        InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        SalesOrderServiceImpl service = new SalesOrderServiceImpl(
+                orderMapper,
+                itemMapper,
+                new SalesOrderAssembler(),
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        when(orderMapper.selectByOrderNo(1L, "SO-1000")).thenReturn(Optional.empty());
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
+        when(itemMapper.selectByOrderId(1L, 1L)).thenReturn(List.of(buildItem(10L, 1L, "2")));
+        when(orderMapper.updateStatus(1L, 1L, SalesOrderStatus.LOCK_SUCCESS.name(), null, 1L)).thenReturn(1);
+        when(orderMapper.selectById(1L, 1L)).thenReturn(Optional.of(buildOrder(1L, "SO-1000", SalesOrderStatus.LOCK_SUCCESS.name(), null)));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            SalesOrder order = invocation.getArgument(0);
+            order.setId(1L);
+            return null;
+        }).when(orderMapper).insert(any(SalesOrder.class));
+
+        CreateSalesOrderRequest request = buildCreateRequest("SO-1000", "2");
+
+        service.create(request);
+
+        verify(inventoryClient).lock(eq(1L), eq(1L), any(SalesOrder.class), any(List.class));
+        verify(orderMapper).updateStatus(1L, 1L, SalesOrderStatus.LOCK_SUCCESS.name(), null, 1L);
+    }
+
+    @Test
+    void shouldCreateOrderAndMarkLockFailedWhenInventoryLockFails() {
+        SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
+        SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
+        InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        SalesOrderServiceImpl service = new SalesOrderServiceImpl(
+                orderMapper,
+                itemMapper,
+                new SalesOrderAssembler(),
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        when(orderMapper.selectByOrderNo(1L, "SO-1006")).thenReturn(Optional.empty());
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
+        when(itemMapper.selectByOrderId(1L, 6L)).thenReturn(List.of(buildItem(61L, 6L, "3")));
+        when(orderMapper.updateStatus(1L, 6L, SalesOrderStatus.LOCK_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            SalesOrder order = invocation.getArgument(0);
+            order.setId(6L);
+            return null;
+        }).when(orderMapper).insert(any(SalesOrder.class));
+        doThrow(new BusinessException("500", "Inventory unavailable"))
+                .when(inventoryClient)
+                .lock(eq(1L), eq(1L), any(SalesOrder.class), any(List.class));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> service.create(buildCreateRequest("SO-1006", "3")));
+
+        assertEquals("Inventory unavailable", exception.getMessage());
+        verify(orderMapper).updateStatus(1L, 6L, SalesOrderStatus.LOCK_FAILED.name(), "Inventory unavailable", 1L);
+    }
+
+    @Test
+    void shouldShipLockedOrderSuccessfully() {
+        SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
+        SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
+        InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        SalesOrderServiceImpl service = new SalesOrderServiceImpl(
+                orderMapper,
+                itemMapper,
+                new SalesOrderAssembler(),
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        when(orderMapper.selectById(1L, 7L))
+                .thenReturn(Optional.of(buildOrder(7L, "SO-1007", SalesOrderStatus.LOCK_SUCCESS.name(), null)))
+                .thenReturn(Optional.of(buildOrder(7L, "SO-1007", SalesOrderStatus.SHIPPED.name(), null)));
+        when(itemMapper.selectByOrderId(1L, 7L)).thenReturn(List.of(buildItem(71L, 7L, "4")));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
+        when(orderMapper.updateStatus(1L, 7L, SalesOrderStatus.SHIPPED.name(), null, 1L)).thenReturn(1);
+
+        service.ship(7L);
+
+        verify(inventoryClient).stockOut(eq(1L), eq(1L), any(SalesOrder.class), any(List.class));
+        verify(orderMapper).updateStatus(1L, 7L, SalesOrderStatus.SHIPPED.name(), null, 1L);
+    }
+
+    @Test
     void shouldRetryFailedLockToSuccess() {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
@@ -56,7 +155,7 @@ class SalesOrderServiceImplTest {
                 .thenReturn(Optional.of(buildOrder(1L, "SO-1001", SalesOrderStatus.LOCK_FAILED.name(), "Inventory unavailable")))
                 .thenReturn(Optional.of(buildOrder(1L, "SO-1001", SalesOrderStatus.LOCK_SUCCESS.name(), null)));
         when(itemMapper.selectByOrderId(1L, 1L)).thenReturn(List.of(buildItem(11L, 1L, "2")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(orderMapper.updateStatus(1L, 1L, SalesOrderStatus.LOCK_SUCCESS.name(), null, 1L)).thenReturn(1);
 
         service.retryLock(1L);
@@ -83,7 +182,7 @@ class SalesOrderServiceImplTest {
 
         when(orderMapper.selectById(1L, 2L)).thenReturn(Optional.of(buildOrder(2L, "SO-1002", SalesOrderStatus.LOCK_SUCCESS.name(), null)));
         when(itemMapper.selectByOrderId(1L, 2L)).thenReturn(List.of(buildItem(21L, 2L, "3")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(orderMapper.updateStatus(1L, 2L, SalesOrderStatus.SHIP_FAILED.name(), "Inventory unavailable", 1L)).thenReturn(1);
         doThrow(new BusinessException("500", "Inventory unavailable"))
                 .when(inventoryClient)
@@ -115,7 +214,7 @@ class SalesOrderServiceImplTest {
                 .thenReturn(Optional.of(buildOrder(3L, "SO-1003", SalesOrderStatus.SHIP_FAILED.name(), "Inventory unavailable")))
                 .thenReturn(Optional.of(buildOrder(3L, "SO-1003", SalesOrderStatus.SHIPPED.name(), null)));
         when(itemMapper.selectByOrderId(1L, 3L)).thenReturn(List.of(buildItem(31L, 3L, "4")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(orderMapper.updateStatus(1L, 3L, SalesOrderStatus.SHIPPED.name(), null, 1L)).thenReturn(1);
 
         service.retryShip(3L);
@@ -144,7 +243,7 @@ class SalesOrderServiceImplTest {
                 .thenReturn(Optional.of(buildOrder(4L, "SO-1004", SalesOrderStatus.LOCK_SUCCESS.name(), null)))
                 .thenReturn(Optional.of(buildOrder(4L, "SO-1004", SalesOrderStatus.CANCELLED.name(), null)));
         when(itemMapper.selectByOrderId(1L, 4L)).thenReturn(List.of(buildItem(41L, 4L, "5")));
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation.getArgument(0, org.springframework.transaction.support.TransactionCallback.class).doInTransaction(null));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
         when(orderMapper.updateStatus(1L, 4L, SalesOrderStatus.CANCELLED.name(), null, 1L)).thenReturn(1);
 
         service.cancel(4L);
@@ -186,6 +285,24 @@ class SalesOrderServiceImplTest {
         order.setOrderStatus(status);
         order.setFailureReason(failureReason);
         return order;
+    }
+
+    private CreateSalesOrderRequest buildCreateRequest(String orderNo, String saleQty) {
+        CreateSalesOrderItemRequest itemRequest = new CreateSalesOrderItemRequest();
+        itemRequest.setMaterialId(1L);
+        itemRequest.setLocationId(3001L);
+        itemRequest.setSaleQty(new BigDecimal(saleQty));
+
+        CreateSalesOrderRequest request = new CreateSalesOrderRequest();
+        request.setOrderNo(orderNo);
+        request.setWarehouseId(2001L);
+        request.setItems(List.of(itemRequest));
+        return request;
+    }
+
+    private <T> Answer<T> executeTransactionCallback() {
+        return invocation -> invocation.<org.springframework.transaction.support.TransactionCallback<T>>getArgument(0)
+                .doInTransaction(null);
     }
 
     private SalesOrderItem buildItem(Long id, Long orderId, String qty) {

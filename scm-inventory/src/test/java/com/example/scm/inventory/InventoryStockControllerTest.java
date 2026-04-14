@@ -34,9 +34,9 @@ import com.example.scm.inventory.interfaces.controller.InventoryStockController;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -56,34 +56,34 @@ class InventoryStockControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockInApplicationService inventoryStockInApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockAdjustApplicationService inventoryStockAdjustApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockLockApplicationService inventoryStockLockApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockOutApplicationService inventoryStockOutApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryLockedStockOutApplicationService inventoryLockedStockOutApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockTransferApplicationService inventoryStockTransferApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStocktakeApplicationService inventoryStocktakeApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryStockUnlockApplicationService inventoryStockUnlockApplicationService;
 
-    @MockBean
+    @MockitoBean
     private InventoryBalanceQueryService inventoryBalanceQueryService;
 
-    @MockBean
+    @MockitoBean
     private InventoryTransactionRecordQueryService inventoryTransactionRecordQueryService;
 
     @Test
