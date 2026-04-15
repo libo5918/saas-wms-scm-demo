@@ -14,7 +14,7 @@
 
 - `scm-mdm`
   - 主数据域
-  - 当前已落地物料主数据 CRUD
+  - 当前已落地物料、供应商、仓库、库位主数据 CRUD
 
 - `scm-purchase`
   - 采购域
@@ -65,12 +65,17 @@
 ### scm-mdm
 
 - 物料主数据 CRUD
+- 供应商主数据 CRUD
+- 仓库主数据 CRUD
+- 库位主数据 CRUD
 - 统一返回体、统一异常处理、租户头透传
 - MyBatis 注解 SQL + XML SQL 混合示例
+- 启动时自动初始化演示数据
 
 ### scm-purchase
 
 - 收货单创建、详情、按单号查询、列表
+- 创建前校验物料、仓库、库位主数据
 - 收货单状态流转
   - `CREATED`
   - `STOCK_IN_SUCCESS`
@@ -101,10 +106,12 @@
   - 按业务单查询库存流水
 - 幂等控制
   - 同业务单同库存维度重复动作会被拦截
+- 写操作前校验物料、仓库、库位主数据
 
 ### scm-sales
 
 - 销售单创建、详情、按单号查询、列表
+- 创建前校验物料、仓库、库位主数据
 - 销售单状态流转
   - `CREATED`
   - `LOCK_SUCCESS`
@@ -150,6 +157,21 @@
 - `GET /api/v1/materials/{id}`
 - `GET /api/v1/materials`
 - `DELETE /api/v1/materials/{id}`
+- `POST /api/v1/suppliers`
+- `PUT /api/v1/suppliers/{id}`
+- `GET /api/v1/suppliers/{id}`
+- `GET /api/v1/suppliers`
+- `DELETE /api/v1/suppliers/{id}`
+- `POST /api/v1/warehouses`
+- `PUT /api/v1/warehouses/{id}`
+- `GET /api/v1/warehouses/{id}`
+- `GET /api/v1/warehouses`
+- `DELETE /api/v1/warehouses/{id}`
+- `POST /api/v1/locations`
+- `PUT /api/v1/locations/{id}`
+- `GET /api/v1/locations/{id}`
+- `GET /api/v1/locations`
+- `DELETE /api/v1/locations/{id}`
 
 ### scm-purchase
 
@@ -227,6 +249,7 @@
 {
   "receiptNo": "RCV-1001",
   "purchaseOrderId": 5001,
+  "supplierId": 1,
   "warehouseId": 2001,
   "items": [
     {
@@ -346,6 +369,32 @@ Header: X-Tenant-Id: 1
 }
 ```
 
+### 11. 创建仓库
+
+```json
+{
+  "warehouseCode": "WH-003",
+  "warehouseName": "电商仓",
+  "warehouseType": "FINISHED",
+  "contactName": "王五",
+  "contactPhone": "13800000003",
+  "address": "上海市浦东新区 3 号",
+  "status": 1
+}
+```
+
+### 12. 创建库位
+
+```json
+{
+  "warehouseId": 1,
+  "locationCode": "LOC-003",
+  "locationName": "成品区-C01",
+  "locationType": "PICK",
+  "status": 1
+}
+```
+
 ## Git 管理建议
 
 建议将整个项目纳入 Git 管理，并忽略：
@@ -358,5 +407,5 @@ Header: X-Tenant-Id: 1
 ## 下一步
 
 1. 评估把 `purchase` / `sales` 对 `inventory` 的同步 HTTP 编排升级为事件驱动
-2. 在库存域继续补库存调整、移库、盘点
-3. 继续补联调测试和演示数据
+2. 继续补主数据文档和联调脚本
+3. 在库存域继续补更细的仓储动作或盘点扩展

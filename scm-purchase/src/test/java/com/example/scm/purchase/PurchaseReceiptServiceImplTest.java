@@ -3,12 +3,19 @@ package com.example.scm.purchase;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.purchase.client.InventoryStockInClient;
+import com.example.scm.purchase.client.LocationClient;
 import com.example.scm.purchase.client.MaterialClient;
+import com.example.scm.purchase.client.SupplierClient;
+import com.example.scm.purchase.client.WarehouseClient;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
+import com.example.scm.purchase.entity.PurchaseOrder;
+import com.example.scm.purchase.entity.PurchaseOrderItem;
 import com.example.scm.purchase.entity.PurchaseReceipt;
 import com.example.scm.purchase.entity.PurchaseReceiptItem;
 import com.example.scm.purchase.entity.PurchaseReceiptStatus;
+import com.example.scm.purchase.mapper.PurchaseOrderItemMapper;
+import com.example.scm.purchase.mapper.PurchaseOrderMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptItemMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptMapper;
 import com.example.scm.purchase.service.impl.PurchaseReceiptServiceImpl;
@@ -47,12 +54,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -81,17 +94,100 @@ class PurchaseReceiptServiceImplTest {
     }
 
     @Test
+    void shouldRejectCreateWhenSupplierDoesNotMatchPurchaseOrder() {
+        PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
+        PurchaseReceiptItemMapper receiptItemMapper = mock(PurchaseReceiptItemMapper.class);
+        PurchaseOrderMapper purchaseOrderMapper = mock(PurchaseOrderMapper.class);
+        PurchaseOrderItemMapper purchaseOrderItemMapper = mock(PurchaseOrderItemMapper.class);
+        InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
+                receiptMapper,
+                receiptItemMapper,
+                purchaseOrderMapper,
+                purchaseOrderItemMapper,
+                new PurchaseReceiptAssembler(),
+                materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        CreatePurchaseReceiptRequest request = buildRequest("RCV-1001");
+
+        when(receiptMapper.selectByReceiptNo(1L, "RCV-1001")).thenReturn(Optional.empty());
+        when(purchaseOrderMapper.selectById(1L, 5001L)).thenReturn(Optional.of(buildPurchaseOrder(5001L, 2L)));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> service.create(request));
+
+        assertEquals("Supplier does not match purchase order", exception.getMessage());
+    }
+
+    @Test
+    void shouldRejectCreateWhenReceiptQtyExceedsPurchaseOrderRemainingQty() {
+        PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
+        PurchaseReceiptItemMapper receiptItemMapper = mock(PurchaseReceiptItemMapper.class);
+        PurchaseOrderMapper purchaseOrderMapper = mock(PurchaseOrderMapper.class);
+        PurchaseOrderItemMapper purchaseOrderItemMapper = mock(PurchaseOrderItemMapper.class);
+        InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
+                receiptMapper,
+                receiptItemMapper,
+                purchaseOrderMapper,
+                purchaseOrderItemMapper,
+                new PurchaseReceiptAssembler(),
+                materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        CreatePurchaseReceiptRequest request = buildRequest("RCV-1009");
+        request.getItems().getFirst().setReceiptQty(new BigDecimal("9"));
+
+        when(receiptMapper.selectByReceiptNo(1L, "RCV-1009")).thenReturn(Optional.empty());
+        when(purchaseOrderMapper.selectById(1L, 5001L)).thenReturn(Optional.of(buildPurchaseOrder(5001L, 1L)));
+        when(purchaseOrderItemMapper.selectByOrderId(1L, 5001L))
+                .thenReturn(List.of(buildPurchaseOrderItem(1L, 5001L, 1L, "10", "2")));
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> service.create(request));
+
+        assertEquals("Receipt qty exceeds purchase order remaining qty", exception.getMessage());
+    }
+
+    @Test
     void shouldUpdateReceiptToFailedWhenInventoryStockInFails() {
         PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -124,12 +220,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -156,12 +258,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -188,12 +296,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -215,12 +329,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -246,12 +366,18 @@ class PurchaseReceiptServiceImplTest {
         PurchaseReceiptItemMapper itemMapper = mock(PurchaseReceiptItemMapper.class);
         InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
                 receiptMapper,
                 itemMapper,
                 new PurchaseReceiptAssembler(),
                 materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -266,6 +392,59 @@ class PurchaseReceiptServiceImplTest {
         verify(receiptMapper, never()).updateStatus(eq(1L), eq(7L), any(), any(), eq(1L));
     }
 
+    @Test
+    void shouldUpdatePurchaseOrderProgressAfterStockInSuccess() {
+        PurchaseReceiptMapper receiptMapper = mock(PurchaseReceiptMapper.class);
+        PurchaseReceiptItemMapper receiptItemMapper = mock(PurchaseReceiptItemMapper.class);
+        PurchaseOrderMapper purchaseOrderMapper = mock(PurchaseOrderMapper.class);
+        PurchaseOrderItemMapper purchaseOrderItemMapper = mock(PurchaseOrderItemMapper.class);
+        InventoryStockInClient inventoryClient = mock(InventoryStockInClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
+        SupplierClient supplierClient = mock(SupplierClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        PurchaseReceiptServiceImpl service = new PurchaseReceiptServiceImpl(
+                receiptMapper,
+                receiptItemMapper,
+                purchaseOrderMapper,
+                purchaseOrderItemMapper,
+                new PurchaseReceiptAssembler(),
+                materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+        CreatePurchaseReceiptRequest request = buildRequest("RCV-1010");
+
+        when(receiptMapper.selectByReceiptNo(1L, "RCV-1010")).thenReturn(Optional.empty());
+        when(purchaseOrderMapper.selectById(1L, 5001L)).thenReturn(Optional.of(buildPurchaseOrder(5001L, 1L)));
+        when(purchaseOrderItemMapper.selectByOrderId(1L, 5001L))
+                .thenReturn(List.of(buildPurchaseOrderItem(1L, 5001L, 1L, "20", "0")));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
+        when(receiptItemMapper.selectByReceiptId(1L, 8L)).thenReturn(List.of(buildItem(81L, 8L, 3001L, "8")));
+        when(purchaseOrderItemMapper.increaseReceivedQtyIfWithinPlan(1L, 5001L, 1L, new BigDecimal("8"))).thenReturn(1);
+        when(purchaseOrderItemMapper.countUnfinishedItemsByOrderId(1L, 5001L)).thenReturn(1);
+        when(purchaseOrderItemMapper.countStartedItemsByOrderId(1L, 5001L)).thenReturn(1);
+        when(purchaseOrderMapper.updateStatus(1L, 5001L, "PARTIALLY_RECEIVED", 1L)).thenReturn(1);
+        when(receiptMapper.updateStatus(1L, 8L, PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null, 1L)).thenReturn(1);
+        when(receiptMapper.selectById(1L, 8L)).thenReturn(Optional.of(buildReceipt(8L, "RCV-1010", PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(), null)));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            PurchaseReceipt receipt = invocation.getArgument(0);
+            receipt.setId(8L);
+            return null;
+        }).when(receiptMapper).insert(any(PurchaseReceipt.class));
+
+        service.create(request);
+
+        verify(purchaseOrderItemMapper).increaseReceivedQtyIfWithinPlan(1L, 5001L, 1L, new BigDecimal("8"));
+        verify(purchaseOrderMapper).updateStatus(1L, 5001L, "PARTIALLY_RECEIVED", 1L);
+    }
+
     private CreatePurchaseReceiptRequest buildRequest(String receiptNo) {
         CreatePurchaseReceiptItemRequest itemRequest = new CreatePurchaseReceiptItemRequest();
         itemRequest.setMaterialId(1L);
@@ -275,6 +454,7 @@ class PurchaseReceiptServiceImplTest {
         CreatePurchaseReceiptRequest request = new CreatePurchaseReceiptRequest();
         request.setReceiptNo(receiptNo);
         request.setPurchaseOrderId(5001L);
+        request.setSupplierId(1L);
         request.setWarehouseId(2001L);
         request.setItems(List.of(itemRequest));
         return request;
@@ -285,12 +465,37 @@ class PurchaseReceiptServiceImplTest {
                 .doInTransaction(null);
     }
 
+    private PurchaseOrder buildPurchaseOrder(Long id, Long supplierId) {
+        PurchaseOrder purchaseOrder = new PurchaseOrder();
+        purchaseOrder.setId(id);
+        purchaseOrder.setTenantId(1L);
+        purchaseOrder.setOrderNo("PO-1001");
+        purchaseOrder.setSupplierId(supplierId);
+        purchaseOrder.setOrderStatus("CREATED");
+        purchaseOrder.setTotalAmount(new BigDecimal("120"));
+        purchaseOrder.setRemark("测试采购订单");
+        return purchaseOrder;
+    }
+
+    private PurchaseOrderItem buildPurchaseOrderItem(Long id, Long orderId, Long materialId, String planQty, String receivedQty) {
+        PurchaseOrderItem item = new PurchaseOrderItem();
+        item.setId(id);
+        item.setTenantId(1L);
+        item.setPurchaseOrderId(orderId);
+        item.setMaterialId(materialId);
+        item.setPlanQty(new BigDecimal(planQty));
+        item.setReceivedQty(new BigDecimal(receivedQty));
+        item.setUnitPrice(new BigDecimal("10"));
+        return item;
+    }
+
     private PurchaseReceipt buildReceipt(Long id, String receiptNo, String receiptStatus, String failureReason) {
         PurchaseReceipt receipt = new PurchaseReceipt();
         receipt.setId(id);
         receipt.setTenantId(1L);
         receipt.setReceiptNo(receiptNo);
         receipt.setPurchaseOrderId(5001L);
+        receipt.setSupplierId(1L);
         receipt.setWarehouseId(2001L);
         receipt.setReceiptStatus(receiptStatus);
         receipt.setFailureReason(failureReason);

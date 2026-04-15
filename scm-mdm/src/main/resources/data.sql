@@ -13,6 +13,19 @@ ON DUPLICATE KEY UPDATE
     updated_by = VALUES(updated_by),
     deleted = VALUES(deleted);
 
+INSERT INTO scm_mdm.mdm_supplier (
+    id, tenant_id, supplier_code, supplier_name, contact_name, contact_phone, status, created_by, updated_by, deleted
+) VALUES
+    (1, 1, 'SUP-001', '默认供应商', '王五', '13900000001', 1, 1, 1, 0),
+    (2, 1, 'SUP-002', '备件供应商', '赵六', '13900000002', 1, 1, 1, 0)
+ON DUPLICATE KEY UPDATE
+    supplier_name = VALUES(supplier_name),
+    contact_name = VALUES(contact_name),
+    contact_phone = VALUES(contact_phone),
+    status = VALUES(status),
+    updated_by = VALUES(updated_by),
+    deleted = VALUES(deleted);
+
 INSERT INTO scm_mdm.mdm_warehouse (
     id, tenant_id, warehouse_code, warehouse_name, warehouse_type, contact_name, contact_phone, address, status, created_by, updated_by, deleted
 ) VALUES

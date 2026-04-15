@@ -3,7 +3,9 @@ package com.example.scm.sales;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.sales.client.InventoryReservationClient;
+import com.example.scm.sales.client.LocationClient;
 import com.example.scm.sales.client.MaterialClient;
+import com.example.scm.sales.client.WarehouseClient;
 import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
 import com.example.scm.sales.dto.CreateSalesOrderRequest;
 import com.example.scm.sales.entity.SalesOrder;
@@ -46,12 +48,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -82,12 +88,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -118,12 +128,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -148,12 +162,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -179,12 +197,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -211,12 +233,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -242,12 +268,16 @@ class SalesOrderServiceImplTest {
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );
@@ -268,17 +298,56 @@ class SalesOrderServiceImplTest {
     }
 
     @Test
-    void shouldRejectRetryShipForNonFailedOrder() {
+    void shouldUnlockInventoryWhenCancelShipFailedOrder() {
         SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
         SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
         InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
         MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
         TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
         SalesOrderServiceImpl service = new SalesOrderServiceImpl(
                 orderMapper,
                 itemMapper,
                 new SalesOrderAssembler(),
                 materialClient,
+                warehouseClient,
+                locationClient,
+                inventoryClient,
+                transactionTemplate
+        );
+
+        TenantContext.setTenantId(1L);
+
+        when(orderMapper.selectById(1L, 8L))
+                .thenReturn(Optional.of(buildOrder(8L, "SO-1008", SalesOrderStatus.SHIP_FAILED.name(), "Stock-out timeout")))
+                .thenReturn(Optional.of(buildOrder(8L, "SO-1008", SalesOrderStatus.CANCELLED.name(), null)));
+        when(itemMapper.selectByOrderId(1L, 8L)).thenReturn(List.of(buildItem(81L, 8L, "2")));
+        when(transactionTemplate.execute(any())).thenAnswer(executeTransactionCallback());
+        when(orderMapper.updateStatus(1L, 8L, SalesOrderStatus.CANCELLED.name(), null, 1L)).thenReturn(1);
+
+        service.cancel(8L);
+
+        verify(inventoryClient).unlock(eq(1L), eq(1L), any(SalesOrder.class), any(List.class));
+        verify(orderMapper).updateStatus(1L, 8L, SalesOrderStatus.CANCELLED.name(), null, 1L);
+    }
+
+    @Test
+    void shouldRejectRetryShipForNonFailedOrder() {
+        SalesOrderMapper orderMapper = mock(SalesOrderMapper.class);
+        SalesOrderItemMapper itemMapper = mock(SalesOrderItemMapper.class);
+        InventoryReservationClient inventoryClient = mock(InventoryReservationClient.class);
+        MaterialClient materialClient = mock(MaterialClient.class);
+        WarehouseClient warehouseClient = mock(WarehouseClient.class);
+        LocationClient locationClient = mock(LocationClient.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+        SalesOrderServiceImpl service = new SalesOrderServiceImpl(
+                orderMapper,
+                itemMapper,
+                new SalesOrderAssembler(),
+                materialClient,
+                warehouseClient,
+                locationClient,
                 inventoryClient,
                 transactionTemplate
         );

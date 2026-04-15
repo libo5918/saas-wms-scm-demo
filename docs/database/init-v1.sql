@@ -5,6 +5,7 @@ CREATE DATABASE IF NOT EXISTS scm_auth DEFAULT CHARACTER SET utf8mb4 COLLATE utf
 CREATE DATABASE IF NOT EXISTS scm_mdm DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS scm_purchase DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS scm_inventory DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS scm_sales DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE scm_auth;
 
@@ -98,6 +99,10 @@ CREATE TABLE IF NOT EXISTS mdm_warehouse (
     tenant_id BIGINT NOT NULL,
     warehouse_code VARCHAR(64) NOT NULL,
     warehouse_name VARCHAR(128) NOT NULL,
+    warehouse_type VARCHAR(32) DEFAULT NULL,
+    contact_name VARCHAR(64) DEFAULT NULL,
+    contact_phone VARCHAR(32) DEFAULT NULL,
+    address VARCHAR(255) DEFAULT NULL,
     status TINYINT NOT NULL DEFAULT 1,
     created_by BIGINT DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -113,6 +118,7 @@ CREATE TABLE IF NOT EXISTS mdm_location (
     warehouse_id BIGINT NOT NULL,
     location_code VARCHAR(64) NOT NULL,
     location_name VARCHAR(128) NOT NULL,
+    location_type VARCHAR(32) DEFAULT NULL,
     status TINYINT NOT NULL DEFAULT 1,
     created_by BIGINT DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -156,8 +162,10 @@ CREATE TABLE IF NOT EXISTS purchase_receipt (
     tenant_id BIGINT NOT NULL,
     receipt_no VARCHAR(64) NOT NULL,
     purchase_order_id BIGINT NOT NULL,
+    supplier_id BIGINT NOT NULL,
     warehouse_id BIGINT NOT NULL,
     receipt_status VARCHAR(32) NOT NULL,
+    failure_reason VARCHAR(255) DEFAULT NULL,
     created_by BIGINT DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by BIGINT DEFAULT NULL,
@@ -211,4 +219,31 @@ CREATE TABLE IF NOT EXISTS inventory_txn_record (
     after_qty DECIMAL(18, 4) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_tenant_txn_no (tenant_id, txn_no)
+);
+
+USE scm_sales;
+
+CREATE TABLE IF NOT EXISTS sales_order (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id BIGINT NOT NULL,
+    order_no VARCHAR(64) NOT NULL,
+    warehouse_id BIGINT NOT NULL,
+    order_status VARCHAR(32) NOT NULL,
+    failure_reason VARCHAR(255) DEFAULT NULL,
+    created_by BIGINT DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by BIGINT DEFAULT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted TINYINT NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_tenant_order_no (tenant_id, order_no)
+);
+
+CREATE TABLE IF NOT EXISTS sales_order_item (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id BIGINT NOT NULL,
+    sales_order_id BIGINT NOT NULL,
+    material_id BIGINT NOT NULL,
+    location_id BIGINT NOT NULL,
+    sale_qty DECIMAL(18, 4) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

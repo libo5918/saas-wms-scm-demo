@@ -47,6 +47,7 @@ class PurchaseReceiptControllerTest {
         receipt.setId(1L);
         receipt.setReceiptNo("RCV-001");
         receipt.setPurchaseOrderId(5001L);
+        receipt.setSupplierId(1L);
         receipt.setWarehouseId(2001L);
         receipt.setReceiptStatus("STOCK_IN_SUCCESS");
         receipt.setFailureReason(null);
@@ -63,6 +64,7 @@ class PurchaseReceiptControllerTest {
                 {
                   "receiptNo":"RCV-001",
                   "purchaseOrderId":5001,
+                  "supplierId":1,
                   "warehouseId":2001,
                   "items":[
                     {
@@ -81,6 +83,7 @@ class PurchaseReceiptControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.supplierId").value(1))
                 .andExpect(jsonPath("$.data.receiptStatus").value("STOCK_IN_SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].materialId").value(1001));
 

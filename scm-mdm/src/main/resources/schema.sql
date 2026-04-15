@@ -16,6 +16,23 @@ CREATE TABLE IF NOT EXISTS mdm_material (
     KEY idx_mdm_material_tenant_status (tenant_id, status)
 ) COMMENT='物料主数据表';
 
+CREATE TABLE IF NOT EXISTS mdm_supplier (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    tenant_id BIGINT NOT NULL COMMENT '租户ID',
+    supplier_code VARCHAR(64) NOT NULL COMMENT '供应商编码',
+    supplier_name VARCHAR(128) NOT NULL COMMENT '供应商名称',
+    contact_name VARCHAR(64) DEFAULT NULL COMMENT '联系人',
+    contact_phone VARCHAR(32) DEFAULT NULL COMMENT '联系电话',
+    status TINYINT NOT NULL DEFAULT 1 COMMENT '状态',
+    created_by BIGINT DEFAULT NULL COMMENT '创建人',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_by BIGINT DEFAULT NULL COMMENT '更新人',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+    CONSTRAINT uq_mdm_supplier_tenant_code UNIQUE (tenant_id, supplier_code),
+    KEY idx_mdm_supplier_tenant_status (tenant_id, status)
+) COMMENT='供应商主数据表';
+
 CREATE TABLE IF NOT EXISTS mdm_warehouse (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
     tenant_id BIGINT NOT NULL COMMENT '租户ID',

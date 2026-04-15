@@ -21,6 +21,9 @@ public class PurchaseReceiptVO {
     @Schema(description = "采购订单ID。")
     private Long purchaseOrderId;
 
+    @Schema(description = "供应商ID。")
+    private Long supplierId;
+
     @Schema(description = "仓库ID。")
     private Long warehouseId;
 

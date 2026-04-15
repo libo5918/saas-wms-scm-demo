@@ -4,7 +4,9 @@ import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.sales.client.InventoryReservationClient;
+import com.example.scm.sales.client.LocationClient;
 import com.example.scm.sales.client.MaterialClient;
+import com.example.scm.sales.client.WarehouseClient;
 import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
 import com.example.scm.sales.dto.CreateSalesOrderRequest;
 import com.example.scm.sales.entity.SalesOrder;
@@ -33,6 +35,8 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     private final SalesOrderItemMapper salesOrderItemMapper;
     private final SalesOrderAssembler salesOrderAssembler;
     private final MaterialClient materialClient;
+    private final WarehouseClient warehouseClient;
+    private final LocationClient locationClient;
     private final InventoryReservationClient inventoryReservationClient;
     private final TransactionTemplate transactionTemplate;
 
@@ -40,12 +44,16 @@ public class SalesOrderServiceImpl implements SalesOrderService {
                                  SalesOrderItemMapper salesOrderItemMapper,
                                  SalesOrderAssembler salesOrderAssembler,
                                  MaterialClient materialClient,
+                                 WarehouseClient warehouseClient,
+                                 LocationClient locationClient,
                                  InventoryReservationClient inventoryReservationClient,
                                  TransactionTemplate transactionTemplate) {
         this.salesOrderMapper = salesOrderMapper;
         this.salesOrderItemMapper = salesOrderItemMapper;
         this.salesOrderAssembler = salesOrderAssembler;
         this.materialClient = materialClient;
+        this.warehouseClient = warehouseClient;
+        this.locationClient = locationClient;
         this.inventoryReservationClient = inventoryReservationClient;
         this.transactionTemplate = transactionTemplate;
     }
@@ -61,6 +69,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Order no already exists");
         }
         validateMaterials(tenantId, request.getItems());
+        validateStorage(tenantId, request.getWarehouseId(), request.getItems());
         SalesOrder order = transactionTemplate.execute(status -> createOrderInTransaction(tenantId, request));
         if (order == null) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Create sales order failed");
@@ -142,7 +151,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         if (!status.canCancel()) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Current sales order cannot be cancelled");
         }
-        if (status.isLockSuccess()) {
+        if (status.hasLockedInventory()) {
             inventoryReservationClient.unlock(tenantId, SYSTEM_OPERATOR_ID, order, salesOrderItemMapper.selectByOrderId(tenantId, order.getId()));
         }
         updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
@@ -166,6 +175,13 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     private void validateMaterials(Long tenantId, List<CreateSalesOrderItemRequest> items) {
         for (CreateSalesOrderItemRequest item : items) {
             materialClient.validateMaterialEnabled(tenantId, item.getMaterialId());
+        }
+    }
+
+    private void validateStorage(Long tenantId, Long warehouseId, List<CreateSalesOrderItemRequest> items) {
+        warehouseClient.validateWarehouseEnabled(tenantId, warehouseId);
+        for (CreateSalesOrderItemRequest item : items) {
+            locationClient.validateLocationEnabled(tenantId, warehouseId, item.getLocationId());
         }
     }
 

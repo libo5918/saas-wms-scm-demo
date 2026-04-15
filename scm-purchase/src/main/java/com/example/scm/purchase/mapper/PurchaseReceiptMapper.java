@@ -46,11 +46,11 @@ public interface PurchaseReceiptMapper {
      */
     @Insert("""
             INSERT INTO purchase_receipt(
-                tenant_id, receipt_no, purchase_order_id, warehouse_id, receipt_status, failure_reason,
+                tenant_id, receipt_no, purchase_order_id, supplier_id, warehouse_id, receipt_status, failure_reason,
                 created_by, updated_by, deleted
             )
             VALUES(
-                #{tenantId}, #{receiptNo}, #{purchaseOrderId}, #{warehouseId}, #{receiptStatus}, #{failureReason},
+                #{tenantId}, #{receiptNo}, #{purchaseOrderId}, #{supplierId}, #{warehouseId}, #{receiptStatus}, #{failureReason},
                 #{createdBy}, #{updatedBy}, #{deleted}
             )
             """)

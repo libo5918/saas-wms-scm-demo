@@ -4,23 +4,34 @@ import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.TenantContext;
 import com.example.scm.purchase.client.InventoryStockInClient;
+import com.example.scm.purchase.client.LocationClient;
 import com.example.scm.purchase.client.MaterialClient;
+import com.example.scm.purchase.client.SupplierClient;
+import com.example.scm.purchase.client.WarehouseClient;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptItemRequest;
 import com.example.scm.purchase.dto.CreatePurchaseReceiptRequest;
+import com.example.scm.purchase.entity.PurchaseOrder;
+import com.example.scm.purchase.entity.PurchaseOrderItem;
+import com.example.scm.purchase.entity.PurchaseOrderStatus;
 import com.example.scm.purchase.entity.PurchaseReceipt;
 import com.example.scm.purchase.entity.PurchaseReceiptItem;
 import com.example.scm.purchase.entity.PurchaseReceiptStatus;
+import com.example.scm.purchase.mapper.PurchaseOrderItemMapper;
+import com.example.scm.purchase.mapper.PurchaseOrderMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptItemMapper;
 import com.example.scm.purchase.mapper.PurchaseReceiptMapper;
 import com.example.scm.purchase.service.PurchaseReceiptService;
 import com.example.scm.purchase.support.PurchaseReceiptAssembler;
 import com.example.scm.purchase.vo.PurchaseReceiptVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 采购收货应用服务实现。
@@ -43,23 +54,61 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
 
     private final PurchaseReceiptMapper purchaseReceiptMapper;
     private final PurchaseReceiptItemMapper purchaseReceiptItemMapper;
+    private final PurchaseOrderMapper purchaseOrderMapper;
+    private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final PurchaseReceiptAssembler purchaseReceiptAssembler;
     private final MaterialClient materialClient;
+    private final SupplierClient supplierClient;
+    private final WarehouseClient warehouseClient;
+    private final LocationClient locationClient;
     private final InventoryStockInClient inventoryStockInClient;
     private final TransactionTemplate transactionTemplate;
+
+    @Autowired
+    public PurchaseReceiptServiceImpl(PurchaseReceiptMapper purchaseReceiptMapper,
+                                      PurchaseReceiptItemMapper purchaseReceiptItemMapper,
+                                      PurchaseOrderMapper purchaseOrderMapper,
+                                      PurchaseOrderItemMapper purchaseOrderItemMapper,
+                                      PurchaseReceiptAssembler purchaseReceiptAssembler,
+                                      MaterialClient materialClient,
+                                      SupplierClient supplierClient,
+                                      WarehouseClient warehouseClient,
+                                      LocationClient locationClient,
+                                      InventoryStockInClient inventoryStockInClient,
+                                      TransactionTemplate transactionTemplate) {
+        this.purchaseReceiptMapper = purchaseReceiptMapper;
+        this.purchaseReceiptItemMapper = purchaseReceiptItemMapper;
+        this.purchaseOrderMapper = purchaseOrderMapper;
+        this.purchaseOrderItemMapper = purchaseOrderItemMapper;
+        this.purchaseReceiptAssembler = purchaseReceiptAssembler;
+        this.materialClient = materialClient;
+        this.supplierClient = supplierClient;
+        this.warehouseClient = warehouseClient;
+        this.locationClient = locationClient;
+        this.inventoryStockInClient = inventoryStockInClient;
+        this.transactionTemplate = transactionTemplate;
+    }
 
     public PurchaseReceiptServiceImpl(PurchaseReceiptMapper purchaseReceiptMapper,
                                       PurchaseReceiptItemMapper purchaseReceiptItemMapper,
                                       PurchaseReceiptAssembler purchaseReceiptAssembler,
                                       MaterialClient materialClient,
+                                      SupplierClient supplierClient,
+                                      WarehouseClient warehouseClient,
+                                      LocationClient locationClient,
                                       InventoryStockInClient inventoryStockInClient,
                                       TransactionTemplate transactionTemplate) {
-        this.purchaseReceiptMapper = purchaseReceiptMapper;
-        this.purchaseReceiptItemMapper = purchaseReceiptItemMapper;
-        this.purchaseReceiptAssembler = purchaseReceiptAssembler;
-        this.materialClient = materialClient;
-        this.inventoryStockInClient = inventoryStockInClient;
-        this.transactionTemplate = transactionTemplate;
+        this(purchaseReceiptMapper,
+                purchaseReceiptItemMapper,
+                null,
+                null,
+                purchaseReceiptAssembler,
+                materialClient,
+                supplierClient,
+                warehouseClient,
+                locationClient,
+                inventoryStockInClient,
+                transactionTemplate);
     }
 
     @Override
@@ -77,7 +126,10 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Receipt no already exists");
         }
 
+        validateSupplier(tenantId, request.getSupplierId());
+        validatePurchaseOrder(tenantId, request);
         validateMaterials(tenantId, request.getItems());
+        validateStorage(tenantId, request.getWarehouseId(), request.getItems());
 
         PurchaseReceipt receipt = transactionTemplate.execute(status -> createReceiptInTransaction(tenantId, request));
         if (receipt == null) {
@@ -168,9 +220,57 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
         return receipt;
     }
 
+    private void validateSupplier(Long tenantId, Long supplierId) {
+        supplierClient.validateSupplierEnabled(tenantId, supplierId);
+    }
+
+    private void validatePurchaseOrder(Long tenantId, CreatePurchaseReceiptRequest request) {
+        if (purchaseOrderMapper == null || purchaseOrderItemMapper == null) {
+            return;
+        }
+        PurchaseOrder purchaseOrder = purchaseOrderMapper.selectById(tenantId, request.getPurchaseOrderId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Purchase order not found"));
+        if (!request.getSupplierId().equals(purchaseOrder.getSupplierId())) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Supplier does not match purchase order");
+        }
+
+        List<PurchaseOrderItem> orderItems = purchaseOrderItemMapper.selectByOrderId(tenantId, purchaseOrder.getId());
+        Map<Long, java.math.BigDecimal> materialRemainingQty = new HashMap<>();
+        for (PurchaseOrderItem orderItem : orderItems) {
+            materialRemainingQty.put(
+                    orderItem.getMaterialId(),
+                    orderItem.getPlanQty().subtract(orderItem.getReceivedQty())
+            );
+        }
+
+        Map<Long, java.math.BigDecimal> receiptQtyByMaterial = new HashMap<>();
+        for (CreatePurchaseReceiptItemRequest item : request.getItems()) {
+            receiptQtyByMaterial.merge(item.getMaterialId(), item.getReceiptQty(), java.math.BigDecimal::add);
+        }
+
+        for (Map.Entry<Long, java.math.BigDecimal> receiptItem : receiptQtyByMaterial.entrySet()) {
+            Long materialId = receiptItem.getKey();
+            java.math.BigDecimal receiptQty = receiptItem.getValue();
+            java.math.BigDecimal remainingQty = materialRemainingQty.get(materialId);
+            if (remainingQty == null) {
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Purchase receipt item does not match purchase order");
+            }
+            if (receiptQty.compareTo(remainingQty) > 0) {
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Receipt qty exceeds purchase order remaining qty");
+            }
+        }
+    }
+
     private void validateMaterials(Long tenantId, List<CreatePurchaseReceiptItemRequest> items) {
         for (CreatePurchaseReceiptItemRequest item : items) {
             materialClient.validateMaterialEnabled(tenantId, item.getMaterialId());
+        }
+    }
+
+    private void validateStorage(Long tenantId, Long warehouseId, List<CreatePurchaseReceiptItemRequest> items) {
+        warehouseClient.validateWarehouseEnabled(tenantId, warehouseId);
+        for (CreatePurchaseReceiptItemRequest item : items) {
+            locationClient.validateLocationEnabled(tenantId, warehouseId, item.getLocationId());
         }
     }
 
@@ -180,7 +280,7 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
             log.info("Call inventory stock-in, tenantId={}, receiptId={}, receiptNo={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo());
             inventoryStockInClient.stockIn(tenantId, SYSTEM_OPERATOR_ID, receipt, items);
-            updateReceiptStatus(tenantId, receipt.getId(), PurchaseReceiptStatus.STOCK_IN_SUCCESS, null);
+            handleStockInSuccess(tenantId, receipt, items);
             log.info("Purchase receipt stock-in success, tenantId={}, receiptId={}, receiptNo={}, itemCount={}",
                     tenantId, receipt.getId(), receipt.getReceiptNo(), items.size());
         } catch (BusinessException ex) {
@@ -191,6 +291,75 @@ public class PurchaseReceiptServiceImpl implements PurchaseReceiptService {
             throw ex;
         }
         return getById(receipt.getId());
+    }
+
+    private void handleStockInSuccess(Long tenantId, PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
+        Integer affected = transactionTemplate.execute(status -> {
+            syncPurchaseOrderProgress(tenantId, receipt.getPurchaseOrderId(), items);
+            return purchaseReceiptMapper.updateStatus(
+                    tenantId,
+                    receipt.getId(),
+                    PurchaseReceiptStatus.STOCK_IN_SUCCESS.name(),
+                    null,
+                    SYSTEM_OPERATOR_ID
+            );
+        });
+        if (affected == null || affected == 0) {
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Update purchase receipt status failed");
+        }
+    }
+
+    private void syncPurchaseOrderProgress(Long tenantId, Long purchaseOrderId, List<PurchaseReceiptItem> items) {
+        // 兼容兜底：
+        // 1) 单测里可能使用了不带采购订单 mapper 的构造器
+        // 2) 理论上收货单必须有采购订单，但仍做空值保护，避免 NPE
+        if (purchaseOrderMapper == null || purchaseOrderItemMapper == null || purchaseOrderId == null) {
+            return;
+        }
+
+        // 同一收货单里可能出现同一物料多行，先按 materialId 聚合本次收货数量
+        // 例如同物料拆到多个库位收货，订单维度只关心该物料本次总收货量
+        Map<Long, java.math.BigDecimal> receiptQtyByMaterial = new HashMap<>();
+        for (PurchaseReceiptItem item : items) {
+            receiptQtyByMaterial.merge(item.getMaterialId(), item.getReceiptQty(), java.math.BigDecimal::add);
+        }
+
+        // 逐物料回写采购订单明细的 received_qty。
+        // SQL 层带条件：received_qty + incrementQty <= plan_qty
+        // 这样可防止超收，且在并发场景下由数据库原子更新兜底。
+        for (Map.Entry<Long, java.math.BigDecimal> entry : receiptQtyByMaterial.entrySet()) {
+            Integer itemAffected = purchaseOrderItemMapper.increaseReceivedQtyIfWithinPlan(
+                    tenantId,
+                    purchaseOrderId,
+                    entry.getKey(),
+                    entry.getValue()
+            );
+            // 未更新到任何行，通常是超收（或物料不匹配）导致条件不满足
+            if (itemAffected == null || itemAffected == 0) {
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Receipt qty exceeds purchase order remaining qty");
+            }
+        }
+
+        // 根据明细完成度推导订单状态：
+        // 1) 没有未完成行 => 全部收货
+        // 2) 仍有未完成行，但至少一行已开始收货 => 部分收货
+        // 3) 否则 => 未收货（CREATED）
+        Integer unfinishedItemCount = purchaseOrderItemMapper.countUnfinishedItemsByOrderId(tenantId, purchaseOrderId);
+        String targetStatus;
+        if (unfinishedItemCount != null && unfinishedItemCount == 0) {
+            targetStatus = PurchaseOrderStatus.RECEIVED.name();
+        } else {
+            Integer startedItemCount = purchaseOrderItemMapper.countStartedItemsByOrderId(tenantId, purchaseOrderId);
+            targetStatus = startedItemCount != null && startedItemCount > 0
+                    ? PurchaseOrderStatus.PARTIALLY_RECEIVED.name()
+                    : PurchaseOrderStatus.CREATED.name();
+        }
+
+        // 回写采购订单头状态；更新失败说明订单不存在或已被逻辑删除
+        Integer orderAffected = purchaseOrderMapper.updateStatus(tenantId, purchaseOrderId, targetStatus, SYSTEM_OPERATOR_ID);
+        if (orderAffected == null || orderAffected == 0) {
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Update purchase order status failed");
+        }
     }
 
     private void updateReceiptStatus(Long tenantId, Long receiptId, PurchaseReceiptStatus receiptStatus, String failureReason) {

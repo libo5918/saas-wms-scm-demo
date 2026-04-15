@@ -20,6 +20,10 @@ public class CreatePurchaseReceiptRequest {
     @NotNull(message = "purchaseOrderId cannot be null")
     private Long purchaseOrderId;
 
+    @Schema(description = "供应商ID。")
+    @NotNull(message = "supplierId cannot be null")
+    private Long supplierId;
+
     @Schema(description = "收货入库的目标仓库ID。")
     @NotNull(message = "warehouseId cannot be null")
     private Long warehouseId;
@@ -43,6 +47,14 @@ public class CreatePurchaseReceiptRequest {
 
     public void setPurchaseOrderId(Long purchaseOrderId) {
         this.purchaseOrderId = purchaseOrderId;
+    }
+
+    public Long getSupplierId() {
+        return supplierId;
+    }
+
+    public void setSupplierId(Long supplierId) {
+        this.supplierId = supplierId;
     }
 
     public Long getWarehouseId() {

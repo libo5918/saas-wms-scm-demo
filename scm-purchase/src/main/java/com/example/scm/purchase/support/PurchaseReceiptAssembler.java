@@ -29,6 +29,7 @@ public class PurchaseReceiptAssembler {
         receipt.setTenantId(tenantId);
         receipt.setReceiptNo(request.getReceiptNo());
         receipt.setPurchaseOrderId(request.getPurchaseOrderId());
+        receipt.setSupplierId(request.getSupplierId());
         receipt.setWarehouseId(request.getWarehouseId());
         receipt.setReceiptStatus(status);
         receipt.setFailureReason(null);
@@ -61,6 +62,7 @@ public class PurchaseReceiptAssembler {
         vo.setId(receipt.getId());
         vo.setReceiptNo(receipt.getReceiptNo());
         vo.setPurchaseOrderId(receipt.getPurchaseOrderId());
+        vo.setSupplierId(receipt.getSupplierId());
         vo.setWarehouseId(receipt.getWarehouseId());
         vo.setReceiptStatus(receipt.getReceiptStatus());
         vo.setFailureReason(receipt.getFailureReason());
