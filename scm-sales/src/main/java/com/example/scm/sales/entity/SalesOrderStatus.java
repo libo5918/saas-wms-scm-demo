@@ -27,4 +27,8 @@ public enum SalesOrderStatus {
     public boolean canCancel() {
         return this == CREATED || this == LOCK_FAILED || this == LOCK_SUCCESS || this == SHIP_FAILED;
     }
+
+    public boolean hasLockedInventory() {
+        return this == LOCK_SUCCESS || this == SHIP_FAILED;
+    }
 }

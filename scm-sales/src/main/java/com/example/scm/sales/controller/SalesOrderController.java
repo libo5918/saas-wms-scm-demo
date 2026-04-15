@@ -20,7 +20,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/sales-orders")
-@Tag(name = "Sales-Order")
+@Tag(name = "销售订单", description = "销售订单管理接口")
 @Slf4j
 public class SalesOrderController {
 
@@ -55,7 +55,7 @@ public class SalesOrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    @Operation(summary = "取消销售订单", description = "取消销售订单，已锁库时自动释放锁定库存。")
+    @Operation(summary = "取消销售订单", description = "取消销售订单，存在锁定库存时自动释放。")
     public Result<SalesOrderVO> cancel(@PathVariable("id") Long id) {
         return Result.success(salesOrderService.cancel(id));
     }

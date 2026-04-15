@@ -20,7 +20,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/purchase-receipts")
-@Tag(name = "Purchase-Receipt")
+@Tag(name = "采购收货单", description = "采购收货单管理接口")
 @Slf4j
 public class PurchaseReceiptController {
 
