@@ -33,3 +33,6 @@ integration:
     base-url: http://127.0.0.1:18084
   mdm:
     base-url: http://127.0.0.1:18082
+outbox:
+  publisher:
+    fixed-delay-ms: 5000

@@ -9,20 +9,25 @@ import com.example.scm.sales.client.MaterialClient;
 import com.example.scm.sales.client.WarehouseClient;
 import com.example.scm.sales.dto.CreateSalesOrderItemRequest;
 import com.example.scm.sales.dto.CreateSalesOrderRequest;
+import com.example.scm.sales.entity.OutboxEvent;
+import com.example.scm.sales.entity.OutboxEventStatus;
 import com.example.scm.sales.entity.SalesOrder;
 import com.example.scm.sales.entity.SalesOrderItem;
 import com.example.scm.sales.entity.SalesOrderStatus;
+import com.example.scm.sales.mapper.OutboxEventMapper;
 import com.example.scm.sales.mapper.SalesOrderItemMapper;
 import com.example.scm.sales.mapper.SalesOrderMapper;
 import com.example.scm.sales.service.SalesOrderService;
 import com.example.scm.sales.support.SalesOrderAssembler;
 import com.example.scm.sales.vo.SalesOrderVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -33,12 +38,34 @@ public class SalesOrderServiceImpl implements SalesOrderService {
 
     private final SalesOrderMapper salesOrderMapper;
     private final SalesOrderItemMapper salesOrderItemMapper;
+    private final OutboxEventMapper outboxEventMapper;
     private final SalesOrderAssembler salesOrderAssembler;
     private final MaterialClient materialClient;
     private final WarehouseClient warehouseClient;
     private final LocationClient locationClient;
     private final InventoryReservationClient inventoryReservationClient;
     private final TransactionTemplate transactionTemplate;
+
+    @Autowired
+    public SalesOrderServiceImpl(SalesOrderMapper salesOrderMapper,
+                                 SalesOrderItemMapper salesOrderItemMapper,
+                                 OutboxEventMapper outboxEventMapper,
+                                 SalesOrderAssembler salesOrderAssembler,
+                                 MaterialClient materialClient,
+                                 WarehouseClient warehouseClient,
+                                 LocationClient locationClient,
+                                 InventoryReservationClient inventoryReservationClient,
+                                 TransactionTemplate transactionTemplate) {
+        this.salesOrderMapper = salesOrderMapper;
+        this.salesOrderItemMapper = salesOrderItemMapper;
+        this.outboxEventMapper = outboxEventMapper;
+        this.salesOrderAssembler = salesOrderAssembler;
+        this.materialClient = materialClient;
+        this.warehouseClient = warehouseClient;
+        this.locationClient = locationClient;
+        this.inventoryReservationClient = inventoryReservationClient;
+        this.transactionTemplate = transactionTemplate;
+    }
 
     public SalesOrderServiceImpl(SalesOrderMapper salesOrderMapper,
                                  SalesOrderItemMapper salesOrderItemMapper,
@@ -48,14 +75,15 @@ public class SalesOrderServiceImpl implements SalesOrderService {
                                  LocationClient locationClient,
                                  InventoryReservationClient inventoryReservationClient,
                                  TransactionTemplate transactionTemplate) {
-        this.salesOrderMapper = salesOrderMapper;
-        this.salesOrderItemMapper = salesOrderItemMapper;
-        this.salesOrderAssembler = salesOrderAssembler;
-        this.materialClient = materialClient;
-        this.warehouseClient = warehouseClient;
-        this.locationClient = locationClient;
-        this.inventoryReservationClient = inventoryReservationClient;
-        this.transactionTemplate = transactionTemplate;
+        this(salesOrderMapper,
+                salesOrderItemMapper,
+                null,
+                salesOrderAssembler,
+                materialClient,
+                warehouseClient,
+                locationClient,
+                inventoryReservationClient,
+                transactionTemplate);
     }
 
     @Override
@@ -154,6 +182,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         if (status.hasLockedInventory()) {
             inventoryReservationClient.unlock(tenantId, SYSTEM_OPERATOR_ID, order, salesOrderItemMapper.selectByOrderId(tenantId, order.getId()));
         }
+        appendOutboxEvent(tenantId, order, "ORDER_CANCEL_REQUESTED", "order.cancel.requested.v1");
         updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
         return getById(order.getId());
     }
@@ -199,6 +228,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
 
     private SalesOrderVO processShip(Long tenantId, SalesOrder order) {
         List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
+        appendOutboxEvent(tenantId, order, "ORDER_SHIP_REQUESTED", "order.ship.requested.v1");
         try {
             inventoryReservationClient.stockOut(tenantId, SYSTEM_OPERATOR_ID, order, items);
             updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIPPED, null);
@@ -234,5 +264,36 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Unknown sales order status: " + order.getOrderStatus());
         }
+    }
+
+    private void appendOutboxEvent(Long tenantId, SalesOrder order, String eventType, String topic) {
+        if (outboxEventMapper == null) {
+            return;
+        }
+        OutboxEvent event = new OutboxEvent();
+        event.setTenantId(tenantId);
+        event.setEventId(UUID.randomUUID().toString());
+        event.setAggregateType("SALES_ORDER");
+        event.setAggregateId(String.valueOf(order.getId()));
+        event.setEventType(eventType);
+        event.setEventKey(order.getOrderNo());
+        event.setPayloadJson(buildOutboxPayload(order, eventType));
+        event.setStatus(OutboxEventStatus.NEW.name());
+        event.setRetryCount(0);
+        event.setNextRetryTime(null);
+        outboxEventMapper.insert(event);
+        log.info("Append outbox event success, eventId={}, eventType={}, topic={}, orderNo={}",
+                event.getEventId(), eventType, topic, order.getOrderNo());
+    }
+
+    private String buildOutboxPayload(SalesOrder order, String eventType) {
+        return String.format(
+                "{\"eventType\":\"%s\",\"tenantId\":%d,\"orderId\":%d,\"orderNo\":\"%s\",\"warehouseId\":%d}",
+                eventType,
+                order.getTenantId(),
+                order.getId(),
+                order.getOrderNo(),
+                order.getWarehouseId()
+        );
     }
 }
