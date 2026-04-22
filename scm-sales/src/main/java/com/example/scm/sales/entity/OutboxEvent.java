@@ -16,6 +16,7 @@ public class OutboxEvent {
     private String aggregateId;
     private String eventType;
     private String eventKey;
+    private String topic;
     private String payloadJson;
     private String status;
     private Integer retryCount;

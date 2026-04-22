@@ -277,6 +277,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         event.setAggregateId(String.valueOf(order.getId()));
         event.setEventType(eventType);
         event.setEventKey(order.getOrderNo());
+        event.setTopic(topic);
         event.setPayloadJson(buildOutboxPayload(order, eventType));
         event.setStatus(OutboxEventStatus.NEW.name());
         event.setRetryCount(0);

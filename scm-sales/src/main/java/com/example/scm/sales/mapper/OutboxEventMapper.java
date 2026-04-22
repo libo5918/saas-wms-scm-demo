@@ -17,17 +17,17 @@ public interface OutboxEventMapper {
     @Insert("""
             INSERT INTO outbox_event(
                 tenant_id, event_id, aggregate_type, aggregate_id, event_type, event_key,
-                payload_json, status, retry_count, next_retry_time
+                topic, payload_json, status, retry_count, next_retry_time
             ) VALUES (
                 #{tenantId}, #{eventId}, #{aggregateType}, #{aggregateId}, #{eventType}, #{eventKey},
-                #{payloadJson}, #{status}, #{retryCount}, #{nextRetryTime}
+                #{topic}, #{payloadJson}, #{status}, #{retryCount}, #{nextRetryTime}
             )
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(OutboxEvent event);
 
     @Select("""
-            SELECT id, tenant_id, event_id, aggregate_type, aggregate_id, event_type, event_key,
+            SELECT id, tenant_id, event_id, aggregate_type, aggregate_id, event_type, event_key, topic,
                    payload_json, status, retry_count, next_retry_time, created_at, updated_at
             FROM outbox_event
             WHERE status IN ('NEW', 'FAILED')
