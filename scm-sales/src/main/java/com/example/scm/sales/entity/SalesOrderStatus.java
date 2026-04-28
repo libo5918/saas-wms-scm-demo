@@ -7,6 +7,8 @@ public enum SalesOrderStatus {
     SHIP_PENDING,
     SHIP_FAILED,
     SHIPPED,
+    CANCEL_PENDING,
+    CANCEL_FAILED,
     CANCELLED;
 
     public boolean isLockSuccess() {
@@ -26,7 +28,7 @@ public enum SalesOrderStatus {
     }
 
     public boolean canCancel() {
-        return this == CREATED || this == LOCK_FAILED || this == LOCK_SUCCESS || this == SHIP_PENDING || this == SHIP_FAILED;
+        return this == CREATED || this == LOCK_FAILED || this == LOCK_SUCCESS || this == SHIP_PENDING || this == SHIP_FAILED || this == CANCEL_FAILED;
     }
 
     public boolean hasLockedInventory() {

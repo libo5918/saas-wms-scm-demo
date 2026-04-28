@@ -11,6 +11,7 @@ import com.example.scm.inventory.application.command.StockUnlockItemCommand;
 import com.example.scm.inventory.application.service.InventoryLockedStockOutApplicationService;
 import com.example.scm.inventory.application.service.InventoryStockUnlockApplicationService;
 import com.example.scm.inventory.infrastructure.persistence.mapper.MqConsumeLogMapper;
+import com.example.scm.inventory.integration.mq.dto.InventoryCancelResultEvent;
 import com.example.scm.inventory.integration.mq.dto.InventoryShipResultEvent;
 import com.example.scm.inventory.integration.mq.dto.SalesOrderEvent;
 import com.example.scm.inventory.integration.mq.dto.SalesOrderEventItem;
@@ -37,6 +38,7 @@ public class SalesOrderEventConsumer {
     private static final String CONSUMER_GROUP = "scm-inventory-order-consumer";
     private static final String BIZ_TYPE = "SALES_ORDER";
     private static final String SHIP_RESULT_TOPIC = "inventory.ship.result.v1";
+    private static final String CANCEL_RESULT_TOPIC = "inventory.cancel.result.v1";
 
     private final MqConsumeLogMapper mqConsumeLogMapper;
     private final InventoryLockedStockOutApplicationService lockedStockOutApplicationService;
@@ -90,6 +92,8 @@ public class SalesOrderEventConsumer {
 
     @KafkaListener(topics = "order.cancel.requested.v1", groupId = CONSUMER_GROUP)
     public void onCancelRequested(ConsumerRecord<String, String> record) {
+        log.info("order.cancel.requested.v1 topic={}, partition={}, offset={}, key={}, value={}",
+                record.topic(), record.partition(), record.offset(), record.key(), record.value());
         SalesOrderEvent event = parseEvent(record);
         if (!normalizeAndValidateEvent(event, record)) {
             return;
@@ -101,9 +105,21 @@ public class SalesOrderEventConsumer {
         try {
             TenantContext.setTenantId(event.getTenantId());
             stockUnlockApplicationService.unlock(toUnlockCommand(event));
+            publishCancelResult(event, "SUCCESS", null);
             markConsumed(event, record.topic());
             log.info("Consume cancel event success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
                     record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+        } catch (BusinessException ex) {
+            if ("Duplicate stock-unlock request".equals(ex.getMessage())) {
+                publishCancelResult(event, "SUCCESS", null);
+                markConsumed(event, record.topic());
+                log.info("Consume cancel event as idempotent success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
+                        record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+                return;
+            }
+            publishCancelResult(event, "FAILED", ex.getMessage());
+            markConsumed(event, record.topic());
+            throw ex;
         } finally {
             TenantContext.clear();
         }
@@ -239,5 +255,16 @@ public class SalesOrderEventConsumer {
         result.setStatus(status);
         result.setFailureReason(failureReason);
         kafkaTemplate.send(SHIP_RESULT_TOPIC, event.getOrderNo(), JSON.toJSONString(result));
+    }
+
+    private void publishCancelResult(SalesOrderEvent event, String status, String failureReason) {
+        InventoryCancelResultEvent result = new InventoryCancelResultEvent();
+        result.setEventId(UUID.randomUUID().toString());
+        result.setRequestEventId(event.getEventId());
+        result.setTenantId(event.getTenantId());
+        result.setOrderNo(event.getOrderNo());
+        result.setStatus(status);
+        result.setFailureReason(failureReason);
+        kafkaTemplate.send(CANCEL_RESULT_TOPIC, event.getOrderNo(), JSON.toJSONString(result));
     }
 }

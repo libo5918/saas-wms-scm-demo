@@ -26,6 +26,7 @@ import com.example.scm.sales.vo.SalesOrderVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
@@ -148,6 +149,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     }
 
     @Override
+    @Transactional
     public SalesOrderVO ship(Long id) {
         Long tenantId = TenantContext.getRequiredTenantId();
         SalesOrder order = salesOrderMapper.selectById(tenantId, id)
@@ -159,6 +161,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     }
 
     @Override
+    @Transactional
     public SalesOrderVO retryShip(Long id) {
         Long tenantId = TenantContext.getRequiredTenantId();
         SalesOrder order = salesOrderMapper.selectById(tenantId, id)
@@ -174,6 +177,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     }
 
     @Override
+    @Transactional
     public SalesOrderVO cancel(Long id) {
         Long tenantId = TenantContext.getRequiredTenantId();
         SalesOrder order = salesOrderMapper.selectById(tenantId, id)
@@ -184,10 +188,11 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         }
         List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
         if (status.hasLockedInventory()) {
-            inventoryReservationClient.unlock(tenantId, SYSTEM_OPERATOR_ID, order, items);
+            appendOutboxEvent(tenantId, order, items, "ORDER_CANCEL_REQUESTED", "order.cancel.requested.v1");
+            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCEL_PENDING, null);
+        } else {
+            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
         }
-        appendOutboxEvent(tenantId, order, items, "ORDER_CANCEL_REQUESTED", "order.cancel.requested.v1");
-        updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
         return getById(order.getId());
     }
 
@@ -238,9 +243,8 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     }
 
     private void updateOrderStatus(Long tenantId, Long id, SalesOrderStatus status, String failureReason) {
-        Integer affected = transactionTemplate.execute(tx ->
-                salesOrderMapper.updateStatus(tenantId, id, status.name(), failureReason, SYSTEM_OPERATOR_ID));
-        if (affected == null || affected == 0) {
+        int affected = salesOrderMapper.updateStatus(tenantId, id, status.name(), failureReason, SYSTEM_OPERATOR_ID);
+        if (affected == 0) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(), "Update sales order status failed");
         }
     }
