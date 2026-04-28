@@ -6,6 +6,11 @@ spring:
     url: jdbc:mysql://127.0.0.1:3306/scm_inventory?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
     username: root
     password: 123456
+  kafka:
+    bootstrap-servers: 127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: true
   cloud:
     nacos:
       discovery:

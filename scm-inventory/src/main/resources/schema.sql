@@ -35,3 +35,14 @@ CREATE TABLE IF NOT EXISTS inventory_txn_record (
     KEY idx_inventory_txn_record_biz (tenant_id, biz_type, biz_no),
     KEY idx_inventory_txn_record_material (tenant_id, material_id)
 ) COMMENT='库存流水表：记录每次库存变动的业务来源和前后数量快照';
+
+CREATE TABLE IF NOT EXISTS mq_consume_log (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    tenant_id BIGINT NOT NULL COMMENT '租户ID',
+    consumer_group VARCHAR(64) NOT NULL COMMENT '消费组',
+    topic VARCHAR(128) NOT NULL COMMENT 'Kafka Topic',
+    event_id VARCHAR(64) NOT NULL COMMENT '事件ID',
+    biz_key VARCHAR(64) DEFAULT NULL COMMENT '业务键',
+    consumed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '消费时间',
+    CONSTRAINT uq_mq_consume_log_unique UNIQUE (consumer_group, topic, event_id)
+) COMMENT='消息消费幂等日志表';

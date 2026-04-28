@@ -38,9 +38,6 @@ public class InventoryStockOutDomainService {
     /**
      * 执行单条库存出库。
      */
-    /**
-     * 执行单条库存出库。
-     */
     public InventoryTransactionRecord stockOut(Long tenantId,
                                                String bizType,
                                                String bizNo,

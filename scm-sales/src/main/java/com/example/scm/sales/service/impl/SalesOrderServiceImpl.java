@@ -3,6 +3,7 @@ package com.example.scm.sales.service.impl;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.TenantContext;
+import com.alibaba.fastjson2.JSON;
 import com.example.scm.sales.client.InventoryReservationClient;
 import com.example.scm.sales.client.LocationClient;
 import com.example.scm.sales.client.MaterialClient;
@@ -14,6 +15,8 @@ import com.example.scm.sales.entity.OutboxEventStatus;
 import com.example.scm.sales.entity.SalesOrder;
 import com.example.scm.sales.entity.SalesOrderItem;
 import com.example.scm.sales.entity.SalesOrderStatus;
+import com.example.scm.sales.integration.mq.dto.SalesOrderEventItemPayload;
+import com.example.scm.sales.integration.mq.dto.SalesOrderEventPayload;
 import com.example.scm.sales.mapper.OutboxEventMapper;
 import com.example.scm.sales.mapper.SalesOrderItemMapper;
 import com.example.scm.sales.mapper.SalesOrderMapper;
@@ -179,10 +182,11 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         if (!status.canCancel()) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Current sales order cannot be cancelled");
         }
+        List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
         if (status.hasLockedInventory()) {
-            inventoryReservationClient.unlock(tenantId, SYSTEM_OPERATOR_ID, order, salesOrderItemMapper.selectByOrderId(tenantId, order.getId()));
+            inventoryReservationClient.unlock(tenantId, SYSTEM_OPERATOR_ID, order, items);
         }
-        appendOutboxEvent(tenantId, order, "ORDER_CANCEL_REQUESTED", "order.cancel.requested.v1");
+        appendOutboxEvent(tenantId, order, items, "ORDER_CANCEL_REQUESTED", "order.cancel.requested.v1");
         updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
         return getById(order.getId());
     }
@@ -228,14 +232,8 @@ public class SalesOrderServiceImpl implements SalesOrderService {
 
     private SalesOrderVO processShip(Long tenantId, SalesOrder order) {
         List<SalesOrderItem> items = salesOrderItemMapper.selectByOrderId(tenantId, order.getId());
-        appendOutboxEvent(tenantId, order, "ORDER_SHIP_REQUESTED", "order.ship.requested.v1");
-        try {
-            inventoryReservationClient.stockOut(tenantId, SYSTEM_OPERATOR_ID, order, items);
-            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIPPED, null);
-        } catch (BusinessException ex) {
-            updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIP_FAILED, truncateFailureReason(ex.getMessage()));
-            throw ex;
-        }
+        appendOutboxEvent(tenantId, order, items, "ORDER_SHIP_REQUESTED", "order.ship.requested.v1");
+        updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.SHIP_PENDING, null);
         return getById(order.getId());
     }
 
@@ -266,7 +264,10 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         }
     }
 
-    private void appendOutboxEvent(Long tenantId, SalesOrder order, String eventType, String topic) {
+    /**
+     * 追加 Outbox 事件，保证“业务落库”和“消息发送”解耦并最终一致。
+     */
+    private void appendOutboxEvent(Long tenantId, SalesOrder order, List<SalesOrderItem> items, String eventType, String topic) {
         if (outboxEventMapper == null) {
             return;
         }
@@ -278,7 +279,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
         event.setEventType(eventType);
         event.setEventKey(order.getOrderNo());
         event.setTopic(topic);
-        event.setPayloadJson(buildOutboxPayload(order, eventType));
+        event.setPayloadJson(buildOutboxPayload(event.getEventId(), order, items, eventType));
         event.setStatus(OutboxEventStatus.NEW.name());
         event.setRetryCount(0);
         event.setNextRetryTime(null);
@@ -287,14 +288,26 @@ public class SalesOrderServiceImpl implements SalesOrderService {
                 event.getEventId(), eventType, topic, order.getOrderNo());
     }
 
-    private String buildOutboxPayload(SalesOrder order, String eventType) {
-        return String.format(
-                "{\"eventType\":\"%s\",\"tenantId\":%d,\"orderId\":%d,\"orderNo\":\"%s\",\"warehouseId\":%d}",
-                eventType,
-                order.getTenantId(),
-                order.getId(),
-                order.getOrderNo(),
-                order.getWarehouseId()
-        );
+    /**
+     * 构造销售订单事件消息体并序列化为 JSON。
+     */
+    private String buildOutboxPayload(String eventId, SalesOrder order, List<SalesOrderItem> items, String eventType) {
+        SalesOrderEventPayload payload = new SalesOrderEventPayload();
+        payload.setEventId(eventId);
+        payload.setEventType(eventType);
+        payload.setTenantId(order.getTenantId());
+        payload.setOrderId(order.getId());
+        payload.setOrderNo(order.getOrderNo());
+        payload.setWarehouseId(order.getWarehouseId());
+        List<SalesOrderEventItemPayload> payloadItems = new ArrayList<>();
+        for (SalesOrderItem item : items) {
+            SalesOrderEventItemPayload payloadItem = new SalesOrderEventItemPayload();
+            payloadItem.setMaterialId(item.getMaterialId());
+            payloadItem.setLocationId(item.getLocationId());
+            payloadItem.setQuantity(item.getSaleQty());
+            payloadItems.add(payloadItem);
+        }
+        payload.setItems(payloadItems);
+        return JSON.toJSONString(payload);
     }
 }
