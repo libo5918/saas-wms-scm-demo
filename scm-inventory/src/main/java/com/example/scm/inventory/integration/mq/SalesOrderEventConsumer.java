@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 销售订单事件消费者。
@@ -322,8 +323,13 @@ public class SalesOrderEventConsumer {
                 "value", record.value(),
                 "reason", reason == null ? "unknown" : reason
         ));
-        kafkaTemplate.send(deadLetterTopic, record.key(), payload);
-        consumeDeadLetterCounter.increment();
+        try {
+            kafkaTemplate.send(deadLetterTopic, record.key(), payload).get(5, TimeUnit.SECONDS);
+            consumeDeadLetterCounter.increment();
+        } catch (Exception e) {
+            log.error("Publish request dead-letter failed, dlqTopic={}, sourceTopic={}, partition={}, offset={}",
+                    deadLetterTopic, record.topic(), record.partition(), record.offset(), e);
+        }
     }
 
     private SalesOrderEvent tryParse(ConsumerRecord<String, String> record) {

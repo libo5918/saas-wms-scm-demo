@@ -19,6 +19,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.concurrent.TimeUnit;
+
 @Component
 @Slf4j
 public class InventoryCancelResultConsumer {
@@ -137,7 +139,12 @@ public class InventoryCancelResultConsumer {
                 + "\"key\":\"" + (record.key() == null ? "" : record.key().replace("\"", "\\\"")) + "\","
                 + "\"value\":" + JSON.toJSONString(record.value()) + ","
                 + "\"reason\":\"" + escapedReason + "\"}";
-        kafkaTemplate.send(deadLetterTopic, record.key(), payload);
-        consumedDeadLetterCounter.increment();
+        try {
+            kafkaTemplate.send(deadLetterTopic, record.key(), payload).get(5, TimeUnit.SECONDS);
+            consumedDeadLetterCounter.increment();
+        } catch (Exception e) {
+            log.error("Publish cancel-result dead-letter failed, dlqTopic={}, sourceTopic={}, partition={}, offset={}",
+                    deadLetterTopic, record.topic(), record.partition(), record.offset(), e);
+        }
     }
 }
