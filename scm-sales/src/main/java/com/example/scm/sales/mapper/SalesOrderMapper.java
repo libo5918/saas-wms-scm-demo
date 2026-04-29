@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Mapper
@@ -19,6 +20,29 @@ public interface SalesOrderMapper {
     Optional<SalesOrder> selectByOrderNo(@Param("tenantId") Long tenantId, @Param("orderNo") String orderNo);
 
     List<SalesOrder> selectByTenantId(@Param("tenantId") Long tenantId);
+
+    @Select("""
+            SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,
+                   created_by, created_at, updated_by, updated_at, deleted
+            FROM sales_order
+            WHERE tenant_id = #{tenantId}
+              AND deleted = 0
+              AND order_status = #{status}
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    List<SalesOrder> selectByStatus(@Param("tenantId") Long tenantId,
+                                    @Param("status") String status,
+                                    @Param("limit") int limit);
+
+    @Select("""
+            SELECT order_status AS orderStatus, COUNT(1) AS total
+            FROM sales_order
+            WHERE tenant_id = #{tenantId}
+              AND deleted = 0
+            GROUP BY order_status
+            """)
+    List<Map<String, Object>> countByStatus(@Param("tenantId") Long tenantId);
 
     @Select("""
             SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,

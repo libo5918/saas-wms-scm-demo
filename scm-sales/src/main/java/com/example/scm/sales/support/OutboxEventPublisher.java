@@ -24,6 +24,7 @@ public class OutboxEventPublisher {
 
     private final OutboxEventMapper outboxEventMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final boolean publisherEnabled;
     private final int fetchLimit;
     private final int maxRetries;
     private final int retryBackoffMinutes;
@@ -34,6 +35,7 @@ public class OutboxEventPublisher {
 
     public OutboxEventPublisher(OutboxEventMapper outboxEventMapper,
                                 KafkaTemplate<String, String> kafkaTemplate,
+                                @Value("${outbox.publisher.enabled:true}") boolean publisherEnabled,
                                 @Value("${outbox.publisher.fetch-limit:100}") int fetchLimit,
                                 @Value("${outbox.publisher.max-retries:20}") int maxRetries,
                                 @Value("${outbox.publisher.retry-backoff-minutes:1}") int retryBackoffMinutes,
@@ -42,6 +44,7 @@ public class OutboxEventPublisher {
                                 MeterRegistry meterRegistry) {
         this.outboxEventMapper = outboxEventMapper;
         this.kafkaTemplate = kafkaTemplate;
+        this.publisherEnabled = publisherEnabled;
         this.fetchLimit = fetchLimit;
         this.maxRetries = maxRetries;
         this.retryBackoffMinutes = retryBackoffMinutes;
@@ -53,6 +56,10 @@ public class OutboxEventPublisher {
 
     @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
     public void publishPendingEvents() {
+        if (!publisherEnabled) {
+            log.debug("Outbox publisher is disabled by config: outbox.publisher.enabled=false");
+            return;
+        }
         List<OutboxEvent> pendingEvents = outboxEventMapper.selectPending(fetchLimit);
         for (OutboxEvent event : pendingEvents) {
             try {

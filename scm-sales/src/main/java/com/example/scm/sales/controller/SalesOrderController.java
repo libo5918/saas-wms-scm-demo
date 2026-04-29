@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/sales-orders")
@@ -76,5 +77,18 @@ public class SalesOrderController {
     @Operation(summary = "查询销售订单列表", description = "查询当前租户下的销售订单列表。")
     public Result<List<SalesOrderVO>> list() {
         return Result.success(salesOrderService.list());
+    }
+
+    @GetMapping("/stats/status")
+    @Operation(summary = "查询销售订单状态统计", description = "返回当前租户下各订单状态数量")
+    public Result<Map<String, Long>> statusStats() {
+        return Result.success(salesOrderService.statusStats());
+    }
+
+    @GetMapping("/by-status")
+    @Operation(summary = "按状态查询销售订单", description = "按订单状态筛选并返回最近订单列表")
+    public Result<List<SalesOrderVO>> listByStatus(@RequestParam("status") String status,
+                                                   @RequestParam(value = "limit", defaultValue = "20") Integer limit) {
+        return Result.success(salesOrderService.listByStatus(status, limit));
     }
 }

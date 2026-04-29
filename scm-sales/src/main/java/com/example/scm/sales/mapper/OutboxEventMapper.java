@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.List;
 
 @Mapper
@@ -98,4 +99,51 @@ public interface OutboxEventMapper {
             WHERE id = #{id}
             """)
     int markDiscarded(@Param("id") Long id);
+
+    @Select("""
+            SELECT status, COUNT(1) AS total
+            FROM outbox_event
+            GROUP BY status
+            """)
+    List<Map<String, Object>> countByStatus();
+
+    @Select("""
+            SELECT id, tenant_id, event_id, aggregate_type, aggregate_id, event_type, event_key, topic,
+                   payload_json, status, retry_count, next_retry_time, created_at, updated_at
+            FROM outbox_event
+            WHERE (#{status} IS NULL OR status = #{status})
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    List<OutboxEvent> selectLatest(@Param("status") String status, @Param("limit") int limit);
+
+    @Update("""
+            UPDATE outbox_event
+            SET status = 'NEW',
+                retry_count = 0,
+                next_retry_time = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = #{id}
+              AND status IN ('FAILED', 'DISCARDED')
+            """)
+    int requeue(@Param("id") Long id);
+
+    @Update("""
+            UPDATE outbox_event
+            SET status = 'NEW',
+                retry_count = 0,
+                next_retry_time = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status = #{status}
+              AND id IN (
+                  SELECT id FROM (
+                      SELECT id
+                      FROM outbox_event
+                      WHERE status = #{status}
+                      ORDER BY id ASC
+                      LIMIT #{limit}
+                  ) t
+              )
+            """)
+    int requeueByStatus(@Param("status") String status, @Param("limit") int limit);
 }

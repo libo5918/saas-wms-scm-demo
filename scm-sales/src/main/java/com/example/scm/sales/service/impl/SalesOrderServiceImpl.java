@@ -30,7 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -194,6 +196,36 @@ public class SalesOrderServiceImpl implements SalesOrderService {
             updateOrderStatus(tenantId, order.getId(), SalesOrderStatus.CANCELLED, null);
         }
         return getById(order.getId());
+    }
+
+    @Override
+    public Map<String, Long> statusStats() {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        List<Map<String, Object>> rows = salesOrderMapper.countByStatus(tenantId);
+        Map<String, Long> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object status = row.get("orderStatus");
+            Object total = row.get("total");
+            if (status != null && total instanceof Number number) {
+                result.put(String.valueOf(status), number.longValue());
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<SalesOrderVO> listByStatus(String status, Integer limit) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        SalesOrderStatus targetStatus;
+        try {
+            targetStatus = SalesOrderStatus.valueOf(status);
+        } catch (Exception ex) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Invalid sales order status: " + status);
+        }
+        int safeLimit = Math.min(Math.max(limit == null ? 20 : limit, 1), 200);
+        return salesOrderMapper.selectByStatus(tenantId, targetStatus.name(), safeLimit).stream()
+                .map(order -> toVO(order, salesOrderItemMapper.selectByOrderId(tenantId, order.getId())))
+                .toList();
     }
 
     private SalesOrder createOrderInTransaction(Long tenantId, CreateSalesOrderRequest request) {
