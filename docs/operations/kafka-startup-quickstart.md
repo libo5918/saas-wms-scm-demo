@@ -32,7 +32,7 @@ bash docs/operations/scripts/check-kafka-topics.sh kafka-1:29092 3 1 1
 如果在宿主机执行但 Kafka CLI 在容器里，使用：
 
 ```bash
-USE_DOCKER=true KAFKA_CONTAINER=kafka-1 bash docs/operations/scripts/check-kafka-topics.sh kafka-1:29092 3 3 2
+bash docs/operations/scripts/check-kafka-topics.sh --docker --container kafka-1 kafka-1:29092 3 3 2
 ```
 
 若输出 `All topic checks passed.`，再启动服务。
@@ -48,7 +48,7 @@ bash docs/operations/scripts/preflight-check.sh
 容器模式（推荐）：
 
 ```bash
-USE_DOCKER=true KAFKA_CONTAINER=kafka-1 bash docs/operations/scripts/preflight-check.sh kafka-1:29092 3 3 2 http://localhost:18084 http://localhost:18085
+bash docs/operations/scripts/preflight-check.sh --docker --container kafka-1 --host host.docker.internal kafka-1:29092 3 3 2
 ```
 
 该脚本会校验：

@@ -4,6 +4,26 @@ set -euo pipefail
 USE_DOCKER="${USE_DOCKER:-false}"
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-kafka-1}"
 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --docker)
+      USE_DOCKER="true"
+      shift
+      ;;
+    --container)
+      KAFKA_CONTAINER="${2:?missing container name}"
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: check-kafka-topics.sh [--docker] [--container <name>] [bootstrap partitions replication min_isr]"
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 BOOTSTRAP_SERVER="${1:-kafka-1:29092}"
 EXPECTED_PARTITIONS="${2:-3}"
 EXPECTED_REPLICATION="${3:-1}"
