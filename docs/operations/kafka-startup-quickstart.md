@@ -51,6 +51,12 @@ bash docs/operations/scripts/preflight-check.sh
 bash docs/operations/scripts/preflight-check.sh --docker --container kafka-1 --host host.docker.internal kafka-1:29092 3 3 2
 ```
 
+PowerShell 一键执行（推荐）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File docs/operations/scripts/preflight-check.ps1
+```
+
 该脚本会校验：
 
 1. Topic 契约参数
