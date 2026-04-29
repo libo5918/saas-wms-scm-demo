@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+USE_DOCKER="${USE_DOCKER:-false}"
+KAFKA_CONTAINER="${KAFKA_CONTAINER:-kafka-1}"
+
 BOOTSTRAP_SERVER="${1:-kafka-1:29092}"
 EXPECTED_PARTITIONS="${2:-3}"
 EXPECTED_REPLICATION="${3:-1}"
@@ -17,13 +20,32 @@ TOPICS=(
 
 echo "Bootstrap: ${BOOTSTRAP_SERVER}"
 echo "Expected partitions=${EXPECTED_PARTITIONS}, replication=${EXPECTED_REPLICATION}, min.insync.replicas=${EXPECTED_MIN_ISR}"
+echo "Mode: $([[ "${USE_DOCKER}" == "true" ]] && echo "docker(${KAFKA_CONTAINER})" || echo "local")"
 echo
+
+run_kafka_topics_describe() {
+  local topic="$1"
+  if [[ "${USE_DOCKER}" == "true" ]]; then
+    docker exec -i "${KAFKA_CONTAINER}" kafka-topics --bootstrap-server "${BOOTSTRAP_SERVER}" --describe --topic "${topic}"
+  else
+    kafka-topics.sh --bootstrap-server "${BOOTSTRAP_SERVER}" --describe --topic "${topic}"
+  fi
+}
+
+run_kafka_configs_describe() {
+  local topic="$1"
+  if [[ "${USE_DOCKER}" == "true" ]]; then
+    docker exec -i "${KAFKA_CONTAINER}" kafka-configs --bootstrap-server "${BOOTSTRAP_SERVER}" --entity-type topics --entity-name "${topic}" --describe
+  else
+    kafka-configs.sh --bootstrap-server "${BOOTSTRAP_SERVER}" --entity-type topics --entity-name "${topic}" --describe
+  fi
+}
 
 check_topic() {
   local topic="$1"
   local describe_output
 
-  if ! describe_output="$(kafka-topics.sh --bootstrap-server "${BOOTSTRAP_SERVER}" --describe --topic "${topic}" 2>/dev/null)"; then
+  if ! describe_output="$(run_kafka_topics_describe "${topic}" 2>/dev/null)"; then
     echo "[FAIL] ${topic}: topic not found"
     return 1
   fi
@@ -34,7 +56,11 @@ check_topic() {
   replication_factor="$(echo "${describe_output}" | sed -n 's/.*ReplicationFactor: \([0-9]\+\).*/\1/p' | head -n 1)"
 
   local min_isr
-  min_isr="$(kafka-configs.sh --bootstrap-server "${BOOTSTRAP_SERVER}" --entity-type topics --entity-name "${topic}" --describe 2>/dev/null | sed -n 's/.*min.insync.replicas=\([0-9]\+\).*/\1/p' | head -n 1)"
+  # Prefer parsing from topic describe output (stable in both local and docker mode).
+  min_isr="$(echo "${describe_output}" | sed -n 's/.*Configs:.*min\.insync\.replicas=\([0-9]\+\).*/\1/p' | head -n 1)"
+  if [[ -z "${min_isr}" ]]; then
+    min_isr="$(run_kafka_configs_describe "${topic}" 2>/dev/null | sed -n 's/.*min\.insync\.replicas=\([0-9]\+\).*/\1/p' | head -n 1)"
+  fi
   min_isr="${min_isr:-1}"
 
   local ok=0

@@ -29,7 +29,34 @@ bash docs/operations/scripts/create-kafka-topics.sh kafka-1:29092 3 1 1
 bash docs/operations/scripts/check-kafka-topics.sh kafka-1:29092 3 1 1
 ```
 
+如果在宿主机执行但 Kafka CLI 在容器里，使用：
+
+```bash
+USE_DOCKER=true KAFKA_CONTAINER=kafka-1 bash docs/operations/scripts/check-kafka-topics.sh kafka-1:29092 3 3 2
+```
+
 若输出 `All topic checks passed.`，再启动服务。
+
+## 一键发布前自检（推荐）
+
+当 topic 和服务都已启动后，执行：
+
+```bash
+bash docs/operations/scripts/preflight-check.sh
+```
+
+容器模式（推荐）：
+
+```bash
+USE_DOCKER=true KAFKA_CONTAINER=kafka-1 bash docs/operations/scripts/preflight-check.sh kafka-1:29092 3 3 2 http://localhost:18084 http://localhost:18085
+```
+
+该脚本会校验：
+
+1. Topic 契约参数
+2. `scm-inventory` / `scm-sales` 健康状态
+3. Actuator metrics 可达性
+4. 关键消费失败与 DLQ 指标存在性
 
 ## 启动后建议验证
 
