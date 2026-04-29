@@ -15,8 +15,11 @@ import com.example.scm.inventory.integration.mq.dto.InventoryCancelResultEvent;
 import com.example.scm.inventory.integration.mq.dto.InventoryShipResultEvent;
 import com.example.scm.inventory.integration.mq.dto.SalesOrderEvent;
 import com.example.scm.inventory.integration.mq.dto.SalesOrderEventItem;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -35,10 +38,14 @@ import java.util.UUID;
 public class SalesOrderEventConsumer {
 
     private static final Long SYSTEM_OPERATOR_ID = 1L;
-    private static final String CONSUMER_GROUP = "scm-inventory-order-consumer";
     private static final String BIZ_TYPE = "SALES_ORDER";
-    private static final String SHIP_RESULT_TOPIC = "inventory.ship.result.v1";
-    private static final String CANCEL_RESULT_TOPIC = "inventory.cancel.result.v1";
+    private final String consumerGroup;
+    private final String shipResultTopic;
+    private final String cancelResultTopic;
+    private final String deadLetterTopic;
+    private final Counter consumeSuccessCounter;
+    private final Counter consumeFailedCounter;
+    private final Counter consumeDeadLetterCounter;
 
     private final MqConsumeLogMapper mqConsumeLogMapper;
     private final InventoryLockedStockOutApplicationService lockedStockOutApplicationService;
@@ -48,78 +55,116 @@ public class SalesOrderEventConsumer {
     public SalesOrderEventConsumer(MqConsumeLogMapper mqConsumeLogMapper,
                                    InventoryLockedStockOutApplicationService lockedStockOutApplicationService,
                                    InventoryStockUnlockApplicationService stockUnlockApplicationService,
-                                   KafkaTemplate<String, String> kafkaTemplate) {
+                                   KafkaTemplate<String, String> kafkaTemplate,
+                                   @Value("${mq.consumer-groups.inventory-order:scm-inventory-order-consumer}") String consumerGroup,
+                                   @Value("${mq.topics.inventory-ship-result:inventory.ship.result.v1}") String shipResultTopic,
+                                   @Value("${mq.topics.inventory-cancel-result:inventory.cancel.result.v1}") String cancelResultTopic,
+                                   @Value("${mq.topics.sales-order-dlq:sales.order.requested.dlq.v1}") String deadLetterTopic,
+                                   MeterRegistry meterRegistry) {
         this.mqConsumeLogMapper = mqConsumeLogMapper;
         this.lockedStockOutApplicationService = lockedStockOutApplicationService;
         this.stockUnlockApplicationService = stockUnlockApplicationService;
         this.kafkaTemplate = kafkaTemplate;
+        this.consumerGroup = consumerGroup;
+        this.shipResultTopic = shipResultTopic;
+        this.cancelResultTopic = cancelResultTopic;
+        this.deadLetterTopic = deadLetterTopic;
+        this.consumeSuccessCounter = meterRegistry.counter("scm.inventory.mq.consume.success");
+        this.consumeFailedCounter = meterRegistry.counter("scm.inventory.mq.consume.failed");
+        this.consumeDeadLetterCounter = meterRegistry.counter("scm.inventory.mq.consume.dead-letter");
     }
 
-    @KafkaListener(topics = "order.ship.requested.v1", groupId = CONSUMER_GROUP)
+    @KafkaListener(topics = "${mq.topics.order-ship-requested:order.ship.requested.v1}", groupId = "${mq.consumer-groups.inventory-order:scm-inventory-order-consumer}")
     public void onShipRequested(ConsumerRecord<String, String> record) {
         log.info("order.ship.requested.v1 topic={}, partition={}, offset={}, key={}, value={}",
                 record.topic(), record.partition(), record.offset(), record.key(), record.value());
-        SalesOrderEvent event = parseEvent(record);
-        if (!normalizeAndValidateEvent(event, record)) {
-            return;
-        }
-        if (isDuplicated(event, record.topic())) {
-            return;
-        }
-
         try {
+            SalesOrderEvent event = parseEvent(record);
+            if (!normalizeAndValidateEvent(event, record)) {
+                return;
+            }
+            if (isDuplicated(event, record.topic())) {
+                return;
+            }
             TenantContext.setTenantId(event.getTenantId());
             lockedStockOutApplicationService.stockOut(toStockOutCommand(event));
             publishShipResult(event, "SUCCESS", null);
             markConsumed(event, record.topic());
+            consumeSuccessCounter.increment();
             log.info("Consume ship event success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
                     record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
         } catch (BusinessException ex) {
+            consumeFailedCounter.increment();
+            SalesOrderEvent event = tryParse(record);
             if ("Duplicate stock-out request".equals(ex.getMessage())) {
-                publishShipResult(event, "SUCCESS", null);
-                markConsumed(event, record.topic());
-                log.info("Consume ship event as idempotent success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
-                        record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+                if (event != null) {
+                    publishShipResult(event, "SUCCESS", null);
+                    markConsumed(event, record.topic());
+                    consumeSuccessCounter.increment();
+                    log.info("Consume ship event as idempotent success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
+                            record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+                }
                 return;
             }
-            publishShipResult(event, "FAILED", ex.getMessage());
-            markConsumed(event, record.topic());
-            throw ex;
+            if (event != null) {
+                publishShipResult(event, "FAILED", ex.getMessage());
+                markConsumed(event, record.topic());
+            } else {
+                publishDeadLetter(record, ex.getMessage());
+            }
+        } catch (Exception ex) {
+            consumeFailedCounter.increment();
+            publishDeadLetter(record, ex.getMessage());
+            log.error("Consume ship event failed and published to DLQ, topic={}, partition={}, offset={}",
+                    record.topic(), record.partition(), record.offset(), ex);
         } finally {
             TenantContext.clear();
         }
     }
 
-    @KafkaListener(topics = "order.cancel.requested.v1", groupId = CONSUMER_GROUP)
+    @KafkaListener(topics = "${mq.topics.order-cancel-requested:order.cancel.requested.v1}", groupId = "${mq.consumer-groups.inventory-order:scm-inventory-order-consumer}")
     public void onCancelRequested(ConsumerRecord<String, String> record) {
         log.info("order.cancel.requested.v1 topic={}, partition={}, offset={}, key={}, value={}",
                 record.topic(), record.partition(), record.offset(), record.key(), record.value());
-        SalesOrderEvent event = parseEvent(record);
-        if (!normalizeAndValidateEvent(event, record)) {
-            return;
-        }
-        if (isDuplicated(event, record.topic())) {
-            return;
-        }
-
         try {
+            SalesOrderEvent event = parseEvent(record);
+            if (!normalizeAndValidateEvent(event, record)) {
+                return;
+            }
+            if (isDuplicated(event, record.topic())) {
+                return;
+            }
             TenantContext.setTenantId(event.getTenantId());
             stockUnlockApplicationService.unlock(toUnlockCommand(event));
             publishCancelResult(event, "SUCCESS", null);
             markConsumed(event, record.topic());
+            consumeSuccessCounter.increment();
             log.info("Consume cancel event success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
                     record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
         } catch (BusinessException ex) {
+            consumeFailedCounter.increment();
+            SalesOrderEvent event = tryParse(record);
             if ("Duplicate stock-unlock request".equals(ex.getMessage())) {
-                publishCancelResult(event, "SUCCESS", null);
-                markConsumed(event, record.topic());
-                log.info("Consume cancel event as idempotent success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
-                        record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+                if (event != null) {
+                    publishCancelResult(event, "SUCCESS", null);
+                    markConsumed(event, record.topic());
+                    consumeSuccessCounter.increment();
+                    log.info("Consume cancel event as idempotent success, topic={}, partition={}, offset={}, eventId={}, orderNo={}",
+                            record.topic(), record.partition(), record.offset(), event.getEventId(), event.getOrderNo());
+                }
                 return;
             }
-            publishCancelResult(event, "FAILED", ex.getMessage());
-            markConsumed(event, record.topic());
-            throw ex;
+            if (event != null) {
+                publishCancelResult(event, "FAILED", ex.getMessage());
+                markConsumed(event, record.topic());
+            } else {
+                publishDeadLetter(record, ex.getMessage());
+            }
+        } catch (Exception ex) {
+            consumeFailedCounter.increment();
+            publishDeadLetter(record, ex.getMessage());
+            log.error("Consume cancel event failed and published to DLQ, topic={}, partition={}, offset={}",
+                    record.topic(), record.partition(), record.offset(), ex);
         } finally {
             TenantContext.clear();
         }
@@ -168,7 +213,7 @@ public class SalesOrderEventConsumer {
      * 幂等检查：事件已消费则跳过。
      */
     private boolean isDuplicated(SalesOrderEvent event, String topic) {
-        int duplicated = mqConsumeLogMapper.countByUniqueKey(CONSUMER_GROUP, topic, event.getEventId());
+        int duplicated = mqConsumeLogMapper.countByUniqueKey(consumerGroup, topic, event.getEventId());
         if (duplicated > 0) {
             log.info("Skip duplicated sales event, topic={}, eventId={}, orderNo={}",
                     topic, event.getEventId(), event.getOrderNo());
@@ -183,7 +228,7 @@ public class SalesOrderEventConsumer {
     private void markConsumed(SalesOrderEvent event, String topic) {
         mqConsumeLogMapper.insertIgnore(
                 event.getTenantId(),
-                CONSUMER_GROUP,
+                consumerGroup,
                 topic,
                 event.getEventId(),
                 event.getOrderNo()
@@ -254,7 +299,7 @@ public class SalesOrderEventConsumer {
         result.setOrderNo(event.getOrderNo());
         result.setStatus(status);
         result.setFailureReason(failureReason);
-        kafkaTemplate.send(SHIP_RESULT_TOPIC, event.getOrderNo(), JSON.toJSONString(result));
+        kafkaTemplate.send(shipResultTopic, event.getOrderNo(), JSON.toJSONString(result));
     }
 
     private void publishCancelResult(SalesOrderEvent event, String status, String failureReason) {
@@ -265,6 +310,27 @@ public class SalesOrderEventConsumer {
         result.setOrderNo(event.getOrderNo());
         result.setStatus(status);
         result.setFailureReason(failureReason);
-        kafkaTemplate.send(CANCEL_RESULT_TOPIC, event.getOrderNo(), JSON.toJSONString(result));
+        kafkaTemplate.send(cancelResultTopic, event.getOrderNo(), JSON.toJSONString(result));
+    }
+
+    private void publishDeadLetter(ConsumerRecord<String, String> record, String reason) {
+        String payload = JSON.toJSONString(java.util.Map.of(
+                "sourceTopic", record.topic(),
+                "partition", record.partition(),
+                "offset", record.offset(),
+                "key", record.key(),
+                "value", record.value(),
+                "reason", reason == null ? "unknown" : reason
+        ));
+        kafkaTemplate.send(deadLetterTopic, record.key(), payload);
+        consumeDeadLetterCounter.increment();
+    }
+
+    private SalesOrderEvent tryParse(ConsumerRecord<String, String> record) {
+        try {
+            return JSON.parseObject(record.value(), SalesOrderEvent.class);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

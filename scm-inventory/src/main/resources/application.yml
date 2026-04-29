@@ -35,3 +35,17 @@ knife4j:
 integration:
   mdm:
     base-url: http://127.0.0.1:18082
+mq:
+  topics:
+    order-ship-requested: order.ship.requested.v1
+    order-cancel-requested: order.cancel.requested.v1
+    inventory-ship-result: inventory.ship.result.v1
+    inventory-cancel-result: inventory.cancel.result.v1
+    sales-order-dlq: sales.order.requested.dlq.v1
+  consumer-groups:
+    inventory-order: scm-inventory-order-consumer
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

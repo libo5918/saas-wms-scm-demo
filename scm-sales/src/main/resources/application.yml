@@ -43,6 +43,9 @@ integration:
 outbox:
   publisher:
     fixed-delay-ms: 5000
+    fetch-limit: 100
+    max-retries: 20
+    retry-backoff-minutes: 1
 compensation:
   pending-order:
     fixed-delay-ms: 60000
@@ -50,3 +53,18 @@ compensation:
     limit: 100
     cooldown-minutes: 15
     max-events-per-order: 5
+mq:
+  topics:
+    order-ship-requested: order.ship.requested.v1
+    order-cancel-requested: order.cancel.requested.v1
+    inventory-ship-result: inventory.ship.result.v1
+    inventory-cancel-result: inventory.cancel.result.v1
+    sales-inventory-result-dlq: sales.inventory.result.dlq.v1
+  consumer-groups:
+    sales-ship-result: scm-sales-ship-result-consumer
+    sales-cancel-result: scm-sales-cancel-result-consumer
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

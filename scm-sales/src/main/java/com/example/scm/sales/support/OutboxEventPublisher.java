@@ -2,8 +2,11 @@ package com.example.scm.sales.support;
 
 import com.example.scm.sales.entity.OutboxEvent;
 import com.example.scm.sales.mapper.OutboxEventMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -21,16 +24,36 @@ public class OutboxEventPublisher {
 
     private final OutboxEventMapper outboxEventMapper;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final int fetchLimit;
+    private final int maxRetries;
+    private final int retryBackoffMinutes;
+    private final String shipRequestedTopic;
+    private final String cancelRequestedTopic;
+    private final Counter publishSuccessCounter;
+    private final Counter publishFailedCounter;
 
     public OutboxEventPublisher(OutboxEventMapper outboxEventMapper,
-                                KafkaTemplate<String, String> kafkaTemplate) {
+                                KafkaTemplate<String, String> kafkaTemplate,
+                                @Value("${outbox.publisher.fetch-limit:100}") int fetchLimit,
+                                @Value("${outbox.publisher.max-retries:20}") int maxRetries,
+                                @Value("${outbox.publisher.retry-backoff-minutes:1}") int retryBackoffMinutes,
+                                @Value("${mq.topics.order-ship-requested:order.ship.requested.v1}") String shipRequestedTopic,
+                                @Value("${mq.topics.order-cancel-requested:order.cancel.requested.v1}") String cancelRequestedTopic,
+                                MeterRegistry meterRegistry) {
         this.outboxEventMapper = outboxEventMapper;
         this.kafkaTemplate = kafkaTemplate;
+        this.fetchLimit = fetchLimit;
+        this.maxRetries = maxRetries;
+        this.retryBackoffMinutes = retryBackoffMinutes;
+        this.shipRequestedTopic = shipRequestedTopic;
+        this.cancelRequestedTopic = cancelRequestedTopic;
+        this.publishSuccessCounter = meterRegistry.counter("scm.sales.outbox.publish.success");
+        this.publishFailedCounter = meterRegistry.counter("scm.sales.outbox.publish.failed");
     }
 
     @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
     public void publishPendingEvents() {
-        List<OutboxEvent> pendingEvents = outboxEventMapper.selectPending(100);
+        List<OutboxEvent> pendingEvents = outboxEventMapper.selectPending(fetchLimit);
         for (OutboxEvent event : pendingEvents) {
             try {
                 String topic = resolveTopic(event);
@@ -38,10 +61,17 @@ public class OutboxEventPublisher {
                 log.info("Publish outbox event success, eventId={}, topic={}, eventType={}, eventKey={}",
                         event.getEventId(), topic, event.getEventType(), event.getEventKey());
                 outboxEventMapper.markSent(event.getId());
+                publishSuccessCounter.increment();
             } catch (Exception ex) {
+                publishFailedCounter.increment();
+                if (event.getRetryCount() >= maxRetries) {
+                    log.error("Publish outbox event failed and reached max retries, eventId={}, eventType={}, retryCount={}, maxRetries={}",
+                            event.getEventId(), event.getEventType(), event.getRetryCount(), maxRetries, ex);
+                    continue;
+                }
                 log.error("Publish outbox event failed, eventId={}, eventType={}, topic={}",
                         event.getEventId(), event.getEventType(), event.getTopic(), ex);
-                outboxEventMapper.markFailed(event.getId(), LocalDateTime.now().plusMinutes(1));
+                outboxEventMapper.markFailed(event.getId(), LocalDateTime.now().plusMinutes(retryBackoffMinutes));
             }
         }
     }
@@ -51,8 +81,8 @@ public class OutboxEventPublisher {
             return event.getTopic();
         }
         return switch (event.getEventType()) {
-            case "ORDER_SHIP_REQUESTED" -> "order.ship.requested.v1";
-            case "ORDER_CANCEL_REQUESTED" -> "order.cancel.requested.v1";
+            case "ORDER_SHIP_REQUESTED" -> shipRequestedTopic;
+            case "ORDER_CANCEL_REQUESTED" -> cancelRequestedTopic;
             default -> throw new IllegalArgumentException("Unknown outbox event type: " + event.getEventType());
         };
     }
