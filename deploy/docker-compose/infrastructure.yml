@@ -44,6 +44,7 @@
     ports:
       - "18848:8848"
       - "19848:9848"
+      - "18081:8080"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8848/nacos/ || exit 1"]
       interval: 15s

@@ -1,6 +1,8 @@
 spring:
   application:
     name: scm-inventory
+  config:
+    import: "optional:nacos:${spring.application.name}.yaml?group=DEFAULT_GROUP&refreshEnabled=true"
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/scm_inventory?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
@@ -14,9 +16,20 @@ spring:
   cloud:
     nacos:
       discovery:
-        enabled: false
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
       config:
-        enabled: false
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
+        file-extension: yaml
         import-check:
           enabled: false
   sql:
