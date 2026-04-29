@@ -65,7 +65,8 @@ public class OutboxEventPublisher {
             } catch (Exception ex) {
                 publishFailedCounter.increment();
                 if (event.getRetryCount() >= maxRetries) {
-                    log.error("Publish outbox event failed and reached max retries, eventId={}, eventType={}, retryCount={}, maxRetries={}",
+                    outboxEventMapper.markDiscarded(event.getId());
+                    log.error("Publish outbox event failed and discarded after max retries, eventId={}, eventType={}, retryCount={}, maxRetries={}",
                             event.getEventId(), event.getEventType(), event.getRetryCount(), maxRetries, ex);
                     continue;
                 }

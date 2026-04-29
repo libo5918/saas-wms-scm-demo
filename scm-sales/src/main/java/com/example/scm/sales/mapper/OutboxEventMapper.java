@@ -90,4 +90,12 @@ public interface OutboxEventMapper {
             WHERE id = #{id}
             """)
     int markFailed(@Param("id") Long id, @Param("nextRetryTime") LocalDateTime nextRetryTime);
+
+    @Update("""
+            UPDATE outbox_event
+            SET status = 'DISCARDED',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = #{id}
+            """)
+    int markDiscarded(@Param("id") Long id);
 }
