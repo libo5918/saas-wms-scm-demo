@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
@@ -18,6 +19,19 @@ public interface SalesOrderMapper {
     Optional<SalesOrder> selectByOrderNo(@Param("tenantId") Long tenantId, @Param("orderNo") String orderNo);
 
     List<SalesOrder> selectByTenantId(@Param("tenantId") Long tenantId);
+
+    @Select("""
+            SELECT id, tenant_id, order_no, warehouse_id, order_status, failure_reason,
+                   created_by, created_at, updated_by, updated_at, deleted
+            FROM sales_order
+            WHERE deleted = 0
+              AND order_status IN ('SHIP_PENDING', 'CANCEL_PENDING')
+              AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= #{timeoutMinutes}
+            ORDER BY updated_at ASC
+            LIMIT #{limit}
+            """)
+    List<SalesOrder> selectTimeoutPending(@Param("timeoutMinutes") int timeoutMinutes,
+                                          @Param("limit") int limit);
 
     @Insert("""
             INSERT INTO sales_order(

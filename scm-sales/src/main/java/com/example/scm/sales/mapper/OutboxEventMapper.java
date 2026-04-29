@@ -37,6 +37,42 @@ public interface OutboxEventMapper {
             """)
     List<OutboxEvent> selectPending(@Param("limit") int limit);
 
+    @Select("""
+            SELECT COUNT(1)
+            FROM outbox_event
+            WHERE aggregate_type = #{aggregateType}
+              AND aggregate_id = #{aggregateId}
+              AND event_type = #{eventType}
+              AND status IN ('NEW', 'FAILED')
+            """)
+    int countUnsentByAggregate(@Param("aggregateType") String aggregateType,
+                               @Param("aggregateId") String aggregateId,
+                               @Param("eventType") String eventType);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM outbox_event
+            WHERE aggregate_type = #{aggregateType}
+              AND aggregate_id = #{aggregateId}
+              AND event_type = #{eventType}
+            """)
+    int countByAggregate(@Param("aggregateType") String aggregateType,
+                         @Param("aggregateId") String aggregateId,
+                         @Param("eventType") String eventType);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM outbox_event
+            WHERE aggregate_type = #{aggregateType}
+              AND aggregate_id = #{aggregateId}
+              AND event_type = #{eventType}
+              AND TIMESTAMPDIFF(MINUTE, created_at, NOW()) < #{cooldownMinutes}
+            """)
+    int countRecentByAggregate(@Param("aggregateType") String aggregateType,
+                               @Param("aggregateId") String aggregateId,
+                               @Param("eventType") String eventType,
+                               @Param("cooldownMinutes") int cooldownMinutes);
+
     @Update("""
             UPDATE outbox_event
             SET status = 'SENT',

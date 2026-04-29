@@ -43,3 +43,10 @@ integration:
 outbox:
   publisher:
     fixed-delay-ms: 5000
+compensation:
+  pending-order:
+    fixed-delay-ms: 60000
+    timeout-minutes: 10
+    limit: 100
+    cooldown-minutes: 15
+    max-events-per-order: 5
