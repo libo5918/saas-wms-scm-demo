@@ -101,7 +101,7 @@
       SW_OAP_ADDRESS: http://skywalking-oap:12800
       TZ: Asia/Shanghai
     ports:
-      - "18080:8080"
+      - "18088:8080"
 
 volumes:
   scm_mysql_data:

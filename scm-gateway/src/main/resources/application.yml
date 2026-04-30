@@ -1,5 +1,50 @@
-﻿spring:
+spring:
   application:
     name: scm-gateway
+  cloud:
+    nacos:
+      discovery:
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
+      config:
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
+        file-extension: yaml
+        import-check:
+          enabled: false
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth
+              uri: http://127.0.0.1:18086
+              predicates:
+                - Path=/api/v1/auth/**
+            - id: sales
+              uri: http://127.0.0.1:18085
+              predicates:
+                - Path=/api/v1/sales-orders/**,/api/v1/outbox/**
+            - id: inventory
+              uri: http://127.0.0.1:18084
+              predicates:
+                - Path=/api/v1/inventory/**
+            - id: mdm
+              uri: http://127.0.0.1:18082
+              predicates:
+                - Path=/api/v1/materials/**,/api/v1/warehouses/**,/api/v1/locations/**
+auth:
+  jwt:
+    secret: change-this-dev-secret-key-at-least-32-bytes
+security:
+  gateway:
+    internal-secret: scm-gateway-internal-dev-secret
 server:
-  port: 8080
+  port: 18080

@@ -1,4 +1,4 @@
-﻿package com.example.scm.gateway;
+package com.example.scm.gateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

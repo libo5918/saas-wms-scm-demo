@@ -38,4 +38,4 @@ docker compose -f infrastructure.yml down
 - Kafka: `19092`
 - SkyWalking OAP gRPC: `11800`
 - SkyWalking OAP HTTP: `12800`
-- SkyWalking UI: `18080`
+- SkyWalking UI: `18088`

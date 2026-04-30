@@ -62,3 +62,7 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+security:
+  gateway:
+    enforce: false
+    internal-secret: scm-gateway-internal-dev-secret
