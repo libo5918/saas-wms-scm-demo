@@ -25,19 +25,19 @@ spring:
         webflux:
           routes:
             - id: auth
-              uri: http://127.0.0.1:18086
+              uri: lb://scm-auth
               predicates:
                 - Path=/api/v1/auth/**
             - id: sales
-              uri: http://127.0.0.1:18085
+              uri: lb://scm-sales
               predicates:
                 - Path=/api/v1/sales-orders/**,/api/v1/outbox/**
             - id: inventory
-              uri: http://127.0.0.1:18084
+              uri: lb://scm-inventory
               predicates:
                 - Path=/api/v1/inventory/**
             - id: mdm
-              uri: http://127.0.0.1:18082
+              uri: lb://scm-mdm
               predicates:
                 - Path=/api/v1/materials/**,/api/v1/warehouses/**,/api/v1/locations/**
 auth:
