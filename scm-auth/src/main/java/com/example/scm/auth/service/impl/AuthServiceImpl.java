@@ -3,28 +3,28 @@ package com.example.scm.auth.service.impl;
 import com.example.scm.auth.dto.LoginRequest;
 import com.example.scm.auth.service.AuthService;
 import com.example.scm.auth.vo.LoginResponse;
+import com.example.scm.auth.vo.UserProfileResponse;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import com.example.scm.common.security.JwtTokenClaims;
+import com.example.scm.common.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Date;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class AuthServiceImpl implements AuthService {
 
-    private final String issuer;
-    private final String secret;
-    private final long expireSeconds;
+    private final JwtTokenProvider jwtTokenProvider;
     private final String demoUsername;
     private final String demoPassword;
     private final Long demoTenantId;
     private final Long demoUserId;
+    private final List<String> demoRoles;
 
     public AuthServiceImpl(@Value("${auth.jwt.issuer:scm-auth}") String issuer,
                            @Value("${auth.jwt.secret}") String secret,
@@ -32,14 +32,17 @@ public class AuthServiceImpl implements AuthService {
                            @Value("${auth.demo-user.username:admin}") String demoUsername,
                            @Value("${auth.demo-user.password:admin123}") String demoPassword,
                            @Value("${auth.demo-user.tenant-id:1}") Long demoTenantId,
-                           @Value("${auth.demo-user.user-id:10001}") Long demoUserId) {
-        this.issuer = issuer;
-        this.secret = secret;
-        this.expireSeconds = expireSeconds;
+                           @Value("${auth.demo-user.user-id:10001}") Long demoUserId,
+                           @Value("${auth.demo-user.roles:ROLE_ADMIN,ROLE_TENANT_ADMIN}") String demoRoles) {
+        this.jwtTokenProvider = new JwtTokenProvider(issuer, secret, expireSeconds);
         this.demoUsername = demoUsername;
         this.demoPassword = demoPassword;
         this.demoTenantId = demoTenantId;
         this.demoUserId = demoUserId;
+        this.demoRoles = Arrays.stream(demoRoles.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -47,26 +50,49 @@ public class AuthServiceImpl implements AuthService {
         if (!demoUsername.equals(request.getUsername()) || !demoPassword.equals(request.getPassword())) {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Invalid username or password");
         }
-        long now = Instant.now().getEpochSecond();
-        long expireAt = now + expireSeconds;
-        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        String token = Jwts.builder()
-                .issuer(issuer)
-                .subject(String.valueOf(demoUserId))
-                .claim("tenantId", demoTenantId)
-                .claim("userId", demoUserId)
-                .claim("username", demoUsername)
-                .issuedAt(new Date(now * 1000))
-                .expiration(new Date(expireAt * 1000))
-                .signWith(key)
-                .compact();
+        return buildLoginResponse(demoTenantId, demoUserId, demoUsername, demoRoles);
+    }
+
+    @Override
+    public LoginResponse refresh(String authorizationHeader) {
+        JwtTokenClaims claims = parseAuthorizationHeader(authorizationHeader);
+        return buildLoginResponse(claims.tenantId(), claims.userId(), claims.username(), claims.roles());
+    }
+
+    @Override
+    public UserProfileResponse currentUser(String authorizationHeader) {
+        JwtTokenClaims claims = parseAuthorizationHeader(authorizationHeader);
+        UserProfileResponse response = new UserProfileResponse();
+        response.setTenantId(claims.tenantId());
+        response.setUserId(claims.userId());
+        response.setUsername(claims.username());
+        response.setRoles(claims.roles());
+        return response;
+    }
+
+    @Override
+    public void logout(String authorizationHeader) {
+        parseAuthorizationHeader(authorizationHeader);
+    }
+
+    private JwtTokenClaims parseAuthorizationHeader(String authorizationHeader) {
+        if (!StringUtils.hasText(authorizationHeader) || !authorizationHeader.startsWith("Bearer ")) {
+            throw new BusinessException(CommonErrorCode.UNAUTHORIZED.code(), "Missing or invalid Authorization header");
+        }
+        return jwtTokenProvider.parseToken(authorizationHeader.substring(7));
+    }
+
+    private LoginResponse buildLoginResponse(Long tenantId, Long userId, String username, List<String> roles) {
+        String token = jwtTokenProvider.generateToken(tenantId, userId, username, roles);
+        JwtTokenClaims claims = jwtTokenProvider.parseToken(token);
         LoginResponse response = new LoginResponse();
         response.setAccessToken(token);
         response.setTokenType("Bearer");
-        response.setExpiresAt(expireAt);
-        response.setTenantId(demoTenantId);
-        response.setUserId(demoUserId);
-        response.setUsername(demoUsername);
+        response.setExpiresAt(claims.expiresAtEpochSecond());
+        response.setTenantId(tenantId);
+        response.setUserId(userId);
+        response.setUsername(username);
+        response.setRoles(roles);
         return response;
     }
 }

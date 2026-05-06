@@ -42,7 +42,9 @@ spring:
                 - Path=/api/v1/materials/**,/api/v1/warehouses/**,/api/v1/locations/**
 auth:
   jwt:
+    issuer: scm-auth
     secret: change-this-dev-secret-key-at-least-32-bytes
+    expire-seconds: 7200
 security:
   gateway:
     internal-secret: scm-gateway-internal-dev-secret

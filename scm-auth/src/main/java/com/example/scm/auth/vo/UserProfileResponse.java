@@ -2,39 +2,12 @@ package com.example.scm.auth.vo;
 
 import java.util.List;
 
-public class LoginResponse {
+public class UserProfileResponse {
 
-    private String accessToken;
-    private String tokenType;
-    private Long expiresAt;
     private Long tenantId;
     private Long userId;
     private String username;
     private List<String> roles;
-
-    public String getAccessToken() {
-        return accessToken;
-    }
-
-    public void setAccessToken(String accessToken) {
-        this.accessToken = accessToken;
-    }
-
-    public String getTokenType() {
-        return tokenType;
-    }
-
-    public void setTokenType(String tokenType) {
-        this.tokenType = tokenType;
-    }
-
-    public Long getExpiresAt() {
-        return expiresAt;
-    }
-
-    public void setExpiresAt(Long expiresAt) {
-        this.expiresAt = expiresAt;
-    }
 
     public Long getTenantId() {
         return tenantId;

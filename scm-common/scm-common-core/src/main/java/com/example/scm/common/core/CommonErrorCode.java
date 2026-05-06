@@ -2,6 +2,8 @@ package com.example.scm.common.core;
 
 public enum CommonErrorCode {
     BAD_REQUEST("400", "Bad request"),
+    UNAUTHORIZED("401", "Unauthorized"),
+    FORBIDDEN("403", "Forbidden"),
     NOT_FOUND("404", "Resource not found"),
     INTERNAL_ERROR("500", "Internal server error");
 

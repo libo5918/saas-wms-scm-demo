@@ -1,10 +1,11 @@
 package com.example.scm.gateway.filter;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.scm.common.core.BusinessException;
+import com.example.scm.common.security.GatewayHeaders;
+import com.example.scm.common.security.JwtTokenClaims;
+import com.example.scm.common.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -20,21 +21,13 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
 @Component
 public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final String HEADER_TENANT_ID = "X-Tenant-Id";
-    private static final String HEADER_USER_ID = "X-User-Id";
-    private static final String HEADER_USERNAME = "X-User-Name";
-    private static final String HEADER_GATEWAY_INTERNAL = "X-Gateway-Internal";
-    private static final String HEADER_GATEWAY_SECRET = "X-Gateway-Secret";
-
-    private final SecretKey secretKey;
+    private final JwtTokenProvider jwtTokenProvider;
     private final String internalSecret;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AntPathMatcher matcher = new AntPathMatcher();
@@ -44,10 +37,12 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
     );
 
     public JwtAuthGlobalFilter(
+            @Value("${auth.jwt.issuer:scm-auth}") String issuer,
             @Value("${auth.jwt.secret}") String secret,
+            @Value("${auth.jwt.expire-seconds:7200}") long expireSeconds,
             @Value("${security.gateway.internal-secret:}") String internalSecret
     ) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.jwtTokenProvider = new JwtTokenProvider(issuer, secret, expireSeconds);
         this.internalSecret = internalSecret;
     }
 
@@ -61,31 +56,20 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
         if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
             return unauthorized(exchange.getResponse(), "Missing or invalid Authorization header");
         }
-        String token = authHeader.substring(7);
-        Claims claims;
+        JwtTokenClaims claims;
         try {
-            claims = Jwts.parser()
-                    .verifyWith(secretKey)
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-        } catch (Exception ex) {
-            return unauthorized(exchange.getResponse(), "Invalid token");
-        }
-
-        Object tenantId = claims.get("tenantId");
-        Object userId = claims.get("userId");
-        Object username = claims.get("username");
-        if (tenantId == null || userId == null) {
-            return unauthorized(exchange.getResponse(), "Token missing tenantId or userId");
+            claims = jwtTokenProvider.parseToken(authHeader.substring(7));
+        } catch (BusinessException ex) {
+            return unauthorized(exchange.getResponse(), ex.getMessage());
         }
 
         ServerHttpRequest request = exchange.getRequest().mutate()
-                .header(HEADER_TENANT_ID, String.valueOf(tenantId))
-                .header(HEADER_USER_ID, String.valueOf(userId))
-                .header(HEADER_USERNAME, username == null ? "" : String.valueOf(username))
-                .header(HEADER_GATEWAY_INTERNAL, "true")
-                .header(HEADER_GATEWAY_SECRET, internalSecret)
+                .header(GatewayHeaders.TENANT_ID, String.valueOf(claims.tenantId()))
+                .header(GatewayHeaders.USER_ID, String.valueOf(claims.userId()))
+                .header(GatewayHeaders.USERNAME, claims.username() == null ? "" : claims.username())
+                .header(GatewayHeaders.USER_ROLES, String.join(",", claims.roles() == null ? List.of() : claims.roles()))
+                .header(GatewayHeaders.GATEWAY_INTERNAL, "true")
+                .header(GatewayHeaders.GATEWAY_SECRET, internalSecret)
                 .build();
         return chain.filter(exchange.mutate().request(request).build());
     }
@@ -115,7 +99,7 @@ public class JwtAuthGlobalFilter implements GlobalFilter, Ordered {
                     "message", message
             ));
         } catch (JsonProcessingException ex) {
-            body = "{\"success\":false,\"code\":\"401\",\"message\":\"Unauthorized\"}".getBytes(StandardCharsets.UTF_8);
+            body = "{\"success\":false,\"code\":\"401\",\"message\":\"Unauthorized\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
         return response.writeWith(Mono.just(response.bufferFactory().wrap(body)));
     }
