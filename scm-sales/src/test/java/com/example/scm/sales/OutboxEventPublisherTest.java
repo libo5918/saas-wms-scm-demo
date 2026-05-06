@@ -39,6 +39,7 @@ class OutboxEventPublisherTest {
         OutboxEventPublisher publisher = new OutboxEventPublisher(
                 mapper,
                 kafkaTemplate,
+                true,
                 100,
                 3,
                 1,

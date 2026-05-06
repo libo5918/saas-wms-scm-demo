@@ -77,7 +77,7 @@
       retries: 10
 
   skywalking-oap:
-    image: apache/skywalking-oap-server:10.2.0
+    image: apache/skywalking-oap-server:10.1.0
     container_name: scm-skywalking-oap
     environment:
       SW_STORAGE: h2
@@ -92,7 +92,7 @@
       retries: 10
 
   skywalking-ui:
-    image: apache/skywalking-ui:10.2.0
+    image: apache/skywalking-ui:10.1.0
     container_name: scm-skywalking-ui
     depends_on:
       skywalking-oap:

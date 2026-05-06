@@ -5,3 +5,6 @@
 .DS_Store
 Thumbs.db
 .env
+tools/skywalking/
+output/skywalking/
+output/logs/

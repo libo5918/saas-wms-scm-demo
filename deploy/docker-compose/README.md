@@ -39,3 +39,13 @@ docker compose -f infrastructure.yml down
 - SkyWalking OAP gRPC: `11800`
 - SkyWalking OAP HTTP: `12800`
 - SkyWalking UI: `18088`
+
+## SkyWalking 版本说明
+
+当前 `infrastructure.yml` 使用：
+
+- `apache/skywalking-oap-server:10.1.0`
+- `apache/skywalking-ui:10.1.0`
+
+原因是 `10.2.0` 从该版本开始永久移除了 `H2` 存储，而当前本地开发编排仍然使用 `SW_STORAGE=h2`。
+如果后续要升级到 `10.2.0` 及以上，需要同时把存储切换到 `BanyanDB`、`Elasticsearch` 或其他受支持后端。

@@ -61,6 +61,7 @@ public class OutboxEventPublisher {
             return;
         }
         List<OutboxEvent> pendingEvents = outboxEventMapper.selectPending(fetchLimit);
+        log.info("查询状态为new的outboxevent事件");
         for (OutboxEvent event : pendingEvents) {
             try {
                 String topic = resolveTopic(event);

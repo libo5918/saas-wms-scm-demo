@@ -20,6 +20,7 @@
         <mybatis.plus.version>3.5.12</mybatis.plus.version>
         <mysql.version>9.3.0</mysql.version>
         <knife4j.version>4.5.0</knife4j.version>
+        <skywalking.version>9.6.0</skywalking.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>

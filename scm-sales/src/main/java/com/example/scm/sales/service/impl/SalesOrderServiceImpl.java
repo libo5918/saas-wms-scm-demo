@@ -94,6 +94,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
 
     @Override
     public SalesOrderVO create(CreateSalesOrderRequest request) {
+        log.info("创建订单：{}", JSON.toJSONString(request));
         Long tenantId = TenantContext.getRequiredTenantId();
         SalesOrder existingOrder = salesOrderMapper.selectByOrderNo(tenantId, request.getOrderNo()).orElse(null);
         if (existingOrder != null) {
@@ -102,7 +103,9 @@ public class SalesOrderServiceImpl implements SalesOrderService {
             }
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "Order no already exists");
         }
+        log.info("校验物料");
         validateMaterials(tenantId, request.getItems());
+        log.info("校验库位");
         validateStorage(tenantId, request.getWarehouseId(), request.getItems());
         SalesOrder order = transactionTemplate.execute(status -> createOrderInTransaction(tenantId, request));
         if (order == null) {
@@ -153,6 +156,7 @@ public class SalesOrderServiceImpl implements SalesOrderService {
     @Override
     @Transactional
     public SalesOrderVO ship(Long id) {
+        log.info("销售订单发货:{}", id);
         Long tenantId = TenantContext.getRequiredTenantId();
         SalesOrder order = salesOrderMapper.selectById(tenantId, id)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Sales order not found"));
