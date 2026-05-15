@@ -1,0 +1,104 @@
+spring:
+  application:
+    name: scm-ai-agent
+  cloud:
+    nacos:
+      discovery:
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
+      config:
+        enabled: true
+        server-addr: 127.0.0.1:18848
+        namespace: public
+        group: DEFAULT_GROUP
+        username: nacos
+        password: nacos
+        file-extension: yaml
+        import-check:
+          enabled: false
+
+server:
+  port: 18087
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+security:
+  gateway:
+    enforce: false
+    internal-secret: scm-gateway-internal-dev-secret
+
+ai:
+  agent:
+    provider-mode: mock
+    default-model: qwen-plus
+    providers:
+      - name: mock
+        type: mock
+        enabled: true
+      - name: dashscope
+        type: dashscope
+        enabled: true
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        api-key-env: DASHSCOPE_API_KEY
+        timeout-ms: 30000
+      - name: openai
+        type: openai-compatible
+        enabled: true
+        base-url: https://api.openai.com/v1
+        api-key-env: OPENAI_API_KEY
+        timeout-ms: 30000
+      - name: deepseek
+        type: openai-compatible
+        enabled: true
+        base-url: https://api.deepseek.com
+        api-key-env: DEEPSEEK_API_KEY
+        timeout-ms: 30000
+    models:
+      - name: qwen-plus
+        provider-model: qwen-plus
+        provider: dashscope
+        enabled: true
+        cost-level: medium
+        provider-modes: [mock, spring-ai]
+        capabilities: [CHAT, RAG, TOOL_CALLING, STRUCTURED_OUTPUT]
+        task-types: [simple_chat, rag_qa, tool_calling]
+        fallback-models: [qwen-turbo, chatgpt-main]
+        priority: 20
+      - name: qwen-turbo
+        provider-model: qwen-turbo
+        provider: dashscope
+        enabled: true
+        cost-level: low
+        provider-modes: [mock, spring-ai]
+        capabilities: [CHAT, LOW_COST]
+        task-types: [summary]
+        fallback-models: [chatgpt-main]
+        priority: 10
+      - name: chatgpt-main
+        provider-model: ${AI_OPENAI_CHAT_MODEL:gpt-4.1-mini}
+        provider: openai
+        enabled: true
+        cost-level: high
+        provider-modes: [mock, spring-ai]
+        capabilities: [CHAT, TOOL_CALLING, STRUCTURED_OUTPUT, PLANNING, HIGH_QUALITY]
+        task-types: [workflow_planning, complex_reasoning]
+        fallback-models: [qwen-plus, deepseek-chat]
+        priority: 30
+      - name: deepseek-chat
+        provider-model: deepseek-chat
+        provider: deepseek
+        enabled: true
+        cost-level: medium
+        provider-modes: [mock, spring-ai]
+        capabilities: [CHAT, STRUCTURED_OUTPUT, PLANNING]
+        task-types: [complex_reasoning, code_reasoning]
+        fallback-models: [qwen-plus]
+        priority: 40

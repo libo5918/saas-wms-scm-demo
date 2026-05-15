@@ -151,6 +151,7 @@ docs/architecture/ai-agent-technology-decisions.md
 - `userId`
 - `taskType`
 - `requestedModel`
+- `providerMode`
 - `requiredCapabilities`
 - `costLevel`
 - `maxLatencyMs`
@@ -170,8 +171,9 @@ docs/architecture/ai-agent-technology-decisions.md
 ```text
 simple_chat -> qwen-plus
 rag_qa -> qwen-plus
-tool_calling -> openai-compatible-high-quality
-workflow_planning -> openai-compatible-high-quality
+tool_calling -> qwen-plus
+workflow_planning -> chatgpt-main
+complex_reasoning -> chatgpt-main / deepseek-chat
 summary -> qwen-turbo
 ```
 
@@ -221,8 +223,17 @@ summary -> qwen-turbo
 
 - 调用方可以指定模型
 - 系统可以根据任务类型选择模型
+- 系统可以根据模型能力标签选择模型
+- 系统可以在 mock 和 spring-ai providerMode 之间切换
+- 默认 mock 模式不依赖真实 API Key
 - 模型调用失败时可以降级到其它模型
 - 路由决策可记录、可追踪
+
+当前 Phase 2 落地说明见：
+
+```text
+docs/architecture/ai-agent-phase2-model-routing.md
+```
 
 ### Phase 3：RAG
 

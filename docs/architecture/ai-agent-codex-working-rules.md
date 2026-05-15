@@ -39,6 +39,7 @@
 5. 增加聚焦的测试或明确验证方式
 6. 如果影响架构、接口、工作流或运维步骤，同步更新文档
 7. 最后说明改了什么、如何验证、下一步是什么
+8. 每个阶段的代码完成后，需要同时提供一份可直接用于 Git 提交的中文 commit 文案
 
 ## 4. 模块边界
 
@@ -144,6 +145,107 @@ RAG 相关开发默认使用 `Milvus Standalone` 作为主线向量数据库。
 ```text
 docs/architecture/ai-agent-technology-decisions.md
 ```
+
+### 5.6 Lombok 使用规则
+
+后续新增 Java 数据承载类时，优先使用 Lombok，避免重复编写 getter、setter、构造方法和日志字段。
+
+默认适用范围：
+
+- entity
+- DTO
+- VO
+- Command
+- Query
+- PO
+- 配置属性类
+- 简单事件对象
+
+推荐规则：
+
+- 普通可变数据对象优先使用 `@Getter` 和 `@Setter`
+- 需要日志的 service、controller、job、consumer 优先使用 `@Slf4j`
+- 值对象可按需要使用 `@Getter`、`@AllArgsConstructor`、`@EqualsAndHashCode`
+- 需要链式创建或测试构造便利时，可使用 `@Builder`
+- 不要为了省事在所有类上无脑使用 `@Data`
+- 涉及 JPA/MyBatis/JSON 反序列化时，按框架需要补充无参构造
+- 如果当前模块还没有引入 Lombok，新增 Lombok 注解前必须先补齐该模块依赖并确保 Maven 测试通过
+
+例外情况：
+
+- record 更适合表达不可变简单返回结构时，可以继续使用 record
+- 领域对象中存在明确业务方法和不变量保护时，不要为了 Lombok 破坏封装
+- 安全敏感字段不要因为 `@ToString` 或 `@Data` 泄露到日志
+
+### 5.7 中文注释规则
+
+后续新增或重构 Java 代码时，需要给类、关键方法、关键属性补充中文注释，帮助后续阅读和面试讲解。
+
+默认要求：
+
+- 新增类需要说明该类在当前模块中的职责
+- record、DTO、VO、Command、Query、PO、配置属性类中的关键属性需要说明业务含义
+- service、router、orchestrator、workflow、tool、MCP 等核心方法需要说明输入、处理意图和输出
+- 涉及租户、用户、权限、模型路由、RAG、工具调用、工作流状态、异步任务、重试、补偿、审计等关键字段必须注释
+- 对外接口 request / response 对象优先补充字段注释
+
+注释风格：
+
+- 优先使用简洁中文 Javadoc
+- 注释解释业务意图，不重复描述语法
+- 不要给每一行普通赋值、getter、setter 写无意义注释
+- 不要用注释掩盖命名不清晰的问题，能通过命名表达的优先改好命名
+- 修改已有代码时，如果顺手触碰到关键类或关键方法，应补齐缺失注释
+
+### 5.8 日志规则
+
+后续新增或重构核心 Java 代码时，优先使用 Lombok `@Slf4j` 添加日志能力，并在关键流程打印必要日志。
+
+默认适用范围：
+
+- service
+- controller
+- router
+- orchestrator
+- workflow executor
+- tool adapter
+- MCP adapter
+- job
+- consumer
+- provider client
+
+建议打印的关键信息：
+
+- 请求入口和核心业务阶段
+- 模型路由结果
+- provider 调用模式
+- fallback 触发情况
+- workflow run / step 状态变化
+- tool 调用开始、结束和失败原因
+- RAG 检索文档数量和耗时
+- 异步任务投递、重试和 DLQ 情况
+- 异常码、异常类型和可定位的业务 ID
+
+日志字段建议：
+
+- `tenantId`
+- `userId`
+- `runId`
+- `conversationId`
+- `workflowRunId`
+- `toolCallId`
+- `modelName`
+- `provider`
+- `taskType`
+- `latencyMs`
+
+日志安全要求：
+
+- 不打印真实 API Key、账号密码、手机号、身份证号等敏感信息
+- 不完整打印用户 prompt 和模型响应，必要时只打印长度、摘要或脱敏内容
+- 不把 Authorization、Cookie、内部密钥写入日志
+- 异常日志要能定位问题，但不能泄露租户数据
+- 高频循环或批量处理不要打印过量 info 日志，避免影响性能和可读性
 
 ## 6. Model Router 规则
 
@@ -367,6 +469,31 @@ Agent 功能必须可追踪。
 - 下一步最值得做什么
 
 说明要简洁、具体，不要泛泛总结。
+
+每个阶段的代码完成后，完成汇报必须额外提供中文 Git commit 文案。
+
+commit 文案要求：
+
+- 使用中文
+- 能概括业务目标和技术改动
+- 优先使用一行标题加可选正文
+- 标题建议使用类似 `feat(ai-agent): ...`、`fix(gateway): ...`、`docs(ai-agent): ...` 的格式
+- 正文可以列出核心改动、验证方式和明确未包含的范围
+- 不要把真实 API Key、账号、密码、手机号等敏感信息写入 commit 文案
+
+示例：
+
+```text
+feat(ai-agent): 增强模型 Provider 配置与动态路由能力
+
+- 新增 Qwen、OpenAI-compatible、DeepSeek Provider 配置骨架
+- 增强 ModelRouter，支持 requestedModel、taskType、能力标签和 providerMode
+- 保持默认 mock 模式，避免测试依赖真实 API Key
+- 补充模型路由单元测试和 Phase 2 架构文档
+
+验证：
+- mvn -pl scm-gateway,scm-ai-agent -am test
+```
 
 ## 17. 后续任务标准提示词
 

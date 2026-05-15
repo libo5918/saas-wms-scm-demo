@@ -16,6 +16,8 @@
         <spring.boot.version>3.5.0</spring.boot.version>
         <spring.cloud.version>2025.0.0</spring.cloud.version>
         <spring.cloud.alibaba.version>2025.0.0.0</spring.cloud.alibaba.version>
+        <spring.ai.version>1.1.5</spring.ai.version>
+        <spring.ai.alibaba.version>1.1.2.2</spring.ai.alibaba.version>
         <mybatis.spring.boot.version>3.0.4</mybatis.spring.boot.version>
         <mybatis.plus.version>3.5.12</mybatis.plus.version>
         <mysql.version>9.3.0</mysql.version>
@@ -30,6 +32,7 @@
         <module>scm-common</module>
         <module>scm-gateway</module>
         <module>scm-auth</module>
+        <module>scm-ai-agent</module>
         <module>scm-mdm</module>
         <module>scm-purchase</module>
         <module>scm-inventory</module>
