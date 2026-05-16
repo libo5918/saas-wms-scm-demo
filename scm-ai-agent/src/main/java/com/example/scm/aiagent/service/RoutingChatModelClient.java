@@ -1,16 +1,23 @@
 package com.example.scm.aiagent.service;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.config.AiAgentProperties.ProviderProperties;
 import com.example.scm.aiagent.model.ChatModelInvocation;
 import com.example.scm.aiagent.model.ChatModelResult;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Chat 模型调用客户端。
@@ -18,16 +25,20 @@ import java.util.Locale;
  * <p>默认 mock 模式不访问外部模型，便于本地开发和测试稳定运行。
  * 当路由结果为 spring-ai 模式时，才通过 Spring AI 的 ChatClient 调用真实模型。</p>
  */
+@Slf4j
 @Service
 public class RoutingChatModelClient implements ChatModelClient {
 
     private final AiAgentProperties properties;
     private final ObjectProvider<ChatClient.Builder> chatClientBuilderProvider;
+    private final Environment environment;
 
     public RoutingChatModelClient(AiAgentProperties properties,
-                                  ObjectProvider<ChatClient.Builder> chatClientBuilderProvider) {
+                                  ObjectProvider<ChatClient.Builder> chatClientBuilderProvider,
+                                  Environment environment) {
         this.properties = properties;
         this.chatClientBuilderProvider = chatClientBuilderProvider;
+        this.environment = environment;
     }
 
     @Override
@@ -42,6 +53,9 @@ public class RoutingChatModelClient implements ChatModelClient {
             throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(),
                     "Unsupported AI provider mode: " + providerMode);
         }
+        log.info("AI mock chat selected, runId={}, tenantId={}, userId={}, modelName={}, provider={}, providerMode={}, messageLength={}",
+                invocation.runId(), invocation.context().tenantId(), invocation.context().userId(),
+                invocation.route().modelName(), invocation.route().provider(), providerMode, safeLength(invocation.message()));
         return mockAnswer(invocation);
     }
 
@@ -52,22 +66,59 @@ public class RoutingChatModelClient implements ChatModelClient {
      * 后续如果要做到每次请求动态切换底层模型，会继续在这里按 provider 构造专属 ChatModel。</p>
      */
     private ChatModelResult callSpringAi(ChatModelInvocation invocation) {
-        ChatClient.Builder builder = chatClientBuilderProvider.getIfAvailable();
+        long startedAt = System.nanoTime();
+        ChatClient.Builder builder;
+        try {
+            builder = chatClientBuilderProvider.getIfAvailable();
+        } catch (BeansException ex) {
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(),
+                    "Spring AI ChatClient.Builder is not available: " + ex.getMessage());
+        }
         if (builder == null) {
             throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(),
                     "Spring AI ChatClient.Builder is not configured");
         }
-        String answer = builder.build()
-                .prompt()
-                .system("You are an enterprise SCM/WMS AI agent. "
-                        + "Answer with tenant-aware context. "
-                        + "Selected logical model: " + invocation.route().modelName()
-                        + ", provider model: " + invocation.route().providerModel()
-                        + ", provider: " + invocation.route().provider() + ".")
-                .user(invocation.message())
-                .call()
-                .content();
-        return new ChatModelResult(answer);
+
+        String keySource = resolveProviderApiKeySource(invocation.route().provider())
+                .orElse("spring-ai-config");
+        log.info("AI spring-ai chat started, runId={}, tenantId={}, userId={}, modelName={}, providerModel={}, provider={}, providerType={}, providerMode={}, apiKeySource={}, messageLength={}",
+                invocation.runId(), invocation.context().tenantId(), invocation.context().userId(),
+                invocation.route().modelName(), invocation.route().providerModel(), invocation.route().provider(),
+                invocation.route().providerType(), invocation.route().providerMode(), keySource,
+                safeLength(invocation.message()));
+
+        try {
+            ChatOptions options = ChatOptions.builder()
+                    .model(invocation.route().providerModel())
+                    .build();
+            String answer = builder.build()
+                    .prompt()
+                    .options(options)
+                    .system("You are an enterprise SCM/WMS AI agent. "
+                            + "Answer with tenant-aware context. "
+                            + "Selected logical model: " + invocation.route().modelName()
+                            + ", provider model: " + invocation.route().providerModel()
+                            + ", provider: " + invocation.route().provider() + ".")
+                    .user(invocation.message())
+                    .call()
+                    .content();
+            long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
+            log.info("AI spring-ai chat finished, runId={}, tenantId={}, userId={}, modelName={}, provider={}, providerMode={}, latencyMs={}, answerLength={}",
+                    invocation.runId(), invocation.context().tenantId(), invocation.context().userId(),
+                    invocation.route().modelName(), invocation.route().provider(), invocation.route().providerMode(),
+                    latencyMs, safeLength(answer));
+            return new ChatModelResult(answer);
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
+            log.warn("AI spring-ai chat failed, runId={}, tenantId={}, userId={}, modelName={}, provider={}, providerMode={}, latencyMs={}, errorType={}, errorMessage={}",
+                    invocation.runId(), invocation.context().tenantId(), invocation.context().userId(),
+                    invocation.route().modelName(), invocation.route().provider(), invocation.route().providerMode(),
+                    latencyMs, ex.getClass().getSimpleName(), ex.getMessage());
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR.code(),
+                    "Spring AI chat call failed: " + ex.getMessage());
+        }
     }
 
     /**
@@ -89,5 +140,36 @@ public class RoutingChatModelClient implements ChatModelClient {
                 + " | fallbackModels=" + invocation.route().fallbackModels()
                 + " | message=" + invocation.message();
         return new ChatModelResult(answer);
+    }
+
+    private Optional<String> resolveProviderApiKeySource(String providerName) {
+        return findProvider(providerName)
+                .flatMap(provider -> {
+                    if (StringUtils.hasText(provider.getApiKey())) {
+                        return Optional.of("ai.agent.providers." + provider.getName() + ".api-key");
+                    }
+                    if (StringUtils.hasText(provider.getApiKeyEnv())
+                            && StringUtils.hasText(environment.getProperty(provider.getApiKeyEnv()))) {
+                        return Optional.of("env:" + provider.getApiKeyEnv());
+                    }
+                    return Optional.empty();
+                });
+    }
+
+    private Optional<ProviderProperties> findProvider(String providerName) {
+        if (!StringUtils.hasText(providerName)) {
+            return Optional.empty();
+        }
+        List<ProviderProperties> providers = properties.getProviders();
+        if (providers == null || providers.isEmpty()) {
+            return Optional.empty();
+        }
+        return providers.stream()
+                .filter(provider -> providerName.equalsIgnoreCase(provider.getName()))
+                .findFirst();
+    }
+
+    private int safeLength(String value) {
+        return value == null ? 0 : value.length();
     }
 }

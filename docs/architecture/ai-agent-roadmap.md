@@ -235,6 +235,30 @@ summary -> qwen-turbo
 docs/architecture/ai-agent-phase2-model-routing.md
 ```
 
+### Phase 3 前置：真实 Provider Smoke Test
+
+目标：
+
+- 接入 Spring AI OpenAI-compatible starter
+- 接入 Spring AI Alibaba DashScope starter
+- 默认保持 mock 模式，不依赖真实 API Key
+- `providerMode=spring-ai` 时可以通过 Spring AI `ChatClient` 调用真实模型
+- 优先跑通 Qwen DashScope
+- 保留 OpenAI-compatible 扩展点
+
+验收标准：
+
+- 默认 `mvn test` 不访问外部模型
+- 不配置 API Key 时应用仍可启动 mock 模式
+- 配置 DashScope 环境变量后，可以通过 `providerMode=spring-ai` 做真实模型 smoke test
+- 关键日志包含模型路由、provider、providerMode 和耗时，不打印敏感信息
+
+当前 Phase 3 前置落地说明见：
+
+```text
+docs/architecture/ai-agent-phase3-provider-smoke-test.md
+```
+
 ### Phase 3：RAG
 
 目标：

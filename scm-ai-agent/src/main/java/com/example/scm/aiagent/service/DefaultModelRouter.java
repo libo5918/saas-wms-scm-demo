@@ -7,6 +7,7 @@ import com.example.scm.aiagent.model.ModelRoute;
 import com.example.scm.aiagent.model.ModelRouteRequest;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
  * <p>当前阶段只负责模型选择和 provider 元数据返回，不在这里直接调用模型。
  * 路由顺序为：显式指定模型、任务类型、能力标签、默认模型。</p>
  */
+@Slf4j
 @Service
 public class DefaultModelRouter implements ModelRouter {
 
@@ -54,7 +56,7 @@ public class DefaultModelRouter implements ModelRouter {
                 throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(),
                         "Requested model is not available for current route constraints: " + request.requestedModel());
             }
-            return toRoute(requested, providers, providerMode, "requested_model");
+            return toRoute(requested, providers, providerMode, "requested_model", request);
         }
 
         String taskType = normalize(request.taskType());
@@ -64,7 +66,7 @@ public class DefaultModelRouter implements ModelRouter {
                 .sorted(modelComparator())
                 .findFirst();
         if (taskMatched.isPresent()) {
-            return toRoute(taskMatched.get(), providers, providerMode, "task_type:" + taskType);
+            return toRoute(taskMatched.get(), providers, providerMode, "task_type:" + taskType, request);
         }
 
         Optional<ModelProperties> capabilityMatched = models.stream()
@@ -73,7 +75,7 @@ public class DefaultModelRouter implements ModelRouter {
                 .sorted(modelComparator())
                 .findFirst();
         if (capabilityMatched.isPresent()) {
-            return toRoute(capabilityMatched.get(), providers, providerMode, "capabilities");
+            return toRoute(capabilityMatched.get(), providers, providerMode, "capabilities", request);
         }
 
         ModelProperties defaultModel = findByName(models, properties.getDefaultModel())
@@ -84,7 +86,7 @@ public class DefaultModelRouter implements ModelRouter {
                         .findFirst()
                         .orElseThrow(() -> new BusinessException(CommonErrorCode.BAD_REQUEST.code(),
                                 "No AI model is available for current route constraints")));
-        return toRoute(defaultModel, providers, providerMode, "default_model");
+        return toRoute(defaultModel, providers, providerMode, "default_model", request);
     }
 
     private List<ModelProperties> enabledModels() {
@@ -255,9 +257,9 @@ public class DefaultModelRouter implements ModelRouter {
     }
 
     private ModelRoute toRoute(ModelProperties model, Map<String, ProviderProperties> providers,
-                               String providerMode, String reason) {
+                               String providerMode, String reason, ModelRouteRequest request) {
         ProviderProperties provider = providers.get(model.getProvider().toLowerCase(Locale.ROOT));
-        return new ModelRoute(
+        ModelRoute route = new ModelRoute(
                 model.getName(),
                 StringUtils.hasText(model.getProviderModel()) ? model.getProviderModel() : model.getName(),
                 model.getProvider(),
@@ -267,6 +269,10 @@ public class DefaultModelRouter implements ModelRouter {
                 copy(model.getCapabilities()),
                 copy(model.getFallbackModels())
         );
+        log.info("AI model route selected, tenantId={}, userId={}, taskType={}, modelName={}, providerModel={}, provider={}, providerMode={}, reason={}",
+                request.tenantId(), request.userId(), request.taskType(), route.modelName(), route.providerModel(),
+                route.provider(), route.providerMode(), route.reason());
+        return route;
     }
 
     private List<String> copy(List<String> values) {

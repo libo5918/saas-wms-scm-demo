@@ -8,6 +8,7 @@ import com.example.scm.aiagent.model.ChatModelInvocation;
 import com.example.scm.aiagent.model.ChatModelResult;
 import com.example.scm.aiagent.model.ModelRoute;
 import com.example.scm.aiagent.model.ModelRouteRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -15,6 +16,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Agent Chat 应用服务。
+ *
+ * <p>负责整理请求上下文、调用模型路由器和模型客户端，是 Chat API 的核心业务入口。</p>
+ */
+@Slf4j
 @Service
 public class AgentChatService {
 
@@ -49,6 +56,9 @@ public class AgentChatService {
                 ? request.getConversationId()
                 : UUID.randomUUID().toString();
 
+        log.info("AI chat request received, runId={}, tenantId={}, userId={}, taskType={}, providerMode={}, messageLength={}",
+                runId, context.tenantId(), context.userId(), taskType, providerMode, safeLength(request.getMessage()));
+
         ModelRoute route = modelRouter.route(new ModelRouteRequest(
                 context.tenantId(),
                 context.userId(),
@@ -59,6 +69,10 @@ public class AgentChatService {
                 request.getCostLevel(),
                 request.getMaxLatencyMs()
         ));
+        log.info("AI model routed, runId={}, tenantId={}, userId={}, modelName={}, providerModel={}, provider={}, providerType={}, providerMode={}, routeReason={}",
+                runId, context.tenantId(), context.userId(), route.modelName(), route.providerModel(),
+                route.provider(), route.providerType(), route.providerMode(), route.reason());
+
         ChatModelResult modelResult = chatModelClient.chat(new ChatModelInvocation(
                 runId,
                 request.getMessage(),
@@ -83,6 +97,13 @@ public class AgentChatService {
         response.setFallbackModels(route.fallbackModels());
         response.setLatencyMs((System.nanoTime() - startedAt) / 1_000_000);
         response.setCreatedAt(Instant.now());
+        log.info("AI chat finished, runId={}, tenantId={}, userId={}, modelName={}, provider={}, providerMode={}, latencyMs={}",
+                runId, context.tenantId(), context.userId(), route.modelName(), route.provider(),
+                route.providerMode(), response.getLatencyMs());
         return response;
+    }
+
+    private int safeLength(String value) {
+        return value == null ? 0 : value.length();
     }
 }

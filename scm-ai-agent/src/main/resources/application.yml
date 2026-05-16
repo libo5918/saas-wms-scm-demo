@@ -1,6 +1,37 @@
 spring:
   application:
     name: scm-ai-agent
+  ai:
+    # 默认禁用真实 ChatModel，避免本地启动和单元测试依赖外部 API Key。
+    # 真实 smoke test 时设置为 dashscope 或 openai。
+    model:
+      chat: ${AI_AGENT_SPRING_AI_MODEL_CHAT:none}
+      embedding: ${AI_AGENT_SPRING_AI_MODEL_EMBEDDING:none}
+      image: ${AI_AGENT_SPRING_AI_MODEL_IMAGE:none}
+      audio:
+        speech: ${AI_AGENT_SPRING_AI_MODEL_AUDIO_SPEECH:none}
+        transcription: ${AI_AGENT_SPRING_AI_MODEL_AUDIO_TRANSCRIPTION:none}
+      moderation: ${AI_AGENT_SPRING_AI_MODEL_MODERATION:none}
+      rerank: ${AI_AGENT_SPRING_AI_MODEL_RERANK:none}
+      video: ${AI_AGENT_SPRING_AI_MODEL_VIDEO:none}
+    dashscope:
+      enabled: ${AI_AGENT_DASHSCOPE_ENABLED:false}
+      api-key: ${DASHSCOPE_API_KEY:}
+      base-url: ${AI_AGENT_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
+      chat:
+        enabled: ${AI_AGENT_DASHSCOPE_CHAT_ENABLED:false}
+        api-key: ${DASHSCOPE_API_KEY:}
+        base-url: ${AI_AGENT_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
+        options:
+          model: ${AI_AGENT_DASHSCOPE_CHAT_MODEL:qwen-plus}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${AI_AGENT_OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        api-key: ${OPENAI_API_KEY:}
+        base-url: ${AI_AGENT_OPENAI_BASE_URL:https://api.openai.com}
+        options:
+          model: ${AI_AGENT_OPENAI_CHAT_MODEL:gpt-4.1-mini}
   cloud:
     nacos:
       discovery:

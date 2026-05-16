@@ -10,6 +10,7 @@ import com.example.scm.common.core.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.util.List;
 
@@ -20,7 +21,8 @@ class RoutingChatModelClientTest {
 
     @Test
     void shouldUseMockModeWithoutRealApiKey() {
-        RoutingChatModelClient client = new RoutingChatModelClient(new AiAgentProperties(), emptyChatClientBuilder());
+        RoutingChatModelClient client = new RoutingChatModelClient(new AiAgentProperties(),
+                emptyChatClientBuilder(), new MockEnvironment());
 
         ChatModelResult result = client.chat(new ChatModelInvocation(
                 "run-1",
@@ -37,7 +39,8 @@ class RoutingChatModelClientTest {
 
     @Test
     void shouldRequireChatClientBuilderWhenUsingSpringAiMode() {
-        RoutingChatModelClient client = new RoutingChatModelClient(new AiAgentProperties(), emptyChatClientBuilder());
+        RoutingChatModelClient client = new RoutingChatModelClient(new AiAgentProperties(),
+                emptyChatClientBuilder(), new MockEnvironment());
 
         assertThrows(BusinessException.class, () -> client.chat(new ChatModelInvocation(
                 "run-1",
