@@ -526,3 +526,13 @@ agent.task.completed
 - 对应文档已更新到 `docs`
 - 风险和下一步已记录
 - 该阶段能力可以用于 Java AI Agent 岗位面试讲解
+
+## Phase 3 落地说明：RAG 基础能力
+
+当前 Phase 3 已先在 `scm-ai-agent` 内实现 RAG 最小闭环，包含文档写入、切片、mock embedding、in-memory vector store、租户隔离检索和 RAG Chat API。Milvus 作为主线向量数据库已预留配置骨架，但默认不启用，避免本地测试和 CI 依赖外部服务。
+
+详细说明见：
+
+```text
+docs/architecture/ai-agent-phase3-rag-basic.md
+```

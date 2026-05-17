@@ -70,6 +70,25 @@ ai:
   agent:
     provider-mode: mock
     default-model: qwen-plus
+    rag:
+      chunk:
+        size: ${AI_AGENT_RAG_CHUNK_SIZE:800}
+        overlap: ${AI_AGENT_RAG_CHUNK_OVERLAP:100}
+      embedding:
+        mode: ${AI_AGENT_RAG_EMBEDDING_MODE:mock}
+        dimension: ${AI_AGENT_RAG_EMBEDDING_DIMENSION:64}
+        model: ${AI_AGENT_RAG_EMBEDDING_MODEL:mock-embedding}
+      vector-store:
+        mode: ${AI_AGENT_RAG_VECTOR_STORE_MODE:in-memory}
+        milvus:
+          uri: ${MILVUS_URI:http://localhost:19530}
+          token: ${MILVUS_TOKEN:}
+          collection-name: ${MILVUS_COLLECTION_NAME:scm_ai_rag_chunks}
+          vector-field: ${MILVUS_VECTOR_FIELD:embedding}
+          metric-type: ${MILVUS_METRIC_TYPE:COSINE}
+      retrieval:
+        default-top-k: ${AI_AGENT_RAG_DEFAULT_TOP_K:3}
+        max-top-k: ${AI_AGENT_RAG_MAX_TOP_K:10}
     providers:
       - name: mock
         type: mock

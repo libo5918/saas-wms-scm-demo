@@ -382,3 +382,29 @@ AI Agent 模块必须复用当前认证链路：
 8. MCP 独立成 `scm-ai-mcp`
 9. Dify 只做外部演示，不替代 Java Agent 实现
 10. 所有 AI 能力必须继承当前 gateway / auth / tenant 安全边界
+
+## 14. Phase 3 RAG 基础能力落地决策
+
+当前 RAG 第一阶段采用以下落地策略：
+
+```text
+Embedding: mock deterministic embedding
+VectorStore: in-memory
+Future VectorStore: Milvus Standalone
+Metadata: 当前内存承载，后续进入 MySQL
+```
+
+这样设计的原因：
+
+- 保证默认启动和单元测试不依赖真实 Milvus。
+- 保证 CI 不依赖真实 Embedding API 或外部网络。
+- 先验证文档切片、租户隔离、检索和 RAG Chat 编排链路。
+- 保留 Milvus 主线方向，后续通过 `MilvusRagVectorStore` 替换当前 in-memory 实现。
+
+Milvus 相关配置只允许通过环境变量或本地配置注入，不允许硬编码真实 token。
+
+详细说明见：
+
+```text
+docs/architecture/ai-agent-phase3-rag-basic.md
+```
