@@ -271,3 +271,50 @@ docs/operations/milvus-local-setup.md
 ```text
 docs/operations/rag-docs-import.md
 ```
+
+## Phase 3.3：Milvus 端到端 smoke 与 metadata filter
+
+本阶段在 Phase 3.1 的 `MilvusRagVectorStore` 基础上，补齐真实 Milvus 端到端 smoke 验证能力。
+
+目标：
+
+- 默认仍然保持 `in-memory + mock embedding`
+- 只有显式配置 `ai.agent.rag.vector-store.mode=milvus` 时才连接 Milvus
+- 使用 mock embedding 写入 Milvus，先验证向量数据库链路，不接真实 Embedding
+- 启动时检查 collection schema，避免旧 schema 导致隐性写入失败
+- 使用 `upsert` 写入 chunk，保证重复导入同一文档时可以覆盖同一 `chunk_id`
+- 检索时强制追加 `tenant_id + knowledge_base_id` 过滤
+- 支持 `documentId`、`chunkId`、`chunkIndex`、`title`、`source`、`filePath`、`fileName`、`directory`、`extension`、`importSource` 等 metadata filter
+- metadata filter 通过白名单表达式构建器生成，避免任意字符串拼接到 Milvus filter expression
+
+当前 Milvus collection 字段：
+
+```text
+chunk_id
+tenant_id
+knowledge_base_id
+document_id
+chunk_index
+title
+source
+file_path
+file_name
+directory
+extension
+import_source
+content
+embedding
+```
+
+本阶段边界：
+
+- 不实现真实 Embedding API
+- 不实现 Milvus 高可用部署
+- 不实现 MySQL RAG metadata 持久化
+- 不实现 Tools、MCP、Workflow、多 Agent 和长任务编排
+
+Milvus 本地安装、IDEA 配置和 gateway 接口验证方式见：
+
+```text
+docs/operations/milvus-local-setup.md
+```

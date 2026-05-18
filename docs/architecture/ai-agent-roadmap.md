@@ -548,3 +548,17 @@ Phase 3.2 在 Phase 3 RAG 基础能力之上，补齐当前项目文档的手动
 - 单次导入数量受配置限制
 - 导入后可以继续通过 RAG retrieve 和 RAG chat 检索使用
 - 默认仍为 `in-memory + mock embedding`，不依赖真实 Milvus
+
+## Phase 3.3：真实 Milvus Smoke
+
+Phase 3.3 继续保持默认 `in-memory + mock embedding`，但补齐显式切换到 Milvus 后的端到端验证能力。
+
+验收标准：
+
+- 本地可以通过 Docker Compose 启动 Milvus Standalone
+- `ai.agent.rag.vector-store.mode=milvus` 时创建并检查 Milvus collection
+- docs 导入接口可以把 chunk upsert 到 Milvus
+- retrieve/chat 接口可以从 Milvus 检索 citations
+- 检索时强制租户和知识库隔离
+- metadata filter 可以过滤 `directory`、`filePath`、`importSource` 等字段
+- 默认 Maven 测试不连接真实 Milvus

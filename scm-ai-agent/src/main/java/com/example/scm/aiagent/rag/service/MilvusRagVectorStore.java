@@ -11,9 +11,12 @@ import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
-import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.collection.request.LoadCollectionReq;
+import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import io.milvus.v2.service.vector.request.SearchReq;
+import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.SearchResp;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +26,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Milvus 向量存储实现。
@@ -34,16 +38,22 @@ import java.util.Map;
 @ConditionalOnProperty(prefix = "ai.agent.rag.vector-store", name = "mode", havingValue = "milvus")
 public class MilvusRagVectorStore implements RagVectorStore {
 
-    private static final String FIELD_TENANT_ID = "tenant_id";
-    private static final String FIELD_KNOWLEDGE_BASE_ID = "knowledge_base_id";
-    private static final String FIELD_DOCUMENT_ID = "document_id";
-    private static final String FIELD_CHUNK_INDEX = "chunk_index";
-    private static final String FIELD_TITLE = "title";
-    private static final String FIELD_SOURCE = "source";
+    private static final String FIELD_TENANT_ID = MilvusFilterExpressionBuilder.FIELD_TENANT_ID;
+    private static final String FIELD_KNOWLEDGE_BASE_ID = MilvusFilterExpressionBuilder.FIELD_KNOWLEDGE_BASE_ID;
+    private static final String FIELD_DOCUMENT_ID = MilvusFilterExpressionBuilder.FIELD_DOCUMENT_ID;
+    private static final String FIELD_CHUNK_INDEX = MilvusFilterExpressionBuilder.FIELD_CHUNK_INDEX;
+    private static final String FIELD_TITLE = MilvusFilterExpressionBuilder.FIELD_TITLE;
+    private static final String FIELD_SOURCE = MilvusFilterExpressionBuilder.FIELD_SOURCE;
+    private static final String FIELD_FILE_PATH = MilvusFilterExpressionBuilder.FIELD_FILE_PATH;
+    private static final String FIELD_FILE_NAME = MilvusFilterExpressionBuilder.FIELD_FILE_NAME;
+    private static final String FIELD_DIRECTORY = MilvusFilterExpressionBuilder.FIELD_DIRECTORY;
+    private static final String FIELD_EXTENSION = MilvusFilterExpressionBuilder.FIELD_EXTENSION;
+    private static final String FIELD_IMPORT_SOURCE = MilvusFilterExpressionBuilder.FIELD_IMPORT_SOURCE;
     private static final String FIELD_CONTENT = "content";
 
     private final AiAgentProperties properties;
     private final MilvusClientV2 milvusClient;
+    private final MilvusFilterExpressionBuilder filterExpressionBuilder = new MilvusFilterExpressionBuilder();
 
     public MilvusRagVectorStore(AiAgentProperties properties) {
         this.properties = properties;
@@ -67,7 +77,7 @@ public class MilvusRagVectorStore implements RagVectorStore {
         List<JsonObject> rows = chunks.stream()
                 .map(chunk -> toRow(chunk, milvus.getPrimaryField(), milvus.getVectorField()))
                 .toList();
-        milvusClient.insert(InsertReq.builder()
+        milvusClient.upsert(UpsertReq.builder()
                 .collectionName(milvus.getCollectionName())
                 .data(rows)
                 .build());
@@ -85,20 +95,23 @@ public class MilvusRagVectorStore implements RagVectorStore {
         AiAgentProperties.MilvusProperties milvus = properties.getRag().getVectorStore().getMilvus();
         List<String> outputFields = List.of(
                 milvus.getPrimaryField(), FIELD_TENANT_ID, FIELD_KNOWLEDGE_BASE_ID, FIELD_DOCUMENT_ID,
-                FIELD_CHUNK_INDEX, FIELD_TITLE, FIELD_SOURCE, FIELD_CONTENT
+                FIELD_CHUNK_INDEX, FIELD_TITLE, FIELD_SOURCE, FIELD_FILE_PATH, FIELD_FILE_NAME, FIELD_DIRECTORY,
+                FIELD_EXTENSION, FIELD_IMPORT_SOURCE, FIELD_CONTENT
         );
+        String filterExpression = filterExpressionBuilder.build(tenantId, knowledgeBaseId, filters);
         SearchResp searchResp = milvusClient.search(SearchReq.builder()
                 .collectionName(milvus.getCollectionName())
                 .data(List.of(new FloatVec(queryEmbedding)))
                 .annsField(milvus.getVectorField())
-                .filter(buildFilter(tenantId, knowledgeBaseId, filters))
+                .filter(filterExpression)
                 .topK(Math.max(1, topK))
                 .outputFields(outputFields)
                 .build());
         List<RagRetrievedChunk> chunks = toRetrievedChunks(searchResp, milvus.getPrimaryField());
         long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.info("RAG Milvus search finished, tenantId={}, knowledgeBaseId={}, collectionName={}, topK={}, metricType={}, retrievedCount={}, latencyMs={}",
-                tenantId, knowledgeBaseId, milvus.getCollectionName(), topK, milvus.getMetricType(), chunks.size(), latencyMs);
+        log.info("RAG Milvus search finished, tenantId={}, knowledgeBaseId={}, collectionName={}, topK={}, filterExpression={}, metricType={}, retrievedCount={}, latencyMs={}",
+                tenantId, knowledgeBaseId, milvus.getCollectionName(), topK, filterExpression,
+                milvus.getMetricType(), chunks.size(), latencyMs);
         return chunks;
     }
 
@@ -111,7 +124,9 @@ public class MilvusRagVectorStore implements RagVectorStore {
                 .collectionName(milvus.getCollectionName())
                 .build());
         if (exists) {
-            log.info("RAG Milvus collection already exists, collectionName={}, vectorField={}, metricType={}",
+            validateExistingCollection(milvus);
+            loadCollection(milvus.getCollectionName());
+            log.info("RAG Milvus collection already exists, collectionName={}, vectorField={}, metricType={}, metadataFieldsReady=true",
                     milvus.getCollectionName(), milvus.getVectorField(), milvus.getMetricType());
             return;
         }
@@ -130,6 +145,11 @@ public class MilvusRagVectorStore implements RagVectorStore {
         schema.addField(AddFieldReq.builder().fieldName(FIELD_CHUNK_INDEX).dataType(DataType.Int32).build());
         schema.addField(AddFieldReq.builder().fieldName(FIELD_TITLE).dataType(DataType.VarChar).maxLength(512).build());
         schema.addField(AddFieldReq.builder().fieldName(FIELD_SOURCE).dataType(DataType.VarChar).maxLength(1024).build());
+        schema.addField(AddFieldReq.builder().fieldName(FIELD_FILE_PATH).dataType(DataType.VarChar).maxLength(1024).build());
+        schema.addField(AddFieldReq.builder().fieldName(FIELD_FILE_NAME).dataType(DataType.VarChar).maxLength(512).build());
+        schema.addField(AddFieldReq.builder().fieldName(FIELD_DIRECTORY).dataType(DataType.VarChar).maxLength(512).build());
+        schema.addField(AddFieldReq.builder().fieldName(FIELD_EXTENSION).dataType(DataType.VarChar).maxLength(64).build());
+        schema.addField(AddFieldReq.builder().fieldName(FIELD_IMPORT_SOURCE).dataType(DataType.VarChar).maxLength(128).build());
         schema.addField(AddFieldReq.builder().fieldName(FIELD_CONTENT).dataType(DataType.VarChar).maxLength(8192).build());
         schema.addField(AddFieldReq.builder()
                 .fieldName(milvus.getVectorField())
@@ -147,6 +167,7 @@ public class MilvusRagVectorStore implements RagVectorStore {
                 .collectionSchema(schema)
                 .indexParams(List.of(indexParam))
                 .build());
+        loadCollection(milvus.getCollectionName());
         log.info("RAG Milvus collection created, collectionName={}, primaryField={}, vectorField={}, dimension={}, indexType={}, metricType={}",
                 milvus.getCollectionName(), milvus.getPrimaryField(), milvus.getVectorField(),
                 properties.getRag().getEmbedding().getDimension(), milvus.getIndexType(), milvus.getMetricType());
@@ -161,6 +182,11 @@ public class MilvusRagVectorStore implements RagVectorStore {
         row.addProperty(FIELD_CHUNK_INDEX, chunk.getChunkIndex());
         row.addProperty(FIELD_TITLE, safe(chunk.getTitle()));
         row.addProperty(FIELD_SOURCE, safe(chunk.getSource()));
+        row.addProperty(FIELD_FILE_PATH, safe(metadataValue(chunk, "filePath", chunk.getSource())));
+        row.addProperty(FIELD_FILE_NAME, safe(metadataValue(chunk, "fileName", "")));
+        row.addProperty(FIELD_DIRECTORY, safe(metadataValue(chunk, "directory", "")));
+        row.addProperty(FIELD_EXTENSION, safe(metadataValue(chunk, "extension", "")));
+        row.addProperty(FIELD_IMPORT_SOURCE, safe(metadataValue(chunk, "importSource", "")));
         row.addProperty(FIELD_CONTENT, safe(chunk.getContent()));
         JsonArray vector = new JsonArray();
         for (float value : chunk.getEmbedding()) {
@@ -170,18 +196,6 @@ public class MilvusRagVectorStore implements RagVectorStore {
         return row;
     }
 
-    private String buildFilter(Long tenantId, String knowledgeBaseId, Map<String, Object> filters) {
-        StringBuilder expression = new StringBuilder();
-        expression.append(FIELD_TENANT_ID).append(" == ").append(tenantId);
-        expression.append(" and ").append(FIELD_KNOWLEDGE_BASE_ID).append(" == \"").append(escape(knowledgeBaseId)).append("\"");
-        if (filters == null || filters.isEmpty()) {
-            return expression.toString();
-        }
-        filters.forEach((key, value) -> expression.append(" and ").append(key)
-                .append(" == \"").append(escape(String.valueOf(value))).append("\""));
-        return expression.toString();
-    }
-
     private List<RagRetrievedChunk> toRetrievedChunks(SearchResp searchResp, String primaryField) {
         if (searchResp == null || searchResp.getSearchResults() == null || searchResp.getSearchResults().isEmpty()) {
             return List.of();
@@ -189,6 +203,13 @@ public class MilvusRagVectorStore implements RagVectorStore {
         return searchResp.getSearchResults().get(0).stream()
                 .map(result -> {
                     Map<String, Object> entity = result.getEntity();
+                    Map<String, Object> metadata = Map.of(
+                            "filePath", Objects.toString(entity.get(FIELD_FILE_PATH), ""),
+                            "fileName", Objects.toString(entity.get(FIELD_FILE_NAME), ""),
+                            "directory", Objects.toString(entity.get(FIELD_DIRECTORY), ""),
+                            "extension", Objects.toString(entity.get(FIELD_EXTENSION), ""),
+                            "importSource", Objects.toString(entity.get(FIELD_IMPORT_SOURCE), "")
+                    );
                     return RagRetrievedChunk.builder()
                             .tenantId(asLong(entity.get(FIELD_TENANT_ID)))
                             .knowledgeBaseId(asString(entity.get(FIELD_KNOWLEDGE_BASE_ID)))
@@ -199,10 +220,38 @@ public class MilvusRagVectorStore implements RagVectorStore {
                             .source(asString(entity.get(FIELD_SOURCE)))
                             .content(asString(entity.get(FIELD_CONTENT)))
                             .score(result.getScore())
-                            .metadata(Map.of())
+                            .metadata(metadata)
                             .build();
                 })
                 .toList();
+    }
+
+    private void validateExistingCollection(AiAgentProperties.MilvusProperties milvus) {
+        DescribeCollectionResp description = milvusClient.describeCollection(DescribeCollectionReq.builder()
+                .collectionName(milvus.getCollectionName())
+                .build());
+        List<String> requiredFields = List.of(
+                milvus.getPrimaryField(), FIELD_TENANT_ID, FIELD_KNOWLEDGE_BASE_ID, FIELD_DOCUMENT_ID,
+                FIELD_CHUNK_INDEX, FIELD_TITLE, FIELD_SOURCE, FIELD_FILE_PATH, FIELD_FILE_NAME, FIELD_DIRECTORY,
+                FIELD_EXTENSION, FIELD_IMPORT_SOURCE, FIELD_CONTENT, milvus.getVectorField()
+        );
+        List<String> fieldNames = description.getFieldNames();
+        List<String> missingFields = requiredFields.stream()
+                .filter(field -> fieldNames == null || !fieldNames.contains(field))
+                .toList();
+        if (!missingFields.isEmpty()) {
+            throw new IllegalStateException("Milvus collection schema is incompatible, collectionName="
+                    + milvus.getCollectionName() + ", missingFields=" + missingFields
+                    + ". Please drop the old local collection or use another MILVUS_COLLECTION_NAME.");
+        }
+        log.info("RAG Milvus collection schema checked, collectionName={}, fieldCount={}, vectorField={}, primaryField={}",
+                milvus.getCollectionName(), fieldNames.size(), milvus.getVectorField(), milvus.getPrimaryField());
+    }
+
+    private void loadCollection(String collectionName) {
+        milvusClient.loadCollection(LoadCollectionReq.builder()
+                .collectionName(collectionName)
+                .build());
     }
 
     private Long asLong(Object value) {
@@ -227,7 +276,11 @@ public class MilvusRagVectorStore implements RagVectorStore {
         return value == null ? "" : value;
     }
 
-    private String escape(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    private String metadataValue(RagDocumentChunk chunk, String key, String defaultValue) {
+        if (chunk.getMetadata() == null || !chunk.getMetadata().containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = chunk.getMetadata().get(key);
+        return value == null ? defaultValue : String.valueOf(value);
     }
 }

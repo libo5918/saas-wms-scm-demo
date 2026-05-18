@@ -441,6 +441,19 @@ Milvus collection 第一版字段以 RAG chunk 为中心，重点保证 `tenant_
 - 导入服务只负责扫描和转换文档，向量写入仍复用 `RagService` 和 `RagVectorStore`
 - 默认继续使用 `in-memory + mock embedding`，后续切换 Milvus 时不改变导入接口
 
+## Phase 3.3 Milvus Smoke 决策
+
+当前阶段优先补齐 Milvus 端到端 smoke，而不是直接接真实 Embedding。
+
+原因：
+
+- 使用者需要先理解 Milvus 的 collection、schema、index、metric type、topK 和 filter expression
+- Milvus 是向量存储和检索基础设施，先验证写入、检索、过滤链路更稳
+- mock embedding 足够验证 Milvus upsert/search/filter，不会引入外部模型 API Key
+- 默认仍保持 in-memory，保证本地启动和 CI 不依赖 Milvus
+
+本阶段 metadata filter 采用白名单策略，只允许项目已建模字段进入 Milvus filter expression，避免调用方传入任意表达式。
+
 默认导入范围：
 
 - `docs/architecture`
