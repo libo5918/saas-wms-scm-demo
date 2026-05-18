@@ -226,3 +226,27 @@ X-User-Roles: ROLE_ADMIN
 3. 实现 `MilvusRagVectorStore`。
 4. 增加本地 docker-compose 或运维文档。
 5. 增加 profile 隔离的 Milvus smoke test，默认 CI 仍不依赖 Milvus。
+## 11. Phase 3.1 Milvus Adapter 接入
+
+当前已新增 `MilvusRagVectorStore`，并通过条件装配控制启用时机：
+
+```text
+ai.agent.rag.vector-store.mode=in-memory  -> InMemoryRagVectorStore
+ai.agent.rag.vector-store.mode=milvus     -> MilvusRagVectorStore
+```
+
+默认仍然是 `in-memory`，因此本地无 Milvus 时应用可启动，单元测试也不会连接真实 Milvus。
+
+Milvus Adapter 使用官方 Java SDK，负责：
+
+- 初始化 collection schema
+- 创建向量索引
+- 写入 chunk 向量
+- 按 `tenant_id + knowledge_base_id` 过滤检索
+- 返回引用字段：`document_id`、`chunk_id`、`source`、`title`、`content`
+
+详细本地搭建和验证方式见：
+
+```text
+docs/operations/milvus-local-setup.md
+```

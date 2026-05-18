@@ -1,8 +1,9 @@
-﻿package com.example.scm.aiagent.rag.service;
+package com.example.scm.aiagent.rag.service;
 
 import com.example.scm.aiagent.rag.dto.RagRetrievedChunk;
 import com.example.scm.aiagent.rag.model.RagDocumentChunk;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -17,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "ai.agent.rag.vector-store", name = "mode", havingValue = "in-memory", matchIfMissing = true)
 public class InMemoryRagVectorStore implements RagVectorStore {
 
     private final Map<String, Map<String, RagDocumentChunk>> chunksByScope = new ConcurrentHashMap<>();
@@ -30,7 +32,7 @@ public class InMemoryRagVectorStore implements RagVectorStore {
         String scope = scopeKey(first.getTenantId(), first.getKnowledgeBaseId());
         Map<String, RagDocumentChunk> scopedChunks = chunksByScope.computeIfAbsent(scope, key -> new ConcurrentHashMap<>());
         chunks.forEach(chunk -> scopedChunks.put(chunk.getChunkId(), chunk));
-        log.info("RAG in-memory chunks upserted,RAG in-memory chunks upserted tenantId={}, knowledgeBaseId={}, chunkCount={}",
+        log.info("RAG in-memory chunks upserted, tenantId={}, knowledgeBaseId={}, chunkCount={}",
                 first.getTenantId(), first.getKnowledgeBaseId(), chunks.size());
     }
 

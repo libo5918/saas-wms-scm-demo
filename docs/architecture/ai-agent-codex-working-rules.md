@@ -502,3 +502,41 @@ feat(ai-agent): 增强模型 Provider 配置与动态路由能力
 ```text
 请严格按照 docs/architecture/ai-agent-roadmap.md 和 docs/architecture/ai-agent-codex-working-rules.md 推进当前任务。先确认当前处于哪个阶段，再实施，不要跳阶段，不要做空泛 Demo，完成后更新对应文档和测试。
 ```
+
+## 18. Phase 接口验证示例规则
+
+后续每完成一个阶段性的 Phase 或子阶段，例如 Phase 3、Phase 3.1、Phase 4 等，完成汇报中必须提供本阶段对应的接口验证示例，方便本地直接验证实现是否正确。
+
+接口示例默认要求：
+
+- 默认通过 `scm-gateway` 调用，不直接绕过网关调用下游服务。
+- 默认端口使用 `18080`。
+- 示例 URL 使用 `http://localhost:18080` 开头。
+- 如果接口需要鉴权，必须说明需要先登录并携带 `Authorization: Bearer <token>`。
+- 如果接口依赖租户和用户上下文，优先说明这些信息由 gateway 从 token 解析并透传；只有直连服务调试时才手动传 `X-Tenant-Id`、`X-User-Id` 等内部请求头。
+- 每个接口示例需要包含 method、URL、headers、body 和关键预期返回字段。
+- 如果当前阶段包含多步验证，例如写入、检索、执行、查询状态，必须按调用顺序给出完整链路。
+- 如果某能力默认是 mock / in-memory 模式，示例中要明确说明默认验证不依赖真实外部服务。
+- 如果某能力需要本地中间件，例如 Milvus、Redis、Kafka，必须额外说明启用条件和环境变量，但不能把真实密钥写入示例。
+
+示例格式建议：
+
+```text
+POST http://localhost:18080/api/v1/xxx
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "example": "value"
+}
+```
+
+预期重点检查：
+
+```text
+success = true
+code = 200
+关键业务字段符合预期
+```

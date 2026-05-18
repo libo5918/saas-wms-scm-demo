@@ -266,6 +266,11 @@ public class AiAgentProperties {
         private String collectionName = "scm_ai_rag_chunks";
 
         /**
+         * Milvus 主键字段名称，对应每个 chunk 的唯一 ID。
+         */
+        private String primaryField = "chunk_id";
+
+        /**
          * 向量字段名称。
          */
         private String vectorField = "embedding";
@@ -274,6 +279,11 @@ public class AiAgentProperties {
          * 相似度度量方式，默认 COSINE。
          */
         private String metricType = "COSINE";
+
+        /**
+         * Milvus 向量索引类型，Standalone 演示默认使用 AUTOINDEX。
+         */
+        private String indexType = "AUTOINDEX";
     }
 
     /**

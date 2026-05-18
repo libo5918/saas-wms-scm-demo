@@ -84,8 +84,10 @@ ai:
           uri: ${MILVUS_URI:http://localhost:19530}
           token: ${MILVUS_TOKEN:}
           collection-name: ${MILVUS_COLLECTION_NAME:scm_ai_rag_chunks}
+          primary-field: ${MILVUS_PRIMARY_FIELD:chunk_id}
           vector-field: ${MILVUS_VECTOR_FIELD:embedding}
           metric-type: ${MILVUS_METRIC_TYPE:COSINE}
+          index-type: ${MILVUS_INDEX_TYPE:AUTOINDEX}
       retrieval:
         default-top-k: ${AI_AGENT_RAG_DEFAULT_TOP_K:3}
         max-top-k: ${AI_AGENT_RAG_MAX_TOP_K:10}
