@@ -536,3 +536,15 @@ agent.task.completed
 ```text
 docs/architecture/ai-agent-phase3-rag-basic.md
 ```
+## Phase 3.2：docs 自动扫描导入
+
+Phase 3.2 在 Phase 3 RAG 基础能力之上，补齐当前项目文档的手动导入入口。
+
+验收标准：
+
+- 可以通过 gateway 调用 `POST /api/v1/ai/rag/import/docs`
+- 默认扫描 `docs/architecture`、`docs/business`、`docs/operations`、`docs/database`
+- 默认只导入 Markdown 文档
+- 单次导入数量受配置限制
+- 导入后可以继续通过 RAG retrieve 和 RAG chat 检索使用
+- 默认仍为 `in-memory + mock embedding`，不依赖真实 Milvus

@@ -182,6 +182,11 @@ public class AiAgentProperties {
          * 检索配置。
          */
         private RetrievalProperties retrieval = new RetrievalProperties();
+
+        /**
+         * docs 目录自动导入配置。
+         */
+        private DocsImportProperties docsImport = new DocsImportProperties();
     }
 
     /**
@@ -302,5 +307,43 @@ public class AiAgentProperties {
          * 单次请求允许返回的最大切片数量。
          */
         private int maxTopK = 10;
+    }
+    /**
+     * docs 目录导入 RAG 知识库的配置。
+     */
+    @Getter
+    @Setter
+    public static class DocsImportProperties {
+
+        /**
+         * 是否启用 docs 导入能力；本阶段只支持手动接口触发，不在启动时自动导入。
+         */
+        private boolean enabled = true;
+
+        /**
+         * docs 根目录，默认使用项目根目录下的 docs。
+         */
+        private String rootPath = "docs";
+
+        /**
+         * 默认写入的知识库 ID。
+         */
+        private String knowledgeBaseId = "kb-project-docs";
+
+        /**
+         * 默认扫描的 docs 子目录，避免误扫整个大目录。
+         */
+        private List<String> includeDirectories = new ArrayList<>(
+                List.of("architecture", "business", "operations", "database"));
+
+        /**
+         * 支持导入的文件后缀，当前默认只导入 Markdown。
+         */
+        private List<String> supportedExtensions = new ArrayList<>(List.of(".md"));
+
+        /**
+         * 单次最大导入文件数，避免误扫大目录导致长时间 IO。
+         */
+        private int maxFiles = 100;
     }
 }

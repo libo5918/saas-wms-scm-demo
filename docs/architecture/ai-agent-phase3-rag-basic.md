@@ -250,3 +250,24 @@ Milvus Adapter 使用官方 Java SDK，负责：
 ```text
 docs/operations/milvus-local-setup.md
 ```
+## Phase 3.2：docs 目录手动导入 RAG 知识库
+
+本阶段新增 `docs` Markdown 文档导入能力，目标是让当前项目自己的架构、业务、运维和数据库文档可以快速进入 RAG 知识库。
+
+落地范围：
+
+- 新增 `POST /api/v1/ai/rag/import/docs` 手动导入接口
+- 默认扫描 `docs/architecture`、`docs/business`、`docs/operations`、`docs/database`
+- 支持配置 docs 根目录、知识库 ID、支持后缀和单次最大导入文件数
+- 文档标题优先取 Markdown 一级标题，否则使用文件名
+- `source` 使用相对路径
+- metadata 包含 `filePath`、`fileName`、`directory`、`extension`、`importSource`
+- 复用 `RagService.upsertDocument` 完成切片、mock embedding 和向量写入
+
+默认验证方式仍然是 `in-memory + mock embedding`，不依赖真实 Milvus、真实 Embedding API 或外部网络。
+
+操作说明见：
+
+```text
+docs/operations/rag-docs-import.md
+```

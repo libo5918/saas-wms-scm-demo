@@ -91,6 +91,13 @@ ai:
       retrieval:
         default-top-k: ${AI_AGENT_RAG_DEFAULT_TOP_K:3}
         max-top-k: ${AI_AGENT_RAG_MAX_TOP_K:10}
+      docs-import:
+        enabled: ${AI_AGENT_RAG_DOCS_IMPORT_ENABLED:true}
+        root-path: ${AI_AGENT_RAG_DOCS_ROOT:docs}
+        knowledge-base-id: ${AI_AGENT_RAG_DOCS_KNOWLEDGE_BASE_ID:kb-project-docs}
+        include-directories: ${AI_AGENT_RAG_DOCS_INCLUDE_DIRECTORIES:architecture,business,operations,database}
+        supported-extensions: ${AI_AGENT_RAG_DOCS_SUPPORTED_EXTENSIONS:.md}
+        max-files: ${AI_AGENT_RAG_DOCS_MAX_FILES:100}
     providers:
       - name: mock
         type: mock

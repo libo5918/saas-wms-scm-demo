@@ -430,3 +430,20 @@ io.milvus:milvus-sdk-java
 - 保持 `RagVectorStore` 抽象稳定，后续可以继续接 MySQL metadata、真实 Embedding 和批量导入。
 
 Milvus collection 第一版字段以 RAG chunk 为中心，重点保证 `tenant_id`、`knowledge_base_id`、`document_id` 和 `chunk_id` 可追踪、可过滤。
+## Phase 3.2 docs 导入补充决策
+
+当前项目 RAG 第一批知识来源使用项目内 `docs` 目录，并通过手动接口导入，不在应用启动时自动扫描。
+
+设计原因：
+
+- 避免应用启动时执行大量 IO，保证本地开发和 CI 启动稳定
+- 通过 `maxFiles` 控制单次导入规模，避免误扫大目录
+- 导入服务只负责扫描和转换文档，向量写入仍复用 `RagService` 和 `RagVectorStore`
+- 默认继续使用 `in-memory + mock embedding`，后续切换 Milvus 时不改变导入接口
+
+默认导入范围：
+
+- `docs/architecture`
+- `docs/business`
+- `docs/operations`
+- `docs/database`

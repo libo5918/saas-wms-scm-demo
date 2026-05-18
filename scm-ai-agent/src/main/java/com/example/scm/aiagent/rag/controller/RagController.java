@@ -3,10 +3,13 @@ package com.example.scm.aiagent.rag.controller;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.rag.dto.RagChatRequest;
 import com.example.scm.aiagent.rag.dto.RagChatResponse;
+import com.example.scm.aiagent.rag.dto.RagDocsImportRequest;
+import com.example.scm.aiagent.rag.dto.RagDocsImportResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
+import com.example.scm.aiagent.rag.service.RagDocsImportService;
 import com.example.scm.aiagent.rag.service.RagService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
@@ -36,9 +39,11 @@ import java.util.List;
 public class RagController {
 
     private final RagService ragService;
+    private final RagDocsImportService ragDocsImportService;
 
-    public RagController(RagService ragService) {
+    public RagController(RagService ragService, RagDocsImportService ragDocsImportService) {
         this.ragService = ragService;
+        this.ragDocsImportService = ragDocsImportService;
     }
 
     /**
@@ -82,6 +87,22 @@ public class RagController {
                 context.tenantId(), context.userId(), request.getKnowledgeBaseId(), request.getTaskType(), request.getTopK(),
                 safeLength(request.getMessage()));
         return Result.success(ragService.ragChat(request, context));
+    }
+
+    /**
+     * 手动触发 docs Markdown 文档导入 RAG 知识库。
+     */
+    @PostMapping("/import/docs")
+    public Result<RagDocsImportResponse> importDocs(@RequestBody(required = false) RagDocsImportRequest request,
+                                                    @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                    @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                    @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        RagDocsImportRequest safeRequest = request == null ? new RagDocsImportRequest() : request;
+        log.info("RAG docs import request received, tenantId={}, userId={}, knowledgeBaseId={}, scanRoot={}, maxFiles={}",
+                context.tenantId(), context.userId(), safeRequest.getKnowledgeBaseId(), safeRequest.getScanRoot(),
+                safeRequest.getMaxFiles());
+        return Result.success(ragDocsImportService.importDocs(safeRequest, context));
     }
 
     private AgentRequestContext buildContext(Long userId, String username, String roles) {

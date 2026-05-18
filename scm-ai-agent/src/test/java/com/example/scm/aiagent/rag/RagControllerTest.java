@@ -2,8 +2,10 @@ package com.example.scm.aiagent.rag;
 
 import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.rag.controller.RagController;
+import com.example.scm.aiagent.rag.dto.RagDocsImportResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
+import com.example.scm.aiagent.rag.service.RagDocsImportService;
 import com.example.scm.aiagent.rag.service.RagService;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
@@ -34,6 +36,9 @@ class RagControllerTest {
 
     @MockitoBean
     private RagService ragService;
+
+    @MockitoBean
+    private RagDocsImportService ragDocsImportService;
 
     @Test
     void shouldUpsertDocumentWithTenantAndUserContext() throws Exception {
@@ -93,5 +98,41 @@ class RagControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.tenantId").value(1))
                 .andExpect(jsonPath("$.data.knowledgeBaseId").value("kb-project"));
+    }
+
+    @Test
+    void shouldImportDocsWithTenantAndUserContext() throws Exception {
+        RagDocsImportResponse response = new RagDocsImportResponse();
+        response.setTenantId(1L);
+        response.setUserId(10001L);
+        response.setKnowledgeBaseId("kb-project-docs");
+        response.setScanRoot("docs");
+        response.setFileCount(2);
+        response.setImportedCount(2);
+        response.setSkippedCount(0);
+        response.setVectorStoreMode("in-memory");
+        response.setEmbeddingMode("mock");
+        when(ragDocsImportService.importDocs(any(), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/ai/rag/import/docs")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "knowledgeBaseId": "kb-project-docs",
+                                  "scanRoot": "docs",
+                                  "includeDirectories": ["architecture", "operations"],
+                                  "supportedExtensions": [".md"],
+                                  "maxFiles": 20
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.tenantId").value(1))
+                .andExpect(jsonPath("$.data.knowledgeBaseId").value("kb-project-docs"))
+                .andExpect(jsonPath("$.data.importedCount").value(2));
     }
 }
