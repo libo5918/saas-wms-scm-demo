@@ -34,4 +34,7 @@ public class RagDocumentUpsertRequest {
 
     /** 文档扩展元数据，后续可用于 Milvus metadata filter。 */
     private Map<String, Object> metadata = new HashMap<>();
+
+    /** 导入批次 ID，docs 自动导入时由服务端生成，手动写入时可以不传。 */
+    private String importBatchId;
 }

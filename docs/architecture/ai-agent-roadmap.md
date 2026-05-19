@@ -585,3 +585,20 @@ Phase 3.5 已纳入 RAG 阶段范围，重点不是新增外部组件，而是�
 - 检索支持 `scoreThreshold`。
 - RAG Chat 上下文拼接支持 chunk 数量和单 chunk 长度裁剪。
 - 单元测试继续保持 mock / in-memory，不依赖真实外部服务。
+## Phase 3.6 补充：RAG 文档管理与导入元数据
+
+Phase 3.6 已纳入 RAG 阶段范围，重点从“能写入和检索 chunk”推进到“知识库可治理”。
+
+验收标准：
+
+- 文档写入后可以查询 Document Registry。
+- 重复写入同一文档会更新文档元数据，并保留首次导入时间。
+- docs 自动导入会生成 `importBatchId`，并可以查询导入批次。
+- 删除文档会同时删除 Registry 记录和 VectorStore chunk。
+- 默认测试仍保持 `mock embedding + in-memory`，不依赖真实 Milvus、真实 Embedding API 或外部网络。
+
+详细说明见：
+
+```text
+docs/operations/rag-document-management.md
+```

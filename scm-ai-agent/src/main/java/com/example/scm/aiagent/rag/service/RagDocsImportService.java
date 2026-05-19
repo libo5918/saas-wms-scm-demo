@@ -7,6 +7,7 @@ import com.example.scm.aiagent.rag.dto.RagDocsImportRequest;
 import com.example.scm.aiagent.rag.dto.RagDocsImportResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
+import com.example.scm.aiagent.rag.model.RagImportBatchRecord;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -71,6 +73,7 @@ public class RagDocsImportService {
         Path projectRoot = resolveProjectRoot();
         Path scanRoot = resolveScanRoot(projectRoot, safeRequest.getScanRoot(), config.getRootPath());
         String knowledgeBaseId = resolveKnowledgeBaseId(safeRequest, config);
+        String importBatchId = UUID.randomUUID().toString();
         List<String> includeDirectories = resolveList(safeRequest.getIncludeDirectories(), config.getIncludeDirectories());
         Set<String> supportedExtensions = normalizeExtensions(resolveList(safeRequest.getSupportedExtensions(),
                 config.getSupportedExtensions()));
@@ -84,12 +87,15 @@ public class RagDocsImportService {
         for (Path file : importFiles) {
             try {
                 RagDocumentUpsertRequest upsertRequest = toUpsertRequest(projectRoot, scanRoot, file, knowledgeBaseId);
+                upsertRequest.setImportBatchId(importBatchId);
                 RagDocumentUpsertResponse upsertResponse = ragService.upsertDocument(upsertRequest, context);
                 importedDocuments.add(RagDocsImportedDocument.builder()
                         .documentId(upsertResponse.getDocumentId())
                         .title(upsertRequest.getTitle())
                         .source(upsertRequest.getSource())
                         .chunkCount(upsertResponse.getChunkCount())
+                        .deletedCount(upsertResponse.getDeletedCount())
+                        .importBatchId(importBatchId)
                         .build());
             } catch (IOException ex) {
                 skippedCount++;
@@ -104,18 +110,37 @@ public class RagDocsImportService {
         response.setTenantId(context.tenantId());
         response.setUserId(context.userId());
         response.setKnowledgeBaseId(knowledgeBaseId);
+        response.setImportBatchId(importBatchId);
         response.setScanRoot(toDisplayPath(projectRoot, scanRoot));
         response.setFileCount(files.size());
         response.setImportedCount(importedDocuments.size());
         response.setSkippedCount(skippedCount);
         response.setVectorStoreMode(properties.getRag().getVectorStore().getMode());
         response.setEmbeddingMode(properties.getRag().getEmbedding().getMode());
+        response.setEmbeddingModel(properties.getRag().getEmbedding().getModel());
         response.setLatencyMs(latencyMs);
         response.setDocuments(importedDocuments);
+        ragService.saveImportBatch(RagImportBatchRecord.builder()
+                .tenantId(context.tenantId())
+                .userId(context.userId())
+                .importBatchId(importBatchId)
+                .knowledgeBaseId(knowledgeBaseId)
+                .scanRoot(response.getScanRoot())
+                .fileCount(files.size())
+                .importedCount(importedDocuments.size())
+                .skippedCount(skippedCount)
+                .vectorStoreMode(response.getVectorStoreMode())
+                .embeddingMode(response.getEmbeddingMode())
+                .embeddingModel(response.getEmbeddingModel())
+                .documentIds(importedDocuments.stream().map(RagDocsImportedDocument::getDocumentId).toList())
+                .startedAt(start)
+                .finishedAt(Instant.now())
+                .latencyMs(latencyMs)
+                .build());
 
-        log.info("RAG docs import completed, tenantId={}, userId={}, knowledgeBaseId={}, scanRoot={}, fileCount={}, importedCount={}, skippedCount={}, latencyMs={}",
-                context.tenantId(), context.userId(), knowledgeBaseId, response.getScanRoot(), files.size(),
-                importedDocuments.size(), skippedCount, latencyMs);
+        log.info("RAG docs import completed, tenantId={}, userId={}, knowledgeBaseId={}, importBatchId={}, scanRoot={}, fileCount={}, importedCount={}, skippedCount={}, latencyMs={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, importBatchId, response.getScanRoot(),
+                files.size(), importedDocuments.size(), skippedCount, latencyMs);
         return response;
     }
 

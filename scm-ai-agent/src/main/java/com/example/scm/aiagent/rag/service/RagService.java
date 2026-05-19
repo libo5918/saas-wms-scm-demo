@@ -6,15 +6,25 @@ import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.rag.dto.RagChatRequest;
 import com.example.scm.aiagent.rag.dto.RagChatResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentDeleteResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentListResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentRecordResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
+import com.example.scm.aiagent.rag.dto.RagImportBatchListResponse;
+import com.example.scm.aiagent.rag.dto.RagImportBatchResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrievedChunk;
 import com.example.scm.aiagent.rag.model.RagDocument;
 import com.example.scm.aiagent.rag.model.RagDocumentChunk;
+import com.example.scm.aiagent.rag.model.RagDocumentRecord;
+import com.example.scm.aiagent.rag.model.RagImportBatchRecord;
 import com.example.scm.aiagent.service.AgentChatService;
+import com.example.scm.common.core.BusinessException;
+import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -25,8 +35,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * RAG 搴旂敤鏈嶅姟銆? *
- * <p>璐熻矗鏂囨。鍐欏叆銆佸垏鐗囥€乵ock embedding銆佸悜閲忔绱㈠拰 RAG Chat 缂栨帓锛屾槸 Phase 3 鐨勬渶灏忛棴鐜叆鍙ｃ€?/p>
+ * RAG 应用服务。
+ *
+ * <p>负责文档写入、旧 chunk 清理、文档切片、Embedding、向量检索、RAG Chat 编排和文档治理元数据登记。</p>
  */
 @Slf4j
 @Service
@@ -37,6 +48,19 @@ public class RagService {
     private final RagEmbeddingClient embeddingClient;
     private final RagVectorStore vectorStore;
     private final AgentChatService agentChatService;
+    private final RagDocumentRegistry documentRegistry;
+
+    @Autowired
+    public RagService(AiAgentProperties properties, RagDocumentChunker documentChunker,
+                      RagEmbeddingClient embeddingClient, RagVectorStore vectorStore,
+                      AgentChatService agentChatService, RagDocumentRegistry documentRegistry) {
+        this.properties = properties;
+        this.documentChunker = documentChunker;
+        this.embeddingClient = embeddingClient;
+        this.vectorStore = vectorStore;
+        this.agentChatService = agentChatService;
+        this.documentRegistry = documentRegistry;
+    }
 
     public RagService(AiAgentProperties properties, RagDocumentChunker documentChunker,
                       RagEmbeddingClient embeddingClient, RagVectorStore vectorStore,
@@ -46,13 +70,17 @@ public class RagService {
         this.embeddingClient = embeddingClient;
         this.vectorStore = vectorStore;
         this.agentChatService = agentChatService;
+        this.documentRegistry = new InMemoryRagDocumentRegistry();
     }
 
     /**
-     * 鍐欏叆鏂囨。骞剁敓鎴愬垏鐗囧悜閲忋€?     *
-     * @param request 鏂囨。鍐欏叆璇锋眰
-     * @param context 褰撳墠绉熸埛鍜岀敤鎴蜂笂涓嬫枃
-     * @return 鍐欏叆缁撴灉
+     * 写入文档并生成向量切片。
+     *
+     * <p>写入前会先按租户、知识库、文档 ID 删除旧 chunk，避免重复导入和旧切片残留。</p>
+     *
+     * @param request 文档写入请求
+     * @param context 当前租户和用户上下文
+     * @return 写入结果
      */
     public RagDocumentUpsertResponse upsertDocument(RagDocumentUpsertRequest request, AgentRequestContext context) {
         long startedAt = System.nanoTime();
@@ -73,6 +101,13 @@ public class RagService {
         long deletedCount = vectorStore.deleteByDocument(context.tenantId(), request.getKnowledgeBaseId(), documentId);
         List<RagDocumentChunk> chunks = documentChunker.chunk(document);
         vectorStore.upsert(chunks);
+        Instant now = Instant.now();
+        RagDocumentRecord existingRecord = documentRegistry
+                .findDocument(context.tenantId(), request.getKnowledgeBaseId(), documentId)
+                .orElse(null);
+        RagDocumentRecord record = buildDocumentRecord(request, context, documentId, chunks.size(), deletedCount,
+                existingRecord, now);
+        documentRegistry.saveDocument(record);
 
         RagDocumentUpsertResponse response = new RagDocumentUpsertResponse();
         response.setTenantId(context.tenantId());
@@ -82,19 +117,133 @@ public class RagService {
         response.setDeletedCount(deletedCount);
         response.setVectorStoreMode(properties.getRag().getVectorStore().getMode());
         response.setEmbeddingMode(properties.getRag().getEmbedding().getMode());
-        response.setCreatedAt(Instant.now());
+        response.setEmbeddingModel(embeddingClient.modelName());
+        response.setImportBatchId(request.getImportBatchId());
+        response.setCreatedAt(record.getImportedAt());
+        response.setUpdatedAt(record.getUpdatedAt());
         long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, deletedCount={}, chunkCount={}, vectorStoreMode={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, latencyMs={}",
-                context.tenantId(), context.userId(), request.getKnowledgeBaseId(), documentId, deletedCount, chunks.size(),
-                response.getVectorStoreMode(), response.getEmbeddingMode(), embeddingClient.modelName(),
-                embeddingClient.dimension(), latencyMs);
+        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, importBatchId={}, deletedCount={}, chunkCount={}, vectorStoreMode={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, latencyMs={}",
+                context.tenantId(), context.userId(), request.getKnowledgeBaseId(), documentId, request.getImportBatchId(),
+                deletedCount, chunks.size(), response.getVectorStoreMode(), response.getEmbeddingMode(),
+                embeddingClient.modelName(), embeddingClient.dimension(), latencyMs);
         return response;
     }
 
     /**
-     * 鍩轰簬 query 妫€绱㈢浉鍏冲垏鐗囥€?     *
-     * @param request 妫€绱㈣姹?     * @param context 褰撳墠绉熸埛鍜岀敤鎴蜂笂涓嬫枃
-     * @return 妫€绱㈢粨鏋?     */
+     * 查询知识库文档列表。
+     *
+     * @param knowledgeBaseId 知识库 ID
+     * @param context 当前租户和用户上下文
+     * @return 文档列表响应
+     */
+    public RagDocumentListResponse listDocuments(String knowledgeBaseId, AgentRequestContext context) {
+        List<RagDocumentRecordResponse> documents = documentRegistry
+                .listDocuments(context.tenantId(), knowledgeBaseId)
+                .stream()
+                .map(this::toDocumentResponse)
+                .toList();
+        log.info("RAG document list queried, tenantId={}, userId={}, knowledgeBaseId={}, documentCount={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, documents.size());
+        return RagDocumentListResponse.builder()
+                .tenantId(context.tenantId())
+                .knowledgeBaseId(knowledgeBaseId)
+                .documentCount(documents.size())
+                .documents(documents)
+                .build();
+    }
+
+    /**
+     * 查询文档治理元数据详情。
+     *
+     * @param knowledgeBaseId 知识库 ID
+     * @param documentId 文档 ID
+     * @param context 当前租户和用户上下文
+     * @return 文档详情响应
+     */
+    public RagDocumentRecordResponse getDocument(String knowledgeBaseId, String documentId, AgentRequestContext context) {
+        RagDocumentRecord record = documentRegistry.findDocument(context.tenantId(), knowledgeBaseId, documentId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "RAG document not found"));
+        log.info("RAG document detail queried, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, documentId);
+        return toDocumentResponse(record);
+    }
+
+    /**
+     * 删除文档治理记录，并联动删除 VectorStore 中对应文档的 chunk。
+     *
+     * @param knowledgeBaseId 知识库 ID
+     * @param documentId 文档 ID
+     * @param context 当前租户和用户上下文
+     * @return 删除结果
+     */
+    public RagDocumentDeleteResponse deleteDocument(String knowledgeBaseId, String documentId, AgentRequestContext context) {
+        long startedAt = System.nanoTime();
+        long deletedChunkCount = vectorStore.deleteByDocument(context.tenantId(), knowledgeBaseId, documentId);
+        boolean registryDeleted = documentRegistry.deleteDocument(context.tenantId(), knowledgeBaseId, documentId).isPresent();
+        long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.info("RAG document deleted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, registryDeleted={}, deletedCount={}, vectorStoreMode={}, latencyMs={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, documentId, registryDeleted, deletedChunkCount,
+                properties.getRag().getVectorStore().getMode(), latencyMs);
+        return RagDocumentDeleteResponse.builder()
+                .tenantId(context.tenantId())
+                .knowledgeBaseId(knowledgeBaseId)
+                .documentId(documentId)
+                .registryDeleted(registryDeleted)
+                .deletedChunkCount(deletedChunkCount)
+                .build();
+    }
+
+    /**
+     * 保存 docs 导入批次记录。
+     *
+     * @param record 导入批次记录
+     */
+    public void saveImportBatch(RagImportBatchRecord record) {
+        documentRegistry.saveImportBatch(record);
+    }
+
+    /**
+     * 查询当前租户的导入批次列表。
+     *
+     * @param context 当前租户和用户上下文
+     * @return 批次列表响应
+     */
+    public RagImportBatchListResponse listImportBatches(AgentRequestContext context) {
+        List<RagImportBatchResponse> batches = documentRegistry.listImportBatches(context.tenantId())
+                .stream()
+                .map(this::toImportBatchResponse)
+                .toList();
+        log.info("RAG import batch list queried, tenantId={}, userId={}, batchCount={}",
+                context.tenantId(), context.userId(), batches.size());
+        return RagImportBatchListResponse.builder()
+                .tenantId(context.tenantId())
+                .batchCount(batches.size())
+                .batches(batches)
+                .build();
+    }
+
+    /**
+     * 查询导入批次详情。
+     *
+     * @param importBatchId 导入批次 ID
+     * @param context 当前租户和用户上下文
+     * @return 批次详情响应
+     */
+    public RagImportBatchResponse getImportBatch(String importBatchId, AgentRequestContext context) {
+        RagImportBatchRecord record = documentRegistry.findImportBatch(context.tenantId(), importBatchId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "RAG import batch not found"));
+        log.info("RAG import batch detail queried, tenantId={}, userId={}, importBatchId={}",
+                context.tenantId(), context.userId(), importBatchId);
+        return toImportBatchResponse(record);
+    }
+
+    /**
+     * 基于 query 检索知识库中的相关切片。
+     *
+     * @param request 检索请求
+     * @param context 当前租户和用户上下文
+     * @return 检索结果
+     */
     public RagRetrieveResponse retrieve(RagRetrieveRequest request, AgentRequestContext context) {
         long startedAt = System.nanoTime();
         int topK = resolveTopK(request.getTopK());
@@ -112,16 +261,17 @@ public class RagService {
         response.setLatencyMs((System.nanoTime() - startedAt) / 1_000_000);
         log.info("RAG retrieve finished, tenantId={}, userId={}, knowledgeBaseId={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, topK={}, scoreThreshold={}, retrievedCount={}, latencyMs={}",
                 context.tenantId(), context.userId(), request.getKnowledgeBaseId(), embeddingClient.mode(),
-                embeddingClient.modelName(), queryEmbedding == null ? 0 : queryEmbedding.length, topK, scoreThreshold, chunks.size(),
-                response.getLatencyMs());
+                embeddingClient.modelName(), queryEmbedding == null ? 0 : queryEmbedding.length, topK, scoreThreshold,
+                chunks.size(), response.getLatencyMs());
         return response;
     }
 
     /**
-     * 鎵ц RAG Chat锛氬厛妫€绱㈠垏鐗囷紝鍐嶆嫾鎺ヤ笂涓嬫枃骞跺鐢ㄧ幇鏈?AgentChatService 璋冪敤妯″瀷銆?     *
-     * @param request RAG Chat 璇锋眰
-     * @param context 褰撳墠绉熸埛鍜岀敤鎴蜂笂涓嬫枃
-     * @return RAG Chat 鍝嶅簲
+     * 执行 RAG Chat：先检索切片，再把引用上下文拼接到提示词中，最后复用 AgentChatService 调用模型。
+     *
+     * @param request RAG Chat 请求
+     * @param context 当前租户和用户上下文
+     * @return RAG Chat 响应
      */
     public RagChatResponse ragChat(RagChatRequest request, AgentRequestContext context) {
         long startedAt = System.nanoTime();
@@ -157,6 +307,81 @@ public class RagService {
                 properties.getRag().getRetrieval().getMaxContextChunkLength(),
                 chatResponse.getModelName(), chatResponse.getProvider(), response.getLatencyMs());
         return response;
+    }
+
+    private RagDocumentRecord buildDocumentRecord(RagDocumentUpsertRequest request, AgentRequestContext context,
+                                                  String documentId, int chunkCount, long deletedCount,
+                                                  RagDocumentRecord existingRecord, Instant now) {
+        return RagDocumentRecord.builder()
+                .tenantId(context.tenantId())
+                .knowledgeBaseId(request.getKnowledgeBaseId())
+                .documentId(documentId)
+                .title(request.getTitle())
+                .source(request.getSource())
+                .filePath(metadataValue(request, "filePath", request.getSource()))
+                .fileName(metadataValue(request, "fileName", null))
+                .directory(metadataValue(request, "directory", null))
+                .importSource(metadataValue(request, "importSource", "manual-upsert"))
+                .chunkCount(chunkCount)
+                .deletedCount(deletedCount)
+                .embeddingMode(properties.getRag().getEmbedding().getMode())
+                .embeddingModel(embeddingClient.modelName())
+                .vectorStoreMode(properties.getRag().getVectorStore().getMode())
+                .importBatchId(request.getImportBatchId())
+                .importedAt(existingRecord == null ? now : existingRecord.getImportedAt())
+                .updatedAt(now)
+                .metadata(request.getMetadata())
+                .build();
+    }
+
+    private String metadataValue(RagDocumentUpsertRequest request, String key, String defaultValue) {
+        if (request.getMetadata() == null || request.getMetadata().get(key) == null) {
+            return defaultValue;
+        }
+        return String.valueOf(request.getMetadata().get(key));
+    }
+
+    private RagDocumentRecordResponse toDocumentResponse(RagDocumentRecord record) {
+        return RagDocumentRecordResponse.builder()
+                .tenantId(record.getTenantId())
+                .knowledgeBaseId(record.getKnowledgeBaseId())
+                .documentId(record.getDocumentId())
+                .title(record.getTitle())
+                .source(record.getSource())
+                .filePath(record.getFilePath())
+                .fileName(record.getFileName())
+                .directory(record.getDirectory())
+                .importSource(record.getImportSource())
+                .chunkCount(record.getChunkCount())
+                .deletedCount(record.getDeletedCount())
+                .embeddingMode(record.getEmbeddingMode())
+                .embeddingModel(record.getEmbeddingModel())
+                .vectorStoreMode(record.getVectorStoreMode())
+                .importBatchId(record.getImportBatchId())
+                .importedAt(record.getImportedAt())
+                .updatedAt(record.getUpdatedAt())
+                .metadata(record.getMetadata())
+                .build();
+    }
+
+    private RagImportBatchResponse toImportBatchResponse(RagImportBatchRecord record) {
+        return RagImportBatchResponse.builder()
+                .tenantId(record.getTenantId())
+                .userId(record.getUserId())
+                .importBatchId(record.getImportBatchId())
+                .knowledgeBaseId(record.getKnowledgeBaseId())
+                .scanRoot(record.getScanRoot())
+                .fileCount(record.getFileCount())
+                .importedCount(record.getImportedCount())
+                .skippedCount(record.getSkippedCount())
+                .vectorStoreMode(record.getVectorStoreMode())
+                .embeddingMode(record.getEmbeddingMode())
+                .embeddingModel(record.getEmbeddingModel())
+                .documentIds(record.getDocumentIds())
+                .startedAt(record.getStartedAt())
+                .finishedAt(record.getFinishedAt())
+                .latencyMs(record.getLatencyMs())
+                .build();
     }
 
     private int resolveTopK(Integer topK) {

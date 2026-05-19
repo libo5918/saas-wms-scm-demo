@@ -451,3 +451,37 @@ tenant_id == 1 and knowledge_base_id == "kb-project-docs" and document_id == "do
 - 不实现 Tools、MCP、Workflow、多 Agent、长任务编排。
 - 不实现复杂 rerank 模型调用。
 - 单元测试仍默认使用 `mock embedding + in-memory`，不依赖真实 Milvus、真实 Embedding API 或外部网络。
+## Phase 3.6：RAG 文档管理与导入元数据
+
+本阶段在 Phase 3.5 的重导入清理能力之上，补齐 RAG 知识库治理层。
+
+目标：
+
+- 新增 `RagDocumentRegistry` 抽象，用于记录文档治理元数据。
+- 默认提供 `InMemoryRagDocumentRegistry`，保证本地启动、单元测试和 CI 不依赖 MySQL。
+- 文档写入成功后记录 `tenantId`、`knowledgeBaseId`、`documentId`、`title`、`source`、`filePath`、`fileName`、`directory`、`importSource`、`chunkCount`、`deletedCount`、`embeddingMode`、`embeddingModel`、`vectorStoreMode`、`importBatchId`、`importedAt`、`updatedAt`。
+- docs 自动导入时生成 `importBatchId`，并保存导入批次记录。
+- 文档删除接口同时删除 Document Registry 记录和 VectorStore 中的 chunk。
+- 所有查询和删除都必须携带 `tenantId + knowledgeBaseId` 语义，避免跨租户和跨知识库串数据。
+
+新增接口：
+
+```text
+GET    /api/v1/ai/rag/documents?knowledgeBaseId=xxx
+GET    /api/v1/ai/rag/documents/{documentId}?knowledgeBaseId=xxx
+DELETE /api/v1/ai/rag/documents/{documentId}?knowledgeBaseId=xxx
+GET    /api/v1/ai/rag/import/batches
+GET    /api/v1/ai/rag/import/batches/{importBatchId}
+```
+
+当前边界：
+
+- 不实现 MySQL 持久化，只保留后续替换实现的接口。
+- 不实现 Tools、MCP、Workflow、多 Agent、长任务编排。
+- 不保存文档全文到 Registry，文档全文仍只用于切片和向量检索。
+
+详细验证方式见：
+
+```text
+docs/operations/rag-document-management.md
+```

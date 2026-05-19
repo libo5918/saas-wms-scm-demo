@@ -5,8 +5,13 @@ import com.example.scm.aiagent.rag.dto.RagChatRequest;
 import com.example.scm.aiagent.rag.dto.RagChatResponse;
 import com.example.scm.aiagent.rag.dto.RagDocsImportRequest;
 import com.example.scm.aiagent.rag.dto.RagDocsImportResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentDeleteResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentListResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentRecordResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
+import com.example.scm.aiagent.rag.dto.RagImportBatchListResponse;
+import com.example.scm.aiagent.rag.dto.RagImportBatchResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
 import com.example.scm.aiagent.rag.service.RagDocsImportService;
@@ -18,8 +23,12 @@ import com.example.scm.common.core.TenantContext;
 import com.example.scm.common.security.GatewayHeaders;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -103,6 +112,77 @@ public class RagController {
                 context.tenantId(), context.userId(), safeRequest.getKnowledgeBaseId(), safeRequest.getScanRoot(),
                 safeRequest.getMaxFiles());
         return Result.success(ragDocsImportService.importDocs(safeRequest, context));
+    }
+
+    /**
+     * 查询知识库文档列表。
+     */
+    @GetMapping("/documents")
+    public Result<RagDocumentListResponse> listDocuments(@RequestParam("knowledgeBaseId") String knowledgeBaseId,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                         @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("RAG document list request received, tenantId={}, userId={}, knowledgeBaseId={}",
+                context.tenantId(), context.userId(), knowledgeBaseId);
+        return Result.success(ragService.listDocuments(knowledgeBaseId, context));
+    }
+
+    /**
+     * 查询文档详情。
+     */
+    @GetMapping("/documents/{documentId}")
+    public Result<RagDocumentRecordResponse> getDocument(@PathVariable("documentId") String documentId,
+                                                         @RequestParam("knowledgeBaseId") String knowledgeBaseId,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                         @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("RAG document detail request received, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, documentId);
+        return Result.success(ragService.getDocument(knowledgeBaseId, documentId, context));
+    }
+
+    /**
+     * 删除文档记录并联动删除向量 chunk。
+     */
+    @DeleteMapping("/documents/{documentId}")
+    public Result<RagDocumentDeleteResponse> deleteDocument(@PathVariable("documentId") String documentId,
+                                                            @RequestParam("knowledgeBaseId") String knowledgeBaseId,
+                                                            @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                            @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                            @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("RAG document delete request received, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, documentId);
+        return Result.success(ragService.deleteDocument(knowledgeBaseId, documentId, context));
+    }
+
+    /**
+     * 查询 docs 导入批次列表。
+     */
+    @GetMapping("/import/batches")
+    public Result<RagImportBatchListResponse> listImportBatches(@RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                                @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                                @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("RAG import batch list request received, tenantId={}, userId={}",
+                context.tenantId(), context.userId());
+        return Result.success(ragService.listImportBatches(context));
+    }
+
+    /**
+     * 查询 docs 导入批次详情。
+     */
+    @GetMapping("/import/batches/{importBatchId}")
+    public Result<RagImportBatchResponse> getImportBatch(@PathVariable("importBatchId") String importBatchId,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                         @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                         @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("RAG import batch detail request received, tenantId={}, userId={}, importBatchId={}",
+                context.tenantId(), context.userId(), importBatchId);
+        return Result.success(ragService.getImportBatch(importBatchId, context));
     }
 
     private AgentRequestContext buildContext(Long userId, String username, String roles) {

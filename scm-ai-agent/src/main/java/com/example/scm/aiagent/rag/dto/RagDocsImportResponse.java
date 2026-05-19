@@ -22,6 +22,9 @@ public class RagDocsImportResponse {
     /** 本次导入写入的知识库 ID。 */
     private String knowledgeBaseId;
 
+    /** 本次导入批次 ID，可用于后续查询导入记录。 */
+    private String importBatchId;
+
     /** 本次实际扫描的 docs 根目录。 */
     private String scanRoot;
 
@@ -39,6 +42,9 @@ public class RagDocsImportResponse {
 
     /** 当前 embedding 模式，例如 mock 或 spring-ai。 */
     private String embeddingMode;
+
+    /** 当前 embedding 模型名称。 */
+    private String embeddingModel;
 
     /** 本次导入总耗时，单位毫秒。 */
     private long latencyMs;

@@ -21,18 +21,27 @@ public class RagDocumentUpsertResponse {
     /** 写入的文档 ID。 */
     private String documentId;
 
-    /** 本次生成的切片数量。 */
+    /** 本次生成并写入的 chunk 数量。 */
     private int chunkCount;
 
-    /** 重导入前删除的旧切片数量。*/
+    /** 本次写入前删除的旧 chunk 数量。 */
     private long deletedCount;
 
     /** 当前使用的向量存储模式，例如 in-memory 或 milvus。 */
     private String vectorStoreMode;
 
-    /** 当前使用的 embedding 模式，例如 mock 或 spring-ai。 */
+    /** 当前使用的 embedding 模式，例如 mock、dashscope。 */
     private String embeddingMode;
 
-    /** 写入完成时间。 */
+    /** 当前使用的 embedding 模型名称。 */
+    private String embeddingModel;
+
+    /** 导入批次 ID，手动写入时可以为空。 */
+    private String importBatchId;
+
+    /** 文档首次导入时间。 */
     private Instant createdAt;
+
+    /** 文档最近更新时间。 */
+    private Instant updatedAt;
 }

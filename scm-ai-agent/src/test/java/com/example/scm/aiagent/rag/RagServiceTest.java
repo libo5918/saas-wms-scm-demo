@@ -6,6 +6,9 @@ import com.example.scm.aiagent.model.ChatModelResult;
 import com.example.scm.aiagent.model.ModelRoute;
 import com.example.scm.aiagent.rag.dto.RagChatRequest;
 import com.example.scm.aiagent.rag.dto.RagChatResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentDeleteResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentListResponse;
+import com.example.scm.aiagent.rag.dto.RagDocumentRecordResponse;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
@@ -110,6 +113,44 @@ class RagServiceTest {
         assertEquals(second.getChunkCount(), retrieveResponse.getRetrievedCount());
         assertTrue(retrieveResponse.getChunks().stream()
                 .noneMatch(chunk -> chunk.getContent().contains("old-only-token")));
+    }
+
+    @Test
+    void shouldRegisterDocumentMetadataAfterUpsertAndUpdateOnRepeatWrite() {
+        RagService ragService = createRagService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+
+        ragService.upsertDocument(upsertRequest("kb-project", "doc-registry"), context);
+        RagDocumentRecordResponse first = ragService.getDocument("kb-project", "doc-registry", context);
+        ragService.upsertDocument(shortUpsertRequest("kb-project", "doc-registry"), context);
+        RagDocumentRecordResponse second = ragService.getDocument("kb-project", "doc-registry", context);
+
+        assertEquals("doc-registry", first.getDocumentId());
+        assertEquals("architecture", first.getMetadata().get("domain"));
+        assertTrue(second.getDeletedCount() > 0);
+        assertEquals(1, second.getChunkCount());
+        assertEquals(first.getImportedAt(), second.getImportedAt());
+        assertTrue(!second.getUpdatedAt().isBefore(first.getUpdatedAt()));
+    }
+
+    @Test
+    void shouldListAndDeleteDocumentsWithTenantIsolation() {
+        RagService ragService = createRagService();
+        AgentRequestContext tenantOne = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        AgentRequestContext tenantTwo = new AgentRequestContext(2L, 20001L, "tenant2", List.of("ROLE_ADMIN"));
+        ragService.upsertDocument(upsertRequest("kb-project", "doc-delete"), tenantOne);
+        ragService.upsertDocument(upsertRequest("kb-project", "doc-delete"), tenantTwo);
+
+        RagDocumentListResponse tenantOneList = ragService.listDocuments("kb-project", tenantOne);
+        RagDocumentDeleteResponse deleteResponse = ragService.deleteDocument("kb-project", "doc-delete", tenantOne);
+        RagDocumentListResponse tenantOneAfterDelete = ragService.listDocuments("kb-project", tenantOne);
+        RagDocumentListResponse tenantTwoAfterDelete = ragService.listDocuments("kb-project", tenantTwo);
+
+        assertEquals(1, tenantOneList.getDocumentCount());
+        assertTrue(deleteResponse.isRegistryDeleted());
+        assertTrue(deleteResponse.getDeletedChunkCount() > 0);
+        assertEquals(0, tenantOneAfterDelete.getDocumentCount());
+        assertEquals(1, tenantTwoAfterDelete.getDocumentCount());
     }
 
     @Test

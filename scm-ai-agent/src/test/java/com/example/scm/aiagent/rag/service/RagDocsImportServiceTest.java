@@ -52,10 +52,15 @@ class RagDocsImportServiceTest {
         assertEquals(2, response.getImportedCount());
         assertEquals(0, response.getSkippedCount());
         assertEquals("kb-project-docs", response.getKnowledgeBaseId());
+        assertTrue(response.getImportBatchId() != null && !response.getImportBatchId().isBlank());
         assertEquals("in-memory", response.getVectorStoreMode());
         assertEquals("mock", response.getEmbeddingMode());
+        assertEquals("mock-embedding", response.getEmbeddingModel());
+        assertEquals(response.getImportBatchId(), response.getDocuments().get(0).getImportBatchId());
         assertEquals("AI Agent 路线", response.getDocuments().get(0).getTitle());
         assertTrue(response.getDocuments().get(0).getSource().endsWith("architecture/ai-agent.md"));
+        assertEquals(1, ragService.listImportBatches(context).getBatchCount());
+        assertEquals(response.getImportBatchId(), ragService.getImportBatch(response.getImportBatchId(), context).getImportBatchId());
 
         RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
         retrieveRequest.setKnowledgeBaseId("kb-project-docs");

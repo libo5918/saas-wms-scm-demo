@@ -21,4 +21,10 @@ public class RagDocsImportedDocument {
 
     /** 当前文档切片后写入的 chunk 数量。 */
     private int chunkCount;
+
+    /** 本次写入前删除的旧 chunk 数量。 */
+    private long deletedCount;
+
+    /** 本文档所属导入批次 ID。 */
+    private String importBatchId;
 }
