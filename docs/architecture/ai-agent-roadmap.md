@@ -562,3 +562,16 @@ Phase 3.3 继续保持默认 `in-memory + mock embedding`，但补齐显式切�
 - 检索时强制租户和知识库隔离
 - metadata filter 可以过滤 `directory`、`filePath`、`importSource` 等字段
 - 默认 Maven 测试不连接真实 Milvus
+
+## Phase 3.4：真实 Embedding Provider
+
+Phase 3.4 在 Milvus smoke 通过后接入真实 Embedding Provider，让 RAG 检索从 mock 向量升级为真实语义向量。
+
+验收标准：
+
+- 默认仍保持 `mock embedding + in-memory`，不依赖真实 API Key、真实 Milvus 或外部网络
+- 支持通过 Spring AI `EmbeddingModel` 接入 DashScope / Qwen Embedding
+- 预留 OpenAI-compatible Embedding 配置
+- 日志记录 embeddingMode、embeddingModel、vectorDimension、topK、retrievedCount 和 latencyMs
+- 文档说明 Milvus collection dimension 与 embedding 模型维度的关系
+- 真实 embedding smoke 通过 gateway 18080 验证

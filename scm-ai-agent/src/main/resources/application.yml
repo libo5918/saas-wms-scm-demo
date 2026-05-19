@@ -24,6 +24,13 @@ spring:
         base-url: ${AI_AGENT_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
         options:
           model: ${AI_AGENT_DASHSCOPE_CHAT_MODEL:qwen-plus}
+      embedding:
+        enabled: ${AI_AGENT_DASHSCOPE_EMBEDDING_ENABLED:false}
+        api-key: ${DASHSCOPE_API_KEY:}
+        base-url: ${AI_AGENT_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
+        options:
+          model: ${AI_AGENT_DASHSCOPE_EMBEDDING_MODEL:text-embedding-v3}
+          dimensions: ${AI_AGENT_RAG_EMBEDDING_DIMENSION:1024}
     openai:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${AI_AGENT_OPENAI_BASE_URL:https://api.openai.com}
@@ -32,6 +39,12 @@ spring:
         base-url: ${AI_AGENT_OPENAI_BASE_URL:https://api.openai.com}
         options:
           model: ${AI_AGENT_OPENAI_CHAT_MODEL:gpt-4.1-mini}
+      embedding:
+        api-key: ${OPENAI_API_KEY:}
+        base-url: ${OPENAI_BASE_URL:${AI_AGENT_OPENAI_BASE_URL:https://api.openai.com}}
+        options:
+          model: ${AI_AGENT_OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+          dimensions: ${AI_AGENT_RAG_EMBEDDING_DIMENSION:1536}
   cloud:
     nacos:
       discovery:
@@ -78,6 +91,10 @@ ai:
         mode: ${AI_AGENT_RAG_EMBEDDING_MODE:mock}
         dimension: ${AI_AGENT_RAG_EMBEDDING_DIMENSION:64}
         model: ${AI_AGENT_RAG_EMBEDDING_MODEL:mock-embedding}
+        provider: ${AI_AGENT_RAG_EMBEDDING_PROVIDER:mock}
+        base-url: ${AI_AGENT_RAG_EMBEDDING_BASE_URL:}
+        api-key-env: ${AI_AGENT_RAG_EMBEDDING_API_KEY_ENV:}
+        rerank-enabled: ${AI_AGENT_RAG_RERANK_ENABLED:false}
       vector-store:
         mode: ${AI_AGENT_RAG_VECTOR_STORE_MODE:in-memory}
         milvus:

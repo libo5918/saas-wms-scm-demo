@@ -228,6 +228,26 @@ public class AiAgentProperties {
          * 真实 embedding 模型名称，后续接入 DashScope/OpenAI embedding 时使用。
          */
         private String model = "mock-embedding";
+
+        /**
+         * 真实 embedding provider 名称，例如 dashscope 或 openai-compatible。
+         */
+        private String provider = "mock";
+
+        /**
+         * OpenAI-compatible embedding 接口地址，仅通过环境变量或本地配置注入。
+         */
+        private String baseUrl;
+
+        /**
+         * DashScope/OpenAI embedding API Key 环境变量名，用于文档和日志排查，不保存真实密钥。
+         */
+        private String apiKeyEnv;
+
+        /**
+         * 是否预留 rerank 扩展点；当前阶段只记录配置，不实现复杂 rerank。
+         */
+        private boolean rerankEnabled = false;
     }
 
     /**

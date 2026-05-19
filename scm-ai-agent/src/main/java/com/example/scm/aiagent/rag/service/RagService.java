@@ -84,9 +84,10 @@ public class RagService {
         response.setEmbeddingMode(properties.getRag().getEmbedding().getMode());
         response.setCreatedAt(Instant.now());
         long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, chunkCount={}, vectorStoreMode={}, embeddingMode={}, latencyMs={}",
+        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, chunkCount={}, vectorStoreMode={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, latencyMs={}",
                 context.tenantId(), context.userId(), request.getKnowledgeBaseId(), documentId, chunks.size(),
-                response.getVectorStoreMode(), response.getEmbeddingMode(), latencyMs);
+                response.getVectorStoreMode(), response.getEmbeddingMode(), embeddingClient.modelName(),
+                embeddingClient.dimension(), latencyMs);
         return response;
     }
 
@@ -110,8 +111,10 @@ public class RagService {
         response.setRetrievedCount(chunks.size());
         response.setChunks(chunks);
         response.setLatencyMs((System.nanoTime() - startedAt) / 1_000_000);
-        log.info("RAG retrieve finished, tenantId={}, userId={}, knowledgeBaseId={}, topK={}, retrievedCount={}, latencyMs={}",
-                context.tenantId(), context.userId(), request.getKnowledgeBaseId(), topK, chunks.size(), response.getLatencyMs());
+        log.info("RAG retrieve finished, tenantId={}, userId={}, knowledgeBaseId={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, topK={}, retrievedCount={}, latencyMs={}",
+                context.tenantId(), context.userId(), request.getKnowledgeBaseId(), embeddingClient.mode(),
+                embeddingClient.modelName(), queryEmbedding == null ? 0 : queryEmbedding.length, topK, chunks.size(),
+                response.getLatencyMs());
         return response;
     }
 

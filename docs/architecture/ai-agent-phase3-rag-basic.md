@@ -23,14 +23,6 @@
 /api/v1/ai/rag
 ```
 
-接口列表：
-
-```text
-POST /api/v1/ai/rag/documents
-POST /api/v1/ai/rag/retrieve
-POST /api/v1/ai/rag/chat
-```
-
 ## 3. 核心链路
 
 ```mermaid
@@ -317,4 +309,103 @@ Milvus 本地安装、IDEA 配置和 gateway 接口验证方式见：
 
 ```text
 docs/operations/milvus-local-setup.md
+```
+
+## Phase 3.4：真实 Embedding Provider 与检索质量优化
+
+本阶段在 Phase 3.3 Milvus smoke 已验证通过的基础上，开始接入真实 Embedding Provider，让 RAG 从“链路可跑通”进入“语义检索更准确”的阶段。
+
+目标：
+
+- 默认仍保持 `mock embedding + in-memory`，保证本地启动、单元测试和 CI 不依赖外部 API 或真实 Milvus。
+- 新增 Spring AI EmbeddingModel 适配器，支持通过配置切换到 DashScope / Qwen Embedding。
+- 预留 OpenAI-compatible Embedding 接入方式。
+- 保留 metadata filter、tenantId 和 knowledgeBaseId 隔离。
+- 日志记录 `embeddingMode`、`embeddingModel`、`vectorDimension`、`topK`、`retrievedCount`、`latencyMs`，但不打印 API Key、文档全文、prompt 全文或模型响应全文。
+- 预留 rerank 配置扩展点，本阶段不实现复杂 rerank。
+
+当前配置模式：
+
+```text
+ai.agent.rag.embedding.mode=mock
+ai.agent.rag.embedding.mode=dashscope
+ai.agent.rag.embedding.mode=openai-compatible
+```
+
+默认模式：
+
+```text
+AI_AGENT_RAG_EMBEDDING_MODE=mock
+AI_AGENT_RAG_EMBEDDING_MODEL=mock-embedding
+AI_AGENT_RAG_EMBEDDING_DIMENSION=64
+```
+
+DashScope smoke 模式：
+
+```text
+AI_AGENT_RAG_EMBEDDING_MODE=dashscope
+AI_AGENT_RAG_EMBEDDING_PROVIDER=dashscope
+AI_AGENT_RAG_EMBEDDING_MODEL=text-embedding-v3
+AI_AGENT_RAG_EMBEDDING_DIMENSION=1024
+AI_AGENT_SPRING_AI_MODEL_EMBEDDING=dashscope
+AI_AGENT_DASHSCOPE_ENABLED=true
+AI_AGENT_DASHSCOPE_EMBEDDING_ENABLED=true
+DASHSCOPE_API_KEY=本地环境变量
+```
+
+OpenAI-compatible 预留模式：
+
+```text
+AI_AGENT_RAG_EMBEDDING_MODE=openai-compatible
+AI_AGENT_RAG_EMBEDDING_PROVIDER=openai-compatible
+AI_AGENT_RAG_EMBEDDING_MODEL=text-embedding-3-small
+AI_AGENT_RAG_EMBEDDING_DIMENSION=1536
+AI_AGENT_SPRING_AI_MODEL_EMBEDDING=openai
+OPENAI_API_KEY=本地环境变量
+OPENAI_BASE_URL=兼容接口地址
+```
+
+### Milvus 维度注意事项
+
+Milvus collection 的 `embedding` 字段 dimension 在 collection 创建时固定。也就是说：
+
+- mock embedding 默认是 `64` 维。
+- DashScope `text-embedding-v3` 本项目 smoke 建议按 `1024` 维配置。
+- OpenAI `text-embedding-3-small` 常见配置是 `1536` 维。
+
+如果已经用 mock embedding 创建过 `scm_ai_rag_chunks`，再切换到真实 embedding，必须处理 collection 维度不一致问题：
+
+1. 本地测试可以清空 Milvus 数据：
+
+```bash
+docker compose -f deploy/docker-compose/milvus-standalone.yml down -v
+docker compose -f deploy/docker-compose/milvus-standalone.yml up -d
+```
+
+2. 或者换一个新的 collection 名称：
+
+```text
+MILVUS_COLLECTION_NAME=scm_ai_rag_chunks_embedding_v3
+```
+
+然后重新调用 docs 导入接口，把文档按真实 embedding 重新写入 Milvus。
+
+### 当前边界
+
+本阶段不做：
+
+- Tools
+- MCP
+- Workflow
+- 多 Agent
+- 长任务编排
+- 复杂 rerank
+- MySQL RAG metadata 持久化
+
+接口列表：
+
+```text
+POST /api/v1/ai/rag/documents
+POST /api/v1/ai/rag/retrieve
+POST /api/v1/ai/rag/chat
 ```

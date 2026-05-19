@@ -14,4 +14,31 @@ public interface RagEmbeddingClient {
      * @return embedding 向量
      */
     float[] embed(String text);
+
+    /**
+     * 当前 embedding 模式，例如 mock、dashscope、openai-compatible。
+     *
+     * @return embedding 模式
+     */
+    default String mode() {
+        return "mock";
+    }
+
+    /**
+     * 当前使用的 embedding 模型名称，用于日志、排查和面试讲解。
+     *
+     * @return embedding 模型名称
+     */
+    default String modelName() {
+        return "mock-embedding";
+    }
+
+    /**
+     * 当前 embedding 向量维度；Milvus collection 的 vector dimension 必须与该值一致。
+     *
+     * @return 向量维度
+     */
+    default int dimension() {
+        return 64;
+    }
 }

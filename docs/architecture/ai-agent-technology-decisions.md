@@ -460,3 +460,21 @@ Milvus collection 第一版字段以 RAG chunk 为中心，重点保证 `tenant_
 - `docs/business`
 - `docs/operations`
 - `docs/database`
+
+## Phase 3.4 Embedding Provider 决策
+
+真实 Embedding 接入采用 Spring AI `EmbeddingModel` 抽象，不在业务代码里直接绑定某一家 SDK。
+
+第一批支持：
+
+- DashScope / Qwen Embedding：作为当前主线 smoke provider
+- OpenAI-compatible Embedding：作为 ChatGPT、DeepSeek 兼容网关或本地兼容服务的预留扩展
+
+默认仍然是 `mock embedding`，原因是：
+
+- 本地启动不需要 API Key
+- Maven test 不访问外部网络
+- CI 不依赖付费模型服务
+- 真实 embedding 可以通过 IDEA 环境变量手动 smoke
+
+Milvus collection dimension 必须和 embedding 模型输出维度一致。切换 embedding 模型后，如果维度发生变化，需要重建 collection 或使用新的 collection 名称。

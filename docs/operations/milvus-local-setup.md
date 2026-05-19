@@ -471,6 +471,26 @@ providerMode=spring-ai
 
 下一阶段接入真实 Embedding 后，语义检索质量才会明显提升。
 
+### 11.5 切换真实 Embedding 后写入失败
+
+常见原因是 Milvus collection 的 vector dimension 和当前 embedding 模型输出维度不一致。
+
+例如：
+
+```text
+mock embedding      -> 64 维
+text-embedding-v3   -> 本项目 smoke 建议 1024 维
+text-embedding-3-small -> 常见 1536 维
+```
+
+如果之前用 mock embedding 创建了 `scm_ai_rag_chunks`，后续切换真实 embedding 时，建议换一个 collection 名称：
+
+```text
+MILVUS_COLLECTION_NAME=scm_ai_rag_chunks_embedding_v3
+```
+
+或者清空本地 Milvus 数据后重新导入 docs。
+
 ## 12. 当前阶段边界
 
 Phase 3.3 只做：
