@@ -67,20 +67,31 @@ finishedAt
 latencyMs
 ```
 
-### 2.3 为什么当前先用 in-memory
+### 2.3 存储模式
 
-当前阶段先使用内存实现，原因是：
+当前默认存储模式已经调整为 `mysql`，用于避免服务重启后文档治理元数据丢失。
 
-- 不增加 MySQL 表结构，避免 Phase 3 内过早扩大范围
+仍保留 `in-memory` 模式，原因是：
+
 - 单元测试不依赖真实数据库、Milvus、Embedding API 或外部网络
-- 先稳定接口语义，后续迁移 MySQL 时只替换 `RagDocumentRegistry` 实现
-- 对面试讲解更清晰：先抽象治理模型，再落持久化
+- 本地没有 MySQL 时仍可临时启动和验证 RAG 主链路
+- 排查问题时可以快速隔离数据库影响
 
-后续迁移 MySQL 时建议新增：
+Phase 3.7 已补充可选 MySQL 持久化实现：
 
-- `rag_document_registry`
-- `rag_import_batch`
-- `rag_import_document`
+```yaml
+ai:
+  agent:
+    rag:
+      registry:
+        mode: mysql
+```
+
+详细说明见：
+
+```text
+docs/operations/rag-registry-mysql.md
+```
 
 ## 3. 删除联动规则
 
@@ -89,7 +100,11 @@ latencyMs
 1. 调用 `RagVectorStore.deleteByDocument(tenantId, knowledgeBaseId, documentId)` 删除向量 chunk。
 2. 调用 `RagDocumentRegistry.deleteDocument(tenantId, knowledgeBaseId, documentId)` 删除文档治理记录。
 
+MySQL Registry 下第 2 步是逻辑删除：`rag_document_registry.deleted = 1`。
+
 删除必须带上 `tenantId + knowledgeBaseId + documentId`，避免跨租户或跨知识库误删。
+
+`rag_import_batch` 和 `rag_import_document` 属于导入历史审计数据，不随文档删除一起删除。
 
 ## 4. Gateway 验证接口
 
@@ -260,7 +275,6 @@ Authorization: Bearer <access_token>
 
 本阶段不实现：
 
-- MySQL 持久化
 - Tools
 - MCP
 - Workflow

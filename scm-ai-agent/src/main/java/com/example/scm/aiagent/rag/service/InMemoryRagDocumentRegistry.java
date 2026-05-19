@@ -3,6 +3,7 @@ package com.example.scm.aiagent.rag.service;
 import com.example.scm.aiagent.rag.model.RagDocumentRecord;
 import com.example.scm.aiagent.rag.model.RagImportBatchRecord;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -18,6 +19,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "ai.agent.rag.registry", name = "mode", havingValue = "in-memory", matchIfMissing = true)
 public class InMemoryRagDocumentRegistry implements RagDocumentRegistry {
 
     private final ConcurrentMap<String, RagDocumentRecord> documents = new ConcurrentHashMap<>();

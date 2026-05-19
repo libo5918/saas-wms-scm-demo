@@ -585,6 +585,7 @@ Phase 3.5 已纳入 RAG 阶段范围，重点不是新增外部组件，而是�
 - 检索支持 `scoreThreshold`。
 - RAG Chat 上下文拼接支持 chunk 数量和单 chunk 长度裁剪。
 - 单元测试继续保持 mock / in-memory，不依赖真实外部服务。
+
 ## Phase 3.6 补充：RAG 文档管理与导入元数据
 
 Phase 3.6 已纳入 RAG 阶段范围，重点从“能写入和检索 chunk”推进到“知识库可治理”。
@@ -601,4 +602,25 @@ Phase 3.6 已纳入 RAG 阶段范围，重点从“能写入和检索 chunk”�
 
 ```text
 docs/operations/rag-document-management.md
+```
+
+## Phase 3.7 补充：RAG 文档治理 MySQL 持久化
+
+Phase 3.7 在 Phase 3.6 的 `RagDocumentRegistry` 抽象之上，新增可选 MySQL 持久化实现，让文档治理元数据和导入批次不再因服务重启丢失。
+
+验收标准：
+
+- 默认使用 `ai.agent.rag.registry.mode=mysql`，文档治理元数据默认持久化到 MySQL。
+- `MysqlRagDocumentRegistry` 使用 MyBatis Mapper + XML 实现 SQL 逻辑。
+- 单元测试显式覆盖为 `in-memory`，保证 CI 不依赖真实 MySQL。
+- 新增 `rag_document_registry`、`rag_import_batch`、`rag_import_document` 三张表。
+- docs 自动导入会保存 import batch 和 batch-document 关联。
+- 文档重复导入会更新 Registry，不生成重复文档记录。
+- 文档删除会逻辑删除 Registry 记录，并物理删除 VectorStore chunk，历史 import batch 可保留用于审计。
+- 当前只持久化治理元数据，不把向量或文档全文写入 MySQL。
+
+详细说明见：
+
+```text
+docs/operations/rag-registry-mysql.md
 ```

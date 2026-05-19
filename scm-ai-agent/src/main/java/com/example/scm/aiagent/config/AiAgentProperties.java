@@ -187,6 +187,9 @@ public class AiAgentProperties {
          * docs 目录自动导入配置。
          */
         private DocsImportProperties docsImport = new DocsImportProperties();
+
+        /** RAG 文档治理元数据存储配置。 */
+        private RegistryProperties registry = new RegistryProperties();
     }
 
     /**
@@ -380,5 +383,50 @@ public class AiAgentProperties {
          * 单次最大导入文件数，避免误扫大目录导致长时间 IO。
          */
         private int maxFiles = 100;
+    }
+
+    /**
+     * RAG Document Registry 存储配置。
+     */
+    @Getter
+    @Setter
+    public static class RegistryProperties {
+
+        /**
+         * 文档治理元数据存储模式。
+         *
+         * <p>默认使用 mysql；单元测试或无数据库临时启动时可显式切换为 in-memory。</p>
+         */
+        private String mode = "mysql";
+
+        /**
+         * MySQL Registry 连接配置。
+         *
+         * <p>只有 mode=mysql 时才会读取并创建数据源。</p>
+         */
+        private MysqlRegistryProperties mysql = new MysqlRegistryProperties();
+    }
+
+    /**
+     * RAG Document Registry 的 MySQL 连接配置。
+     */
+    @Getter
+    @Setter
+    public static class MysqlRegistryProperties {
+
+        /**
+         * MySQL JDBC 地址，例如 jdbc:mysql://127.0.0.1:3306/scm_ai_agent。
+         */
+        private String url;
+
+        /**
+         * MySQL 用户名。
+         */
+        private String username;
+
+        /**
+         * MySQL 密码，必须通过环境变量或本地配置注入，不能提交真实密码。
+         */
+        private String password;
     }
 }

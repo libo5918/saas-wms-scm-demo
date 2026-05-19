@@ -29,7 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.ai.model.video=none",
         "spring.ai.dashscope.enabled=false",
         "spring.ai.dashscope.chat.enabled=false",
-        "ai.agent.provider-mode=mock"
+        "ai.agent.provider-mode=mock",
+        "ai.agent.rag.registry.mode=in-memory"
 })
 class AiAgentProviderSmokeTest {
 

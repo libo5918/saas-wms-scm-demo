@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
         "spring.ai.model.moderation=none",
         "spring.ai.model.rerank=none",
         "spring.ai.model.video=none",
+        "ai.agent.rag.registry.mode=in-memory",
         "ai.agent.rag.embedding.mode=mock",
         "ai.agent.rag.embedding.model=mock-embedding-test",
         "ai.agent.rag.embedding.provider=mock",

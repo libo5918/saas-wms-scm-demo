@@ -122,9 +122,10 @@ public class RagService {
         response.setCreatedAt(record.getImportedAt());
         response.setUpdatedAt(record.getUpdatedAt());
         long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, importBatchId={}, deletedCount={}, chunkCount={}, vectorStoreMode={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, latencyMs={}",
+        log.info("RAG document upserted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, importBatchId={}, deletedCount={}, chunkCount={}, registryMode={}, vectorStoreMode={}, embeddingMode={}, embeddingModel={}, vectorDimension={}, latencyMs={}",
                 context.tenantId(), context.userId(), request.getKnowledgeBaseId(), documentId, request.getImportBatchId(),
-                deletedCount, chunks.size(), response.getVectorStoreMode(), response.getEmbeddingMode(),
+                deletedCount, chunks.size(), properties.getRag().getRegistry().getMode(),
+                response.getVectorStoreMode(), response.getEmbeddingMode(),
                 embeddingClient.modelName(), embeddingClient.dimension(), latencyMs);
         return response;
     }
@@ -181,9 +182,9 @@ public class RagService {
         long deletedChunkCount = vectorStore.deleteByDocument(context.tenantId(), knowledgeBaseId, documentId);
         boolean registryDeleted = documentRegistry.deleteDocument(context.tenantId(), knowledgeBaseId, documentId).isPresent();
         long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
-        log.info("RAG document deleted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, registryDeleted={}, deletedCount={}, vectorStoreMode={}, latencyMs={}",
+        log.info("RAG document deleted, tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, registryDeleted={}, deletedCount={}, registryMode={}, vectorStoreMode={}, latencyMs={}",
                 context.tenantId(), context.userId(), knowledgeBaseId, documentId, registryDeleted, deletedChunkCount,
-                properties.getRag().getVectorStore().getMode(), latencyMs);
+                properties.getRag().getRegistry().getMode(), properties.getRag().getVectorStore().getMode(), latencyMs);
         return RagDocumentDeleteResponse.builder()
                 .tenantId(context.tenantId())
                 .knowledgeBaseId(knowledgeBaseId)
@@ -213,8 +214,8 @@ public class RagService {
                 .stream()
                 .map(this::toImportBatchResponse)
                 .toList();
-        log.info("RAG import batch list queried, tenantId={}, userId={}, batchCount={}",
-                context.tenantId(), context.userId(), batches.size());
+        log.info("RAG import batch list queried, tenantId={}, userId={}, registryMode={}, batchCount={}",
+                context.tenantId(), context.userId(), properties.getRag().getRegistry().getMode(), batches.size());
         return RagImportBatchListResponse.builder()
                 .tenantId(context.tenantId())
                 .batchCount(batches.size())

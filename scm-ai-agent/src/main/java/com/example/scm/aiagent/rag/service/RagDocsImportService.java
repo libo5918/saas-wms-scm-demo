@@ -138,8 +138,9 @@ public class RagDocsImportService {
                 .latencyMs(latencyMs)
                 .build());
 
-        log.info("RAG docs import completed, tenantId={}, userId={}, knowledgeBaseId={}, importBatchId={}, scanRoot={}, fileCount={}, importedCount={}, skippedCount={}, latencyMs={}",
-                context.tenantId(), context.userId(), knowledgeBaseId, importBatchId, response.getScanRoot(),
+        log.info("RAG docs import completed, tenantId={}, userId={}, knowledgeBaseId={}, importBatchId={}, registryMode={}, scanRoot={}, fileCount={}, importedCount={}, skippedCount={}, latencyMs={}",
+                context.tenantId(), context.userId(), knowledgeBaseId, importBatchId,
+                properties.getRag().getRegistry().getMode(), response.getScanRoot(),
                 files.size(), importedDocuments.size(), skippedCount, latencyMs);
         return response;
     }

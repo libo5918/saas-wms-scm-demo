@@ -485,3 +485,62 @@ GET    /api/v1/ai/rag/import/batches/{importBatchId}
 ```text
 docs/operations/rag-document-management.md
 ```
+
+## Phase 3.7：Document Registry 与 Import Batch MySQL 持久化
+
+本阶段在 Phase 3.6 的文档治理抽象之上，补齐可选 MySQL 持久化能力，避免服务重启后 Document Registry 和 Import Batch 元数据丢失。
+
+目标：
+
+- 默认 `mysql` Registry，符合本地和真实服务的持久化使用方式。
+- 新增 `MysqlRagDocumentRegistry`，通过 MyBatis Mapper + XML 承载 SQL 逻辑。
+- 新增 RAG Registry 专用 MySQL DataSource / SqlSessionFactory / TransactionManager 条件装配。
+- 单元测试显式覆盖为 `in-memory`，确保 CI 不依赖真实 MySQL。
+- 新增三张表：`rag_document_registry`、`rag_import_batch`、`rag_import_document`。
+- docs 自动导入时保存 import batch，并保存 batch 与 document 的关联。
+- 文档重复导入时更新 `rag_document_registry`，不新增重复文档记录。
+- 文档删除时仍先删除 VectorStore chunk，再把 Registry 记录标记为 `deleted=1`；历史 import batch 和批次文档关联保留用于审计。
+- `metadata` 使用 JSON 字符串保存，代码中统一做安全序列化和反序列化。
+
+关键配置：
+
+```yaml
+ai:
+  agent:
+    rag:
+      registry:
+        mode: mysql
+        mysql:
+          url: jdbc:mysql://127.0.0.1:3306/scm_ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          username: root
+          password:
+```
+
+临时无数据库启动时可切换为 in-memory：
+
+```yaml
+ai:
+  agent:
+    rag:
+      registry:
+        mode: in-memory
+```
+
+SQL 脚本：
+
+```text
+deploy/sql/ai-agent-rag-registry.sql
+```
+
+当前边界：
+
+- 不把向量写入 MySQL。
+- 不把文档全文写入 MySQL。
+- 不实现 Tools、MCP、Workflow、多 Agent、长任务编排。
+- 单元测试仍不连接真实 MySQL、Milvus、Embedding API 或外部网络。
+
+详细验证方式见：
+
+```text
+docs/operations/rag-registry-mysql.md
+```

@@ -1,6 +1,10 @@
 spring:
   application:
     name: scm-ai-agent
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
   ai:
     # 默认禁用真实 ChatModel，避免本地启动和单元测试依赖外部 API Key。
     # 真实 smoke test 时设置为 dashscope 或 openai。
@@ -105,6 +109,12 @@ ai:
           vector-field: ${MILVUS_VECTOR_FIELD:embedding}
           metric-type: ${MILVUS_METRIC_TYPE:COSINE}
           index-type: ${MILVUS_INDEX_TYPE:AUTOINDEX}
+      registry:
+        mode: ${AI_AGENT_RAG_REGISTRY_MODE:mysql}
+        mysql:
+          url: ${AI_AGENT_RAG_REGISTRY_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/scm_ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+          username: ${AI_AGENT_RAG_REGISTRY_MYSQL_USERNAME:root}
+          password: ${AI_AGENT_RAG_REGISTRY_MYSQL_PASSWORD:}
       retrieval:
         default-top-k: ${AI_AGENT_RAG_DEFAULT_TOP_K:3}
         max-top-k: ${AI_AGENT_RAG_MAX_TOP_K:10}

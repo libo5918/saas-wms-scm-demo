@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
         "spring.ai.model.moderation=none",
         "spring.ai.model.rerank=none",
         "spring.ai.model.video=none",
+        "ai.agent.rag.registry.mode=in-memory",
         "ai.agent.rag.vector-store.mode=in-memory",
         "ai.agent.rag.vector-store.milvus.uri=http://localhost:19530",
         "ai.agent.rag.vector-store.milvus.collection-name=scm_ai_rag_chunks_test",

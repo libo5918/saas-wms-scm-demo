@@ -57,6 +57,13 @@ ai:
           vector-field: embedding
           metric-type: COSINE
           index-type: AUTOINDEX
+      registry:
+        # 本地默认使用 MySQL 持久化；如需临时无数据库启动，可改为 in-memory。
+        mode: mysql
+        mysql:
+          url: jdbc:mysql://127.0.0.1:3306/scm_ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          username: root
+          password: 123456
       docs-import:
         enabled: true
         root-path: docs

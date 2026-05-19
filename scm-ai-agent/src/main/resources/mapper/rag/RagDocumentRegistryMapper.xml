@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.scm.aiagent.rag.persistence.mapper.RagDocumentRegistryMapper">
+
+    <resultMap id="documentRecordResultMap" type="com.example.scm.aiagent.rag.persistence.po.RagDocumentRecordPO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="title" column="title"/>
+        <result property="source" column="source"/>
+        <result property="filePath" column="file_path"/>
+        <result property="fileName" column="file_name"/>
+        <result property="directory" column="directory"/>
+        <result property="importSource" column="import_source"/>
+        <result property="chunkCount" column="chunk_count"/>
+        <result property="deletedCount" column="deleted_count"/>
+        <result property="embeddingMode" column="embedding_mode"/>
+        <result property="embeddingModel" column="embedding_model"/>
+        <result property="vectorStoreMode" column="vector_store_mode"/>
+        <result property="importBatchId" column="import_batch_id"/>
+        <result property="metadataJson" column="metadata_json"/>
+        <result property="importedAt" column="imported_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deleted" column="deleted"/>
+        <result property="deletedAt" column="deleted_at"/>
+        <result property="deletedBy" column="deleted_by"/>
+    </resultMap>
+
+    <resultMap id="importBatchResultMap" type="com.example.scm.aiagent.rag.persistence.po.RagImportBatchPO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="importBatchId" column="import_batch_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="scanRoot" column="scan_root"/>
+        <result property="fileCount" column="file_count"/>
+        <result property="importedCount" column="imported_count"/>
+        <result property="skippedCount" column="skipped_count"/>
+        <result property="vectorStoreMode" column="vector_store_mode"/>
+        <result property="embeddingMode" column="embedding_mode"/>
+        <result property="embeddingModel" column="embedding_model"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="latencyMs" column="latency_ms"/>
+    </resultMap>
+
+    <sql id="documentColumns">
+        tenant_id, knowledge_base_id, document_id, title, source, file_path, file_name, directory,
+        import_source, chunk_count, deleted_count, embedding_mode, embedding_model, vector_store_mode,
+        import_batch_id, metadata_json, imported_at, updated_at, deleted, deleted_at, deleted_by
+    </sql>
+
+    <sql id="batchColumns">
+        tenant_id, import_batch_id, user_id, knowledge_base_id, scan_root, file_count, imported_count,
+        skipped_count, vector_store_mode, embedding_mode, embedding_model, started_at, finished_at,
+        latency_ms
+    </sql>
+
+    <insert id="upsertDocument" parameterType="com.example.scm.aiagent.rag.persistence.po.RagDocumentRecordPO">
+        INSERT INTO rag_document_registry(
+            tenant_id, knowledge_base_id, document_id, title, source, file_path, file_name, directory,
+            import_source, chunk_count, deleted_count, embedding_mode, embedding_model, vector_store_mode,
+            import_batch_id, metadata_json, imported_at, updated_at, deleted, deleted_at, deleted_by, created_at
+        ) VALUES (
+            #{tenantId}, #{knowledgeBaseId}, #{documentId}, #{title}, #{source}, #{filePath}, #{fileName}, #{directory},
+            #{importSource}, #{chunkCount}, #{deletedCount}, #{embeddingMode}, #{embeddingModel}, #{vectorStoreMode},
+            #{importBatchId}, #{metadataJson}, #{importedAt}, #{updatedAt}, 0, NULL, NULL, #{importedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            title = VALUES(title),
+            source = VALUES(source),
+            file_path = VALUES(file_path),
+            file_name = VALUES(file_name),
+            directory = VALUES(directory),
+            import_source = VALUES(import_source),
+            chunk_count = VALUES(chunk_count),
+            deleted_count = VALUES(deleted_count),
+            embedding_mode = VALUES(embedding_mode),
+            embedding_model = VALUES(embedding_model),
+            vector_store_mode = VALUES(vector_store_mode),
+            import_batch_id = VALUES(import_batch_id),
+            metadata_json = VALUES(metadata_json),
+            updated_at = VALUES(updated_at),
+            deleted = 0,
+            deleted_at = NULL,
+            deleted_by = NULL
+    </insert>
+
+    <select id="selectDocuments" resultMap="documentRecordResultMap">
+        SELECT <include refid="documentColumns"/>
+        FROM rag_document_registry
+        WHERE tenant_id = #{tenantId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND deleted = 0
+        ORDER BY updated_at DESC
+    </select>
+
+    <select id="selectDocument" resultMap="documentRecordResultMap">
+        SELECT <include refid="documentColumns"/>
+        FROM rag_document_registry
+        WHERE tenant_id = #{tenantId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND document_id = #{documentId}
+          AND deleted = 0
+    </select>
+
+    <update id="deleteDocument">
+        UPDATE rag_document_registry
+        SET deleted = 1,
+            deleted_at = CURRENT_TIMESTAMP(3),
+            updated_at = CURRENT_TIMESTAMP(3)
+        WHERE tenant_id = #{tenantId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND document_id = #{documentId}
+          AND deleted = 0
+    </update>
+
+    <insert id="upsertImportBatch" parameterType="com.example.scm.aiagent.rag.persistence.po.RagImportBatchPO">
+        INSERT INTO rag_import_batch(
+            tenant_id, import_batch_id, user_id, knowledge_base_id, scan_root, file_count, imported_count,
+            skipped_count, vector_store_mode, embedding_mode, embedding_model, started_at, finished_at,
+            latency_ms, created_at
+        ) VALUES (
+            #{tenantId}, #{importBatchId}, #{userId}, #{knowledgeBaseId}, #{scanRoot}, #{fileCount}, #{importedCount},
+            #{skippedCount}, #{vectorStoreMode}, #{embeddingMode}, #{embeddingModel}, #{startedAt}, #{finishedAt},
+            #{latencyMs}, #{startedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            user_id = VALUES(user_id),
+            knowledge_base_id = VALUES(knowledge_base_id),
+            scan_root = VALUES(scan_root),
+            file_count = VALUES(file_count),
+            imported_count = VALUES(imported_count),
+            skipped_count = VALUES(skipped_count),
+            vector_store_mode = VALUES(vector_store_mode),
+            embedding_mode = VALUES(embedding_mode),
+            embedding_model = VALUES(embedding_model),
+            started_at = VALUES(started_at),
+            finished_at = VALUES(finished_at),
+            latency_ms = VALUES(latency_ms)
+    </insert>
+
+    <delete id="deleteImportDocuments">
+        DELETE FROM rag_import_document
+        WHERE tenant_id = #{tenantId}
+          AND import_batch_id = #{importBatchId}
+    </delete>
+
+    <insert id="insertImportDocument">
+        INSERT INTO rag_import_document(tenant_id, import_batch_id, knowledge_base_id, document_id, created_at)
+        VALUES (#{tenantId}, #{importBatchId}, #{knowledgeBaseId}, #{documentId}, CURRENT_TIMESTAMP(3))
+    </insert>
+
+    <select id="selectImportBatches" resultMap="importBatchResultMap">
+        SELECT <include refid="batchColumns"/>
+        FROM rag_import_batch
+        WHERE tenant_id = #{tenantId}
+        ORDER BY started_at DESC
+    </select>
+
+    <select id="selectImportBatch" resultMap="importBatchResultMap">
+        SELECT <include refid="batchColumns"/>
+        FROM rag_import_batch
+        WHERE tenant_id = #{tenantId}
+          AND import_batch_id = #{importBatchId}
+    </select>
+
+    <select id="selectImportDocumentIds" resultType="java.lang.String">
+        SELECT document_id
+        FROM rag_import_document
+        WHERE tenant_id = #{tenantId}
+          AND import_batch_id = #{importBatchId}
+        ORDER BY id ASC
+    </select>
+</mapper>
