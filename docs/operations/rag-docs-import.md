@@ -141,3 +141,204 @@ MILVUS_COLLECTION_NAME=scm_ai_rag_chunks
 - Workflow
 - 多 Agent
 - 长任务编排
+
+## 9. Phase 3.5：重复导入清理机制
+
+从 Phase 3.5 开始，docs 导入复用的 `RagService.upsertDocument` 会在写入前先按文档删除旧 chunk。
+
+这样重复执行：
+
+```http
+POST http://localhost:18080/api/v1/ai/rag/import/docs
+```
+
+不会持续累积重复 chunk。相同 `documentId` 的旧数据会先被清理，再写入最新切片。
+
+它主要解决三个问题：
+
+- 相同文档重复导入导致 Milvus 或 in-memory 中出现脏数据。
+- 文档内容变短后，旧的尾部 chunk 仍然能被检索到。
+- 调整 chunk size、overlap 或 embedding 模型后，旧 chunk 干扰新结果。
+
+接口关键返回字段中，单文档写入接口会返回：
+
+```json
+{
+  "data": {
+    "documentId": "doc-demo",
+    "chunkCount": 2,
+    "deletedCount": 2,
+    "vectorStoreMode": "milvus",
+    "embeddingMode": "dashscope"
+  }
+}
+```
+
+`deletedCount` 表示本次写入前清理掉的旧 chunk 数量。第一次写入通常为 `0`，重复导入同一文档时会大于等于 `0`。
+
+## 10. Phase 3.5：scoreThreshold 与上下文裁剪
+
+检索接口新增可选字段 `scoreThreshold`：
+
+```json
+{
+  "knowledgeBaseId": "kb-project-docs",
+  "query": "SkyWalking 接入说明",
+  "topK": 5,
+  "scoreThreshold": 0.2,
+  "filters": {
+    "directory": "docs/operations",
+    "importSource": "docs-auto-import"
+  }
+}
+```
+
+说明：
+
+- 不传 `scoreThreshold` 时使用配置 `ai.agent.rag.retrieval.score-threshold`。
+- 默认值为 `0`，表示不过滤低分结果。
+- 如果设置过高，可能返回 `retrievedCount=0`，这是正常现象。
+
+RAG Chat 会继续返回完整 citations，但拼接进模型 prompt 的上下文会受以下配置限制：
+
+```yaml
+ai.agent.rag.retrieval.max-context-chunks: 5
+ai.agent.rag.retrieval.max-context-chunk-length: 1200
+```
+
+这样可以避免一次检索返回过多或单个 chunk 太长，导致 prompt 过大、响应变慢或费用增加。
+
+## 11. Phase 3.5 Gateway 验证示例
+
+### 11.1 首次写入文档
+
+```http
+POST http://localhost:18080/api/v1/ai/rag/documents
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "knowledgeBaseId": "kb-project-docs",
+  "documentId": "doc-phase35-demo",
+  "title": "Phase 3.5 Demo",
+  "source": "manual/phase35-demo.md",
+  "content": "Phase 3.5 实现了重导入清理、scoreThreshold 和 RAG Chat 上下文裁剪。",
+  "metadata": {
+    "directory": "manual",
+    "importSource": "manual-test"
+  }
+}
+```
+
+关键预期返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "documentId": "doc-phase35-demo",
+    "chunkCount": 1,
+    "deletedCount": 0
+  }
+}
+```
+
+### 11.2 重复写入同一文档
+
+再次请求同一个 `documentId=doc-phase35-demo`，把 `content` 改短或改成新内容。
+
+关键预期返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "documentId": "doc-phase35-demo",
+    "chunkCount": 1,
+    "deletedCount": 1
+  }
+}
+```
+
+### 11.3 检索并使用 scoreThreshold
+
+```http
+POST http://localhost:18080/api/v1/ai/rag/retrieve
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "knowledgeBaseId": "kb-project-docs",
+  "query": "Phase 3.5 做了什么",
+  "topK": 5,
+  "scoreThreshold": 0,
+  "filters": {
+    "importSource": "manual-test"
+  }
+}
+```
+
+关键预期返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "knowledgeBaseId": "kb-project-docs",
+    "retrievedCount": 1,
+    "chunks": [
+      {
+        "documentId": "doc-phase35-demo",
+        "score": 0.5
+      }
+    ]
+  }
+}
+```
+
+### 11.4 RAG Chat 验证引用仍返回
+
+```http
+POST http://localhost:18080/api/v1/ai/rag/chat
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "knowledgeBaseId": "kb-project-docs",
+  "message": "Phase 3.5 做了什么？",
+  "taskType": "rag_qa",
+  "providerMode": "mock",
+  "requestedModel": "qwen-plus",
+  "topK": 5,
+  "scoreThreshold": 0,
+  "filters": {
+    "importSource": "manual-test"
+  }
+}
+```
+
+关键预期返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "chat": {
+      "providerMode": "mock",
+      "taskType": "rag_qa"
+    },
+    "retrievalCount": 1,
+    "citations": [
+      {
+        "documentId": "doc-phase35-demo"
+      }
+    ]
+  }
+}
+```

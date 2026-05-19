@@ -575,3 +575,13 @@ Phase 3.4 在 Milvus smoke 通过后接入真实 Embedding Provider，让 RAG �
 - 日志记录 embeddingMode、embeddingModel、vectorDimension、topK、retrievedCount 和 latencyMs
 - 文档说明 Milvus collection dimension 与 embedding 模型维度的关系
 - 真实 embedding smoke 通过 gateway 18080 验证
+
+## Phase 3.5 补充：RAG 重导入清理与质量控制
+
+Phase 3.5 已纳入 RAG 阶段范围，重点不是新增外部组件，而是把知识库长期运行需要的清理和质量控制补齐：
+
+- 重复导入同一文档前清理旧 chunk。
+- Milvus 删除表达式强制租户、知识库、文档三重隔离。
+- 检索支持 `scoreThreshold`。
+- RAG Chat 上下文拼接支持 chunk 数量和单 chunk 长度裁剪。
+- 单元测试继续保持 mock / in-memory，不依赖真实外部服务。

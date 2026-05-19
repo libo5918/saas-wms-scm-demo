@@ -10,6 +10,7 @@ import com.example.scm.aiagent.rag.dto.RagDocumentUpsertRequest;
 import com.example.scm.aiagent.rag.dto.RagDocumentUpsertResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
+import com.example.scm.aiagent.rag.model.RagDocumentChunk;
 import com.example.scm.aiagent.rag.service.InMemoryRagVectorStore;
 import com.example.scm.aiagent.rag.service.MockRagEmbeddingClient;
 import com.example.scm.aiagent.rag.service.RagService;
@@ -17,8 +18,10 @@ import com.example.scm.aiagent.rag.service.SimpleRagDocumentChunker;
 import com.example.scm.aiagent.service.AgentChatService;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,12 +40,13 @@ class RagServiceTest {
         assertEquals("kb-project", upsertResponse.getKnowledgeBaseId());
         assertEquals("doc-1", upsertResponse.getDocumentId());
         assertTrue(upsertResponse.getChunkCount() > 0);
+        assertEquals(0, upsertResponse.getDeletedCount());
         assertEquals("in-memory", upsertResponse.getVectorStoreMode());
         assertEquals("mock", upsertResponse.getEmbeddingMode());
 
         RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
         retrieveRequest.setKnowledgeBaseId("kb-project");
-        retrieveRequest.setQuery("多租户隔离");
+        retrieveRequest.setQuery("tenant isolation");
         retrieveRequest.setTopK(2);
         RagRetrieveResponse retrieveResponse = ragService.retrieve(retrieveRequest, context);
 
@@ -61,7 +65,7 @@ class RagServiceTest {
 
         RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
         retrieveRequest.setKnowledgeBaseId("kb-project");
-        retrieveRequest.setQuery("多租户隔离");
+        retrieveRequest.setQuery("tenant isolation");
         RagRetrieveResponse retrieveResponse = ragService.retrieve(retrieveRequest, tenantTwo);
 
         assertEquals(2L, retrieveResponse.getTenantId());
@@ -76,7 +80,7 @@ class RagServiceTest {
 
         RagChatRequest chatRequest = new RagChatRequest();
         chatRequest.setKnowledgeBaseId("kb-project");
-        chatRequest.setMessage("这个项目的 RAG 如何保证租户隔离？");
+        chatRequest.setMessage("How does RAG keep tenant data isolated?");
         chatRequest.setProviderMode("mock");
         chatRequest.setRequestedModel("qwen-plus");
         RagChatResponse response = ragService.ragChat(chatRequest, context);
@@ -88,31 +92,150 @@ class RagServiceTest {
         assertTrue(response.getRetrievalCount() > 0);
     }
 
+    @Test
+    void shouldCleanOldChunksWhenReimportingSameDocument() {
+        RagService ragService = createRagService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+
+        RagDocumentUpsertResponse first = ragService.upsertDocument(upsertRequest("kb-project", "doc-reimport"), context);
+        RagDocumentUpsertResponse second = ragService.upsertDocument(shortUpsertRequest("kb-project", "doc-reimport"), context);
+
+        assertEquals(first.getChunkCount(), second.getDeletedCount());
+        RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
+        retrieveRequest.setKnowledgeBaseId("kb-project");
+        retrieveRequest.setQuery("short version");
+        retrieveRequest.setTopK(10);
+        RagRetrieveResponse retrieveResponse = ragService.retrieve(retrieveRequest, context);
+
+        assertEquals(second.getChunkCount(), retrieveResponse.getRetrievedCount());
+        assertTrue(retrieveResponse.getChunks().stream()
+                .noneMatch(chunk -> chunk.getContent().contains("old-only-token")));
+    }
+
+    @Test
+    void shouldDeleteByDocumentWithTenantIsolation() {
+        InMemoryRagVectorStore vectorStore = new InMemoryRagVectorStore();
+        vectorStore.upsert(List.of(chunk(1L, "kb-project", "doc-shared", "chunk-1", "tenant one content")));
+        vectorStore.upsert(List.of(chunk(2L, "kb-project", "doc-shared", "chunk-2", "tenant two content")));
+
+        long deletedCount = vectorStore.deleteByDocument(1L, "kb-project", "doc-shared");
+
+        assertEquals(1, deletedCount);
+        assertTrue(vectorStore.search(1L, "kb-project", new float[]{1.0f, 0.0f, 0.0f}, 10, Map.of()).isEmpty());
+        assertEquals(1, vectorStore.search(2L, "kb-project", new float[]{1.0f, 0.0f, 0.0f}, 10, Map.of()).size());
+    }
+
+    @Test
+    void shouldFilterLowScoreResultsByThreshold() {
+        RagService ragService = createRagService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        ragService.upsertDocument(upsertRequest("kb-project", "doc-threshold"), context);
+
+        RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
+        retrieveRequest.setKnowledgeBaseId("kb-project");
+        retrieveRequest.setQuery("anything");
+        retrieveRequest.setTopK(10);
+        retrieveRequest.setScoreThreshold(2.0);
+        RagRetrieveResponse retrieveResponse = ragService.retrieve(retrieveRequest, context);
+
+        assertEquals(0, retrieveResponse.getRetrievedCount());
+        assertTrue(retrieveResponse.getChunks().isEmpty());
+    }
+
+    @Test
+    void shouldClipRagChatContextBeforeCallingModel() {
+        AiAgentProperties properties = new AiAgentProperties();
+        properties.getRag().getChunk().setSize(220);
+        properties.getRag().getChunk().setOverlap(0);
+        properties.getRag().getRetrieval().setMaxContextChunks(1);
+        properties.getRag().getRetrieval().setMaxContextChunkLength(100);
+        AtomicReference<String> promptRef = new AtomicReference<>();
+        RagService ragService = createRagService(properties, new InMemoryRagVectorStore(), promptRef);
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        ragService.upsertDocument(longUpsertRequest("kb-project", "doc-clip"), context);
+
+        RagChatRequest chatRequest = new RagChatRequest();
+        chatRequest.setKnowledgeBaseId("kb-project");
+        chatRequest.setMessage("clip context?");
+        chatRequest.setTopK(5);
+        ragService.ragChat(chatRequest, context);
+
+        assertNotNull(promptRef.get());
+        assertTrue(promptRef.get().contains("..."));
+        assertFalse(promptRef.get().contains("[引用2]"));
+    }
+
     private RagDocumentUpsertRequest upsertRequest(String knowledgeBaseId, String documentId) {
         RagDocumentUpsertRequest request = new RagDocumentUpsertRequest();
         request.setKnowledgeBaseId(knowledgeBaseId);
         request.setDocumentId(documentId);
-        request.setTitle("AI Agent RAG 设计");
+        request.setTitle("AI Agent RAG design");
         request.setSource("docs/architecture/ai-agent-roadmap.md");
-        request.setContent("RAG 必须基于当前项目资料，所有文档切片都必须携带 tenantId、knowledgeBaseId、documentId 和 chunkId。" +
-                "检索时需要按租户隔离，避免不同客户之间的知识库内容互相泄露。" +
-                "Milvus 作为后续真实向量数据库，当前测试使用 in-memory vector store。");
+        request.setContent("RAG must carry tenantId knowledgeBaseId documentId and chunkId. "
+                + "Retrieval must filter by tenant to avoid leaking knowledge between customers. "
+                + "Milvus is the later real vector database, while unit tests use in-memory vector store. "
+                + "old-only-token");
         request.setMetadata(Map.of("domain", "architecture"));
         return request;
+    }
+
+    private RagDocumentUpsertRequest shortUpsertRequest(String knowledgeBaseId, String documentId) {
+        RagDocumentUpsertRequest request = new RagDocumentUpsertRequest();
+        request.setKnowledgeBaseId(knowledgeBaseId);
+        request.setDocumentId(documentId);
+        request.setTitle("AI Agent RAG design");
+        request.setSource("docs/architecture/ai-agent-roadmap.md");
+        request.setContent("short version");
+        request.setMetadata(Map.of("domain", "architecture"));
+        return request;
+    }
+
+    private RagDocumentUpsertRequest longUpsertRequest(String knowledgeBaseId, String documentId) {
+        RagDocumentUpsertRequest request = new RagDocumentUpsertRequest();
+        request.setKnowledgeBaseId(knowledgeBaseId);
+        request.setDocumentId(documentId);
+        request.setTitle("AI Agent RAG design");
+        request.setSource("docs/architecture/ai-agent-roadmap.md");
+        request.setContent("clip-token ".repeat(40));
+        request.setMetadata(Map.of("domain", "architecture"));
+        return request;
+    }
+
+    private RagDocumentChunk chunk(Long tenantId, String knowledgeBaseId, String documentId, String chunkId, String content) {
+        return RagDocumentChunk.builder()
+                .tenantId(tenantId)
+                .knowledgeBaseId(knowledgeBaseId)
+                .documentId(documentId)
+                .chunkId(chunkId)
+                .chunkIndex(0)
+                .content(content)
+                .embedding(new float[]{1.0f, 0.0f, 0.0f})
+                .title("title")
+                .source("source")
+                .metadata(Map.of())
+                .createdAt(Instant.now())
+                .build();
     }
 
     private RagService createRagService() {
         AiAgentProperties properties = new AiAgentProperties();
         properties.getRag().getChunk().setSize(40);
         properties.getRag().getChunk().setOverlap(8);
+        return createRagService(properties, new InMemoryRagVectorStore(), new AtomicReference<>());
+    }
+
+    private RagService createRagService(AiAgentProperties properties, InMemoryRagVectorStore vectorStore,
+                                        AtomicReference<String> promptRef) {
         MockRagEmbeddingClient embeddingClient = new MockRagEmbeddingClient(properties);
         SimpleRagDocumentChunker chunker = new SimpleRagDocumentChunker(properties, embeddingClient);
-        InMemoryRagVectorStore vectorStore = new InMemoryRagVectorStore();
         AgentChatService agentChatService = new AgentChatService(
                 properties,
                 request -> new ModelRoute("qwen-plus", "qwen-plus", "dashscope", "dashscope", "mock",
                         "task_type:rag_qa", List.of("CHAT", "RAG"), List.of("qwen-turbo")),
-                invocation -> new ChatModelResult("mock rag answer")
+                invocation -> {
+                    promptRef.set(invocation.message());
+                    return new ChatModelResult("mock rag answer");
+                }
         );
         return new RagService(properties, chunker, embeddingClient, vectorStore, agentChatService);
     }

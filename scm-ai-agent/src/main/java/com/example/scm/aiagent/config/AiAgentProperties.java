@@ -327,6 +327,21 @@ public class AiAgentProperties {
          * 单次请求允许返回的最大切片数量。
          */
         private int maxTopK = 10;
+
+        /**
+         * 最小检索分数阈值，0 表示默认不过滤低分结果。
+         */
+        private double scoreThreshold = 0.0;
+
+        /**
+         * RAG Chat 最多拼接到提示词中的 chunk 数量，避免 prompt 过长。
+         */
+        private int maxContextChunks = 5;
+
+        /**
+         * 单个 chunk 拼接到 RAG Chat 上下文时允许的最大字符数。
+         */
+        private int maxContextChunkLength = 1200;
     }
     /**
      * docs 目录导入 RAG 知识库的配置。

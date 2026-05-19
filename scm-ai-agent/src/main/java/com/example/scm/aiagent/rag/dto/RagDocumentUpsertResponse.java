@@ -24,6 +24,9 @@ public class RagDocumentUpsertResponse {
     /** 本次生成的切片数量。 */
     private int chunkCount;
 
+    /** 重导入前删除的旧切片数量。*/
+    private long deletedCount;
+
     /** 当前使用的向量存储模式，例如 in-memory 或 milvus。 */
     private String vectorStoreMode;
 

@@ -25,6 +25,9 @@ public class RagRetrieveRequest {
     /** 返回最相似切片数量，不传时使用系统默认值。 */
     private Integer topK;
 
+    /** 最小相似度阈值；不传时使用系统配置，0 表示不过滤。*/
+    private Double scoreThreshold;
+
     /** 预留 metadata 过滤条件，后续映射到 Milvus scalar filter。 */
     private Map<String, Object> filters = new HashMap<>();
 }

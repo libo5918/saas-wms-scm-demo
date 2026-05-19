@@ -1,4 +1,4 @@
-﻿# Milvus 本地搭建与验证说明
+# Milvus 本地搭建与验证说明
 
 ## 1. Milvus 是什么
 
@@ -525,3 +525,36 @@ Phase 3.3 只做：
 6. 用 `tenant_id + knowledge_base_id` 理解企业级多租户隔离。
 7. 后续接真实 Embedding，观察 mock embedding 和真实 embedding 的检索差异。
 8. 再学习 index type、metric type、分区、批量导入、备份和分布式部署。
+
+## 14. Phase 3.5：Milvus 文档级删除
+
+Phase 3.5 后，项目在重导入同一文档前会先执行 Milvus delete。
+
+删除条件不是只按 `document_id`，而是强制包含：
+
+```text
+tenant_id == 当前租户
+knowledge_base_id == 当前知识库
+document_id == 当前文档
+```
+
+组合后的表达式示例：
+
+```text
+tenant_id == 1 and knowledge_base_id == "kb-project-docs" and document_id == "doc-phase35-demo"
+```
+
+这样做的原因：
+
+- 防止不同租户使用相同 `documentId` 时互相删除。
+- 防止同租户下不同知识库使用相同 `documentId` 时互相删除。
+- 保证重复导入、文档变短、chunk 参数变化后，旧 chunk 不再参与检索。
+
+如果你在 Attu 页面看到 collection 中 row 数没有明显增加，且日志出现：
+
+```text
+RAG Milvus chunks deleted
+RAG Milvus chunks inserted
+```
+
+这通常说明重导入清理机制生效了，而不是写入失败。

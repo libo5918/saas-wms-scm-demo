@@ -15,9 +15,11 @@ import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
+import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
+import io.milvus.v2.service.vector.response.DeleteResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -86,6 +88,22 @@ public class MilvusRagVectorStore implements RagVectorStore {
         log.info("RAG Milvus chunks inserted, tenantId={}, knowledgeBaseId={}, collectionName={}, chunkCount={}, metricType={}, latencyMs={}",
                 first.getTenantId(), first.getKnowledgeBaseId(), milvus.getCollectionName(), chunks.size(),
                 milvus.getMetricType(), latencyMs);
+    }
+
+    @Override
+    public long deleteByDocument(Long tenantId, String knowledgeBaseId, String documentId) {
+        long startedAt = System.nanoTime();
+        AiAgentProperties.MilvusProperties milvus = properties.getRag().getVectorStore().getMilvus();
+        String filterExpression = filterExpressionBuilder.buildDocumentExpression(tenantId, knowledgeBaseId, documentId);
+        DeleteResp deleteResp = milvusClient.delete(DeleteReq.builder()
+                .collectionName(milvus.getCollectionName())
+                .filter(filterExpression)
+                .build());
+        long deletedCount = deleteResp == null ? 0 : deleteResp.getDeleteCnt();
+        long latencyMs = (System.nanoTime() - startedAt) / 1_000_000;
+        log.info("RAG Milvus chunks deleted, tenantId={}, knowledgeBaseId={}, documentId={}, collectionName={}, filterExpression={}, deletedCount={}, latencyMs={}",
+                tenantId, knowledgeBaseId, documentId, milvus.getCollectionName(), filterExpression, deletedCount, latencyMs);
+        return deletedCount;
     }
 
     @Override

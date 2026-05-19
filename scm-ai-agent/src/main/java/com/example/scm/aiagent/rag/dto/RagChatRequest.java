@@ -47,6 +47,9 @@ public class RagChatRequest {
     /** RAG 检索返回的最大切片数量。 */
     private Integer topK;
 
+    /** RAG 检索最小相似度阈值；不传时使用系统配置，0 表示不过滤。*/
+    private Double scoreThreshold;
+
     /** 预留 metadata 过滤条件，后续映射到 Milvus scalar filter。 */
     private Map<String, Object> filters = new HashMap<>();
 

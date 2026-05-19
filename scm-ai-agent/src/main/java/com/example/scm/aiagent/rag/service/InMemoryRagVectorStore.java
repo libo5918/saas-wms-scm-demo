@@ -37,6 +37,22 @@ public class InMemoryRagVectorStore implements RagVectorStore {
     }
 
     @Override
+    public long deleteByDocument(Long tenantId, String knowledgeBaseId, String documentId) {
+        Map<String, RagDocumentChunk> scopedChunks = chunksByScope.get(scopeKey(tenantId, knowledgeBaseId));
+        if (scopedChunks == null || scopedChunks.isEmpty()) {
+            return 0;
+        }
+        List<String> deletingChunkIds = scopedChunks.values().stream()
+                .filter(chunk -> documentId != null && documentId.equals(chunk.getDocumentId()))
+                .map(RagDocumentChunk::getChunkId)
+                .toList();
+        deletingChunkIds.forEach(scopedChunks::remove);
+        log.info("RAG in-memory chunks deleted, tenantId={}, knowledgeBaseId={}, documentId={}, deletedCount={}",
+                tenantId, knowledgeBaseId, documentId, deletingChunkIds.size());
+        return deletingChunkIds.size();
+    }
+
+    @Override
     public List<RagRetrievedChunk> search(Long tenantId, String knowledgeBaseId, float[] queryEmbedding, int topK,
                                           Map<String, Object> filters) {
         Map<String, RagDocumentChunk> scopedChunks = chunksByScope.getOrDefault(scopeKey(tenantId, knowledgeBaseId), Map.of());

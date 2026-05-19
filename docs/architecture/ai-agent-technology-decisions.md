@@ -478,3 +478,11 @@ Milvus collection 第一版字段以 RAG chunk 为中心，重点保证 `tenant_
 - 真实 embedding 可以通过 IDEA 环境变量手动 smoke
 
 Milvus collection dimension 必须和 embedding 模型输出维度一致。切换 embedding 模型后，如果维度发生变化，需要重建 collection 或使用新的 collection 名称。
+
+## Phase 3.5 技术决策：重导入清理与检索阈值
+
+- RAG 文档写入采用“先删旧 chunk，再写新 chunk”的策略，避免重复导入、文档变短和 chunk 参数变化导致旧数据残留。
+- `RagVectorStore` 抽象统一提供文档级删除能力，in-memory 和 Milvus 都必须实现。
+- Milvus 删除必须使用 `tenant_id + knowledge_base_id + document_id` 组合过滤，不允许只按 `document_id` 删除。
+- 检索质量先采用轻量策略：query normalize、`scoreThreshold`、metadata filter、topK，不在本阶段接入复杂 rerank。
+- RAG Chat 上下文拼接必须限制 chunk 数量和单 chunk 长度，避免 prompt 过长。

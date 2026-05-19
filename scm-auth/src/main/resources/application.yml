@@ -24,7 +24,7 @@ auth:
   jwt:
     issuer: scm-auth
     secret: change-this-dev-secret-key-at-least-32-bytes
-    expire-seconds: 7200
+    expire-seconds: 72000
   demo-user:
     username: admin
     password: admin123

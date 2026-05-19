@@ -39,6 +39,14 @@ class MilvusFilterExpressionBuilderTest {
     }
 
     @Test
+    void shouldBuildDocumentDeleteExpression() {
+        String expression = builder.buildDocumentExpression(1L, "kb-project-docs", "doc-001");
+
+        assertEquals("tenant_id == 1 and knowledge_base_id == \"kb-project-docs\" and document_id == \"doc-001\"",
+                expression);
+    }
+
+    @Test
     void shouldRejectUnsupportedFilterField() {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> builder.build(1L, "kb-project-docs", Map.of("tenant_id or 1 == 1", "x")));

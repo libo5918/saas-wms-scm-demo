@@ -195,3 +195,37 @@ Content-Type: application/json
 - 多 Agent
 - 长任务编排
 - MySQL RAG metadata 持久化
+
+## 7. Phase 3.5：检索质量增强配置
+
+Phase 3.5 在真实 Embedding 可用的基础上，新增两个检索质量控制点。
+
+第一，`scoreThreshold` 用于过滤低分 chunk：
+
+```yaml
+ai.agent.rag.retrieval.score-threshold: 0
+```
+
+接口也可以单次覆盖：
+
+```json
+{
+  "knowledgeBaseId": "kb-project-docs",
+  "query": "SkyWalking 接入说明",
+  "topK": 5,
+  "scoreThreshold": 0.2
+}
+```
+
+第二，RAG Chat 上下文裁剪用于控制 prompt 长度：
+
+```yaml
+ai.agent.rag.retrieval.max-context-chunks: 5
+ai.agent.rag.retrieval.max-context-chunk-length: 1200
+```
+
+注意：
+
+- `scoreThreshold` 设置越高，结果越严格，但也更容易无结果。
+- mock embedding 的分数不代表真实语义质量，真实判断应优先使用 DashScope/OpenAI-compatible embedding 验证。
+- 当前阶段只预留 rerank 扩展点，不调用 rerank 模型。

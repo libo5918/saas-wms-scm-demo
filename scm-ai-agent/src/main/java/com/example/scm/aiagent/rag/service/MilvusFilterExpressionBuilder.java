@@ -51,6 +51,16 @@ class MilvusFilterExpressionBuilder {
         return expression.toString();
     }
 
+    /**
+     * 构建文档级删除表达式，始终强制包含租户、知识库和 documentId。
+     */
+    String buildDocumentExpression(Long tenantId, String knowledgeBaseId, String documentId) {
+        if (!StringUtils.hasText(documentId)) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST.code(), "documentId must not be blank");
+        }
+        return build(tenantId, knowledgeBaseId, Map.of("documentId", documentId));
+    }
+
     private void appendFilter(StringBuilder expression, String key, Object value) {
         if (!StringUtils.hasText(key) || value == null) {
             return;

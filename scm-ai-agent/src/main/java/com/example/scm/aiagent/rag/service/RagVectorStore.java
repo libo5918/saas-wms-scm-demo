@@ -21,6 +21,18 @@ public interface RagVectorStore {
     void upsert(List<RagDocumentChunk> chunks);
 
     /**
+     * 按租户、知识库和文档 ID 删除旧切片。
+     *
+     * <p>用于文档重导入前清理旧 chunk，避免文档变短、切片参数变化或重复导入后残留脏数据。</p>
+     *
+     * @param tenantId 当前租户 ID
+     * @param knowledgeBaseId 知识库 ID
+     * @param documentId 文档 ID
+     * @return 删除的切片数量，部分后端可能只能返回估算值
+     */
+    long deleteByDocument(Long tenantId, String knowledgeBaseId, String documentId);
+
+    /**
      * 按租户、知识库和 query vector 检索相似切片。
      *
      * @param tenantId 当前租户 ID

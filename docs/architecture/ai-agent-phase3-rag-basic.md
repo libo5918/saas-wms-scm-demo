@@ -409,3 +409,45 @@ POST /api/v1/ai/rag/documents
 POST /api/v1/ai/rag/retrieve
 POST /api/v1/ai/rag/chat
 ```
+
+## Phase 3.5：RAG 重导入清理与检索质量增强
+
+本阶段在 Phase 3.4 真实 Embedding Provider 可用之后，补齐 RAG 知识库长期使用时最容易出现的问题：重复导入、旧 chunk 残留、低质量结果进入上下文、以及 prompt 过长。
+
+目标：
+
+- `RagVectorStore` 新增 `deleteByDocument(tenantId, knowledgeBaseId, documentId)`，让不同存储实现都具备按文档清理旧 chunk 的能力。
+- `RagService.upsertDocument` 改为先删除旧 chunk，再写入新 chunk，避免重复导入和文档变短后的脏数据残留。
+- `InMemoryRagVectorStore` 和 `MilvusRagVectorStore` 都实现文档级删除。
+- Milvus 删除表达式必须强制包含 `tenant_id + knowledge_base_id + document_id`，保证租户隔离和知识库隔离。
+- 检索请求支持 `scoreThreshold`，默认 `0` 表示不过滤。
+- RAG Chat 拼接上下文时限制 chunk 数量和单 chunk 最大长度，降低 prompt 过长风险。
+- 预留 rerank 扩展点，但本阶段不调用复杂 rerank 模型。
+
+关键配置：
+
+```yaml
+ai:
+  agent:
+    rag:
+      retrieval:
+        default-top-k: 3
+        max-top-k: 10
+        score-threshold: 0
+        max-context-chunks: 5
+        max-context-chunk-length: 1200
+```
+
+Milvus 删除过滤表达式示例：
+
+```text
+tenant_id == 1 and knowledge_base_id == "kb-project-docs" and document_id == "doc-docs-operations-example-md-xxxx"
+```
+
+注意：删除旧 chunk 必须发生在写入新 chunk 之前。否则文档内容变短、切片参数变化或 embedding 模型切换后，旧 chunk 会继续参与检索，导致答案引用过期内容。
+
+当前边界：
+
+- 不实现 Tools、MCP、Workflow、多 Agent、长任务编排。
+- 不实现复杂 rerank 模型调用。
+- 单元测试仍默认使用 `mock embedding + in-memory`，不依赖真实 Milvus、真实 Embedding API 或外部网络。

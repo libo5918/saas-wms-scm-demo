@@ -1,9 +1,8 @@
 # 本地 AI Agent 调试配置。
-#
 # 使用方式：
 # 1. IDEA 的 ScmAiAgentApplication -> Active profiles 填 local。
 # 2. Environment variables 里只保留真实密钥，例如 DASHSCOPE_API_KEY=你的本地 key。
-# 3. 不要把真实 API Key 写入本文件或提交到 Git。
+# 3. 不要把真实 API Key 写入本文档或提交到 Git。
 
 spring:
   cloud:
@@ -14,12 +13,19 @@ spring:
         enabled: true
   ai:
     model:
-      # 本地验证真实 embedding 时启用 DashScope；Chat 默认仍可按接口 providerMode 控制。
+      # 本地验证真实 Chat / Embedding 时启用 DashScope；接口仍通过 providerMode 控制是否真实调用。
+      chat: dashscope
       embedding: dashscope
     dashscope:
       enabled: true
       api-key: ${DASHSCOPE_API_KEY:}
       base-url: https://dashscope.aliyuncs.com
+      chat:
+        enabled: true
+        api-key: ${DASHSCOPE_API_KEY:}
+        base-url: https://dashscope.aliyuncs.com
+        options:
+          model: qwen-plus
       embedding:
         enabled: true
         api-key: ${DASHSCOPE_API_KEY:}
@@ -32,7 +38,7 @@ ai:
   agent:
     rag:
       embedding:
-        # 本地 local profile 默认使用真实 DashScope embedding，提升 RAG 语义检索效果。
+        # local profile 默认使用真实 DashScope embedding，提升 RAG 语义检索效果。
         mode: dashscope
         provider: dashscope
         model: text-embedding-v3
@@ -45,7 +51,7 @@ ai:
         milvus:
           uri: http://localhost:19530
           token:
-          # 使用新 collection，避免和 mock embedding 64 维 collection 冲突。
+          # 使用 1024 维 collection，避免和 mock embedding 64 维 collection 冲突。
           collection-name: scm_ai_rag_chunks_embedding_v3
           primary-field: chunk_id
           vector-field: embedding
@@ -58,3 +64,9 @@ ai:
         include-directories: architecture,business,operations,database
         supported-extensions: .md
         max-files: 100
+      retrieval:
+        default-top-k: 5
+        max-top-k: 10
+        score-threshold: 0
+        max-context-chunks: 5
+        max-context-chunk-length: 1200

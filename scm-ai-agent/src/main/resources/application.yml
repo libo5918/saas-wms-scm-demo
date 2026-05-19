@@ -108,6 +108,9 @@ ai:
       retrieval:
         default-top-k: ${AI_AGENT_RAG_DEFAULT_TOP_K:3}
         max-top-k: ${AI_AGENT_RAG_MAX_TOP_K:10}
+        score-threshold: ${AI_AGENT_RAG_SCORE_THRESHOLD:0}
+        max-context-chunks: ${AI_AGENT_RAG_MAX_CONTEXT_CHUNKS:5}
+        max-context-chunk-length: ${AI_AGENT_RAG_MAX_CONTEXT_CHUNK_LENGTH:1200}
       docs-import:
         enabled: ${AI_AGENT_RAG_DOCS_IMPORT_ENABLED:true}
         root-path: ${AI_AGENT_RAG_DOCS_ROOT:docs}
