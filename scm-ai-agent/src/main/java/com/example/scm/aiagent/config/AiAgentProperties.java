@@ -48,6 +48,12 @@ public class AiAgentProperties {
     private RagProperties rag = new RagProperties();
 
     /**
+     * Agent Tools 相关配置。
+     * 默认使用 mock adapter，保证本地启动和单元测试不依赖真实业务服务。
+     */
+    private ToolsProperties tools = new ToolsProperties();
+
+    /**
      * 模型提供方配置。
      */
     @Getter
@@ -428,5 +434,53 @@ public class AiAgentProperties {
          * MySQL 密码，必须通过环境变量或本地配置注入，不能提交真实密码。
          */
         private String password;
+    }
+
+    /**
+     * Agent Tool 调用配置。
+     */
+    @Getter
+    @Setter
+    public static class ToolsProperties {
+
+        /**
+         * Tool adapter 模式。
+         *
+         * <p>mock 表示本地模拟数据；http 表示通过 HTTP 调用真实 SCM/WMS 服务。</p>
+         */
+        private String adapterMode = "mock";
+
+        /**
+         * HTTP adapter 配置。
+         */
+        private HttpToolClientProperties http = new HttpToolClientProperties();
+    }
+
+    /**
+     * Tool HTTP adapter 连接配置。
+     */
+    @Getter
+    @Setter
+    public static class HttpToolClientProperties {
+
+        /**
+         * 库存服务基础地址，例如 http://localhost:18084。
+         */
+        private String inventoryBaseUrl = "http://localhost:18084";
+
+        /**
+         * 主数据服务基础地址，例如 http://localhost:18082。
+         */
+        private String mdmBaseUrl = "http://localhost:18082";
+
+        /**
+         * HTTP 连接超时时间，单位毫秒。
+         */
+        private int connectTimeoutMs = 3000;
+
+        /**
+         * HTTP 读取超时时间，单位毫秒。
+         */
+        private int readTimeoutMs = 5000;
     }
 }

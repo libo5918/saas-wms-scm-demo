@@ -1,6 +1,9 @@
 package com.example.scm.aiagent.tool;
 
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.client.MockInventoryToolClient;
+import com.example.scm.aiagent.tool.client.MockMdmToolClient;
+import com.example.scm.aiagent.tool.client.ToolClientException;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.tool.executor.InventoryBalanceToolExecutor;
@@ -67,10 +70,28 @@ class ToolInvocationServiceTest {
         assertTrue(response.getTools().stream().anyMatch(tool -> "mdm.getMaterial".equals(tool.getName())));
     }
 
+    @Test
+    void shouldReturnFailureWhenToolClientThrowsException() {
+        ToolInvocationService service = new ToolInvocationService(new ToolRegistry(List.of(
+                new InventoryBalanceToolExecutor(request -> {
+                    throw new ToolClientException("Inventory service call failed");
+                })
+        )));
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setToolName("inventory.getBalance");
+
+        ToolResponse response = service.invoke(request, context);
+
+        assertFalse(response.isSuccess());
+        assertEquals("400", response.getErrorCode());
+        assertEquals("Inventory service call failed", response.getErrorMessage());
+    }
+
     private ToolInvocationService createService() {
         List<ToolExecutor> executors = List.of(
-                new InventoryBalanceToolExecutor(),
-                new MaterialInfoToolExecutor(),
+                new InventoryBalanceToolExecutor(new MockInventoryToolClient()),
+                new MaterialInfoToolExecutor(new MockMdmToolClient()),
                 new SalesOrderToolExecutor(),
                 new PurchaseOrderToolExecutor(),
                 new WarehouseInfoToolExecutor()
