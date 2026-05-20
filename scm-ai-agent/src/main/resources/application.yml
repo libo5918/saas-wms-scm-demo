@@ -140,6 +140,8 @@ ai:
       audit:
         mode: ${AI_AGENT_TOOLS_AUDIT_MODE:in-memory}
         max-records: ${AI_AGENT_TOOLS_AUDIT_MAX_RECORDS:500}
+    tool-calling:
+      planner-mode: ${AI_AGENT_TOOL_CALLING_PLANNER_MODE:mock}
     providers:
       - name: mock
         type: mock

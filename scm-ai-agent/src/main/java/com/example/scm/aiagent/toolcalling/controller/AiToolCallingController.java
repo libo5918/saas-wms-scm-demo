@@ -1,9 +1,12 @@
 package com.example.scm.aiagent.toolcalling.controller;
 
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
+import com.example.scm.aiagent.toolcalling.service.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolCallingService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
@@ -32,9 +35,12 @@ import java.util.List;
 public class AiToolCallingController {
 
     private final SpringAiToolCallingService springAiToolCallingService;
+    private final ToolCallingChatService toolCallingChatService;
 
-    public AiToolCallingController(SpringAiToolCallingService springAiToolCallingService) {
+    public AiToolCallingController(SpringAiToolCallingService springAiToolCallingService,
+                                   ToolCallingChatService toolCallingChatService) {
         this.springAiToolCallingService = springAiToolCallingService;
+        this.toolCallingChatService = toolCallingChatService;
     }
 
     /**
@@ -60,6 +66,20 @@ public class AiToolCallingController {
         log.info("AI tool calling execute request received, tenantId={}, userId={}, runId={}, toolName={}",
                 context.tenantId(), context.userId(), request.getRunId(), request.getToolName());
         return Result.success(springAiToolCallingService.execute(request, context));
+    }
+
+    /**
+     * 执行最小 Tool Calling Chat 闭环。
+     */
+    @PostMapping("/chat")
+    public Result<ToolCallingChatResponse> chat(@Valid @RequestBody ToolCallingChatRequest request,
+                                                @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("AI tool calling chat request received, tenantId={}, userId={}, runId={}, requestedTool={}",
+                context.tenantId(), context.userId(), request.getRunId(), request.getRequestedTool());
+        return Result.success(toolCallingChatService.chat(request, context));
     }
 
     private AgentRequestContext buildContext(Long userId, String username, String roles) {

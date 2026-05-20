@@ -90,3 +90,5 @@ ai:
       audit:
         mode: in-memory
         max-records: 500
+    tool-calling:
+      planner-mode: spring-ai

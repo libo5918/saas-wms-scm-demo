@@ -37,6 +37,9 @@ public class AiAgentProperties {
     /** Agent Tools 相关配置。 */
     private ToolsProperties tools = new ToolsProperties();
 
+    /** Tool Calling Chat 相关配置。 */
+    private ToolCallingProperties toolCalling = new ToolCallingProperties();
+
     /** 单个模型提供方配置。 */
     @Getter
     @Setter
@@ -327,5 +330,14 @@ public class AiAgentProperties {
 
         /** 内存模式下最多保留的审计记录数。 */
         private int maxRecords = 500;
+    }
+
+    /** Tool Calling Chat 配置。 */
+    @Getter
+    @Setter
+    public static class ToolCallingProperties {
+
+        /** planner 模式，当前支持 mock 和 spring-ai。 */
+        private String plannerMode = "mock";
     }
 }

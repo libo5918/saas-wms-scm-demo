@@ -2,19 +2,20 @@
 
 ## 1. 文档目的
 
-本文档说明当前项目 AI Agent Phase 4 到 Phase 4.3 的 Tools 能力建设情况，重点覆盖：
+本文档说明当前项目 AI Agent Phase 4 到 Phase 4.4 的 Tools 能力建设情况，重点覆盖：
 
 - Tool 抽象设计
 - mock / http adapter 切换方式
 - inventory / material / sales / purchase / warehouse ToolClient 设计
 - Tool 调用审计设计
 - Spring AI Tool Calling 适配层设计
+- Tool Calling Chat 最小闭环设计
 - 通过 gateway `18080` 的验证方式
 - 后续如何衔接 Spring AI Tool Calling、MCP、Workflow 和 Orchestrator
 
 ## 2. 当前阶段结论
 
-截至 Phase 4.3，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
+截至 Phase 4.4，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
 
 - 已有统一 Tool 协议：`ToolDefinition`、`ToolRequest`、`ToolResponse`、`ToolExecutor`
 - 已有统一 Tool 注册与调用入口：`ToolRegistry`、`ToolInvocationService`
@@ -24,6 +25,7 @@
   - `GET /api/v1/ai/tools/invocations`
   - `GET /api/v1/ai/tool-calling/schema`
   - `POST /api/v1/ai/tool-calling/execute`
+  - `POST /api/v1/ai/tool-calling/chat`
 - 已支持 `mock` / `http` 两种 adapter 模式切换
 - 已支持 5 个只读 Tool：
   - `inventory.getBalance`
@@ -33,6 +35,7 @@
   - `mdm.getWarehouse`
 - 已引入轻量级 Tool 调用审计能力，默认使用 in-memory 存储
 - 已引入 Spring AI Tool Calling 适配层，可把 ToolDefinition 转成模型可消费 schema
+- 已实现最小 Tool Calling Chat 闭环，可完成“问题 -> 选 Tool -> 执行 -> 回答”
 
 本阶段仍然只做只读 Tool，不实现写操作 Tool，不实现 MCP、Workflow、多 Agent 和长任务编排，也不做真实 LLM 自动多轮 Tool Calling 编排。
 
@@ -383,6 +386,88 @@ Phase 4.3 没有新起一套平行执行体系，而是继续复用现有的 `To
 
 这样后续接真实模型时，模型侧只负责“选哪个 tool、带什么 arguments”，服务端仍然走统一执行链路。
 
+## 15. Tool Calling Chat 最小闭环
+
+### 15.1 当前阶段目标
+
+Phase 4.4 的目标是在 Phase 4.3 的 Tool schema 和执行入口之上，再补一层最小聊天闭环：
+
+- 用户输入问题
+- planner 选择合适 Tool
+- 服务端执行 Tool
+- 拼装最终 answer
+
+当前阶段先确保链路通，不追求复杂自然语言参数抽取，也不追求多轮、多 Tool 自动编排。
+
+### 15.2 plannerMode 设计
+
+当前支持两种 plannerMode：
+
+| plannerMode | 说明 |
+| --- | --- |
+| `mock` | 默认模式，不依赖真实模型，按规则把问题映射到 Tool |
+| `spring-ai` | 预留真实模型规划入口；当前阶段先回退到 mock 规则规划，不强依赖外部模型 |
+
+配置项：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      planner-mode: mock
+```
+
+也可以通过环境变量配置：
+
+```text
+AI_AGENT_TOOL_CALLING_PLANNER_MODE=mock
+```
+
+### 15.3 mock-planner 路由规则
+
+当前 mock-planner 至少支持以下规则：
+
+- 包含 `库存 / balance / available`
+  - 路由到 `inventory.getBalance`
+- 包含 `物料 / material`
+  - 路由到 `mdm.getMaterial`
+- 包含 `销售订单 / sales order`
+  - 路由到 `sales.getOrder`
+- 包含 `采购订单 / purchase order`
+  - 路由到 `purchase.getOrder`
+- 包含 `仓库 / warehouse`
+  - 路由到 `mdm.getWarehouse`
+
+如果请求体显式传了 `requestedTool`，则优先级高于规则路由。
+
+### 15.4 参数来源策略
+
+当前阶段参数来源策略如下：
+
+- 优先使用请求体中的 `toolArguments`
+- 如果调用方没有传 `toolArguments`，则 mock-planner 会补一组最小默认参数
+- 参数校验仍然在 `SpringAiToolCallingService.execute` 中统一完成
+
+这样既能满足本地快速验证，也能保证进入真正 Tool 执行前仍然有统一校验。
+
+### 15.5 和现有服务的关系
+
+当前主链路分层如下：
+
+- `MockToolPlanner`
+  - 决定选择哪个 Tool
+  - 生成最小可执行参数
+- `ToolCallingChatService`
+  - 组织 planner、执行和 answer 拼装
+- `SpringAiToolCallingService`
+  - 负责参数校验和服务端统一 Tool 执行入口
+- `ToolInvocationService`
+  - 复用现有 Tool 执行主链路
+- `ToolInvocationAuditService`
+  - 继续记录 Tool 调用审计
+
+也就是说，Phase 4.4 没有绕开现有 Tools 主链路，而是在其上叠加一层 Chat orchestration。
+
 ## 14. Gateway 18080 验证方式
 
 ### 14.1 登录获取 Token
@@ -705,6 +790,80 @@ Content-Type: application/json
 }
 ```
 
+### 14.11 Tool Calling Chat 调试接口
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查一下销售订单",
+  "runId": "run-tool-chat-001",
+  "plannerMode": "mock",
+  "toolArguments": {
+    "orderNo": "SO-001"
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-001",
+    "plannerMode": "mock",
+    "selectedTool": "sales.getOrder",
+    "toolArguments": {
+      "orderNo": "SO-001"
+    },
+    "toolResponse": {
+      "success": true,
+      "toolName": "sales.getOrder"
+    },
+    "answer": "已根据你的问题调用工具 `sales.getOrder` 完成查询。"
+  }
+}
+```
+
+### 14.12 requestedTool 优先级验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查库存",
+  "runId": "run-tool-chat-002",
+  "plannerMode": "mock",
+  "requestedTool": "mdm.getMaterial",
+  "toolArguments": {
+    "materialCode": "MAT-001"
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "selectedTool": "mdm.getMaterial",
+    "toolArguments": {
+      "materialCode": "MAT-001"
+    }
+  }
+}
+```
+
 关键预期字段：
 
 ```json
@@ -743,6 +902,9 @@ mvn -pl scm-ai-agent -am test
 - `/api/v1/ai/tool-calling/schema` 查询接口可用
 - `/api/v1/ai/tool-calling/execute` 能走服务端执行入口
 - 参数缺失时会返回明确错误并记录审计
+- mock-planner 可按问题路由到正确 Tool
+- `requestedTool` 优先级高于规则路由
+- `/api/v1/ai/tool-calling/chat` 可返回结构化聊天结果
 
 ## 16. 当前阶段不做的事情
 
@@ -750,6 +912,7 @@ mvn -pl scm-ai-agent -am test
 
 - 写操作 Tool
 - 真实 LLM 自动多轮 Tool Calling 编排
+- 自动多 Tool 编排
 - MCP Server
 - Workflow
 - Multi-Agent
@@ -758,10 +921,10 @@ mvn -pl scm-ai-agent -am test
 
 ## 17. 后续建议
 
-Phase 4.4 可以继续往下面推进：
+Phase 4.5 可以继续往下面推进：
 
-- 把 Tool Calling 适配层接入真实 `RoutingChatModelClient`
-- 做一个“问句 -> 选 Tool -> 执行 -> 回答”的最小闭环
+- 把 `spring-ai-planner` 接到真实 `RoutingChatModelClient`
+- 支持模型根据 Tool schema 自动输出 toolName 和 arguments
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略

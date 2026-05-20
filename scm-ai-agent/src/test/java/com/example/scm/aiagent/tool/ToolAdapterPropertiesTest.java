@@ -21,7 +21,8 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tools.http.connect-timeout-ms", "2000")
                 .withProperty("ai.agent.tools.http.read-timeout-ms", "4000")
                 .withProperty("ai.agent.tools.audit.mode", "in-memory")
-                .withProperty("ai.agent.tools.audit.max-records", "200");
+                .withProperty("ai.agent.tools.audit.max-records", "200")
+                .withProperty("ai.agent.tool-calling.planner-mode", "spring-ai");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -36,5 +37,6 @@ class ToolAdapterPropertiesTest {
         assertEquals(4000, properties.getTools().getHttp().getReadTimeoutMs());
         assertEquals("in-memory", properties.getTools().getAudit().getMode());
         assertEquals(200, properties.getTools().getAudit().getMaxRecords());
+        assertEquals("spring-ai", properties.getToolCalling().getPlannerMode());
     }
 }

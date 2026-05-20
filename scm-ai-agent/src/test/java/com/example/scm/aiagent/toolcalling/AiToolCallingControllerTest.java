@@ -3,11 +3,13 @@ package com.example.scm.aiagent.toolcalling;
 import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.toolcalling.controller.AiToolCallingController;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolInputSchema;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolParameterSchema;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolCallingService;
+import com.example.scm.aiagent.toolcalling.service.ToolCallingChatService;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
 import com.example.scm.common.web.TenantHeaderInterceptor;
@@ -39,6 +41,9 @@ class AiToolCallingControllerTest {
 
     @MockitoBean
     private SpringAiToolCallingService springAiToolCallingService;
+
+    @MockitoBean
+    private ToolCallingChatService toolCallingChatService;
 
     @Test
     void shouldListToolCallingSchemas() throws Exception {
@@ -124,5 +129,45 @@ class AiToolCallingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("401"));
+    }
+
+    @Test
+    void shouldExecuteToolCallingChat() throws Exception {
+        when(toolCallingChatService.chat(any(), any())).thenReturn(ToolCallingChatResponse.builder()
+                .runId("run-tool-chat-1")
+                .plannerMode("mock")
+                .selectedTool("sales.getOrder")
+                .toolArguments(Map.of("orderNo", "SO-001"))
+                .toolResponse(ToolCallingExecuteResponse.builder()
+                        .success(true)
+                        .toolName("sales.getOrder")
+                        .arguments(Map.of("orderNo", "SO-001"))
+                        .latencyMs(8)
+                        .build())
+                .answer("已根据你的问题调用工具 `sales.getOrder` 完成查询。")
+                .latencyMs(12)
+                .build());
+
+        mockMvc.perform(post("/api/v1/ai/tool-calling/chat")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "帮我查一下销售订单",
+                                  "runId": "run-tool-chat-1",
+                                  "plannerMode": "mock",
+                                  "toolArguments": {
+                                    "orderNo": "SO-001"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.runId").value("run-tool-chat-1"))
+                .andExpect(jsonPath("$.data.plannerMode").value("mock"))
+                .andExpect(jsonPath("$.data.selectedTool").value("sales.getOrder"));
     }
 }
