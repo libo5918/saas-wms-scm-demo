@@ -42,4 +42,11 @@ public class ToolRegistry {
     public Optional<ToolExecutor> findExecutor(String toolName) {
         return Optional.ofNullable(executors.get(toolName));
     }
+
+    /**
+     * 按工具名称查找工具定义。
+     */
+    public Optional<ToolDefinition> findDefinition(String toolName) {
+        return findExecutor(toolName).map(ToolExecutor::definition);
+    }
 }

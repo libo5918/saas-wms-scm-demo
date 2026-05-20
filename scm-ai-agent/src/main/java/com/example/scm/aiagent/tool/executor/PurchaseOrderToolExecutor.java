@@ -4,6 +4,7 @@ import com.example.scm.aiagent.tool.client.PurchaseToolClient;
 import com.example.scm.aiagent.tool.model.ToolRequest;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,7 +17,9 @@ public class PurchaseOrderToolExecutor extends AbstractMockReadOnlyToolExecutor 
 
     public PurchaseOrderToolExecutor(PurchaseToolClient purchaseToolClient) {
         super("purchase.getOrder", "purchase", "查询采购订单概要和明细",
-                Map.of("orderId", "采购订单 ID", "orderNo", "采购订单号"));
+                Map.of("orderId", "采购订单 ID", "orderNo", "采购订单号"),
+                List.of(),
+                List.of(List.of("orderId", "orderNo")));
         this.purchaseToolClient = purchaseToolClient;
     }
 

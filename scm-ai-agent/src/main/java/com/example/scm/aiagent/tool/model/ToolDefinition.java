@@ -3,6 +3,7 @@ package com.example.scm.aiagent.tool.model;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,4 +29,14 @@ public class ToolDefinition {
 
     /** 参数说明，key 为参数名，value 为参数含义。 */
     private Map<String, String> parameters;
+
+    /** 必填参数列表。 */
+    private List<String> requiredParameters;
+
+    /**
+     * 至少命中一项的参数组。
+     *
+     * <p>例如销售订单查询可以配置为 `[["orderId", "orderNo"]]`，表示 `orderId` 或 `orderNo` 至少传一个。</p>
+     */
+    private List<List<String>> oneOfRequiredGroups;
 }

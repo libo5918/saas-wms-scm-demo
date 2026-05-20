@@ -4,6 +4,7 @@ import com.example.scm.aiagent.tool.client.MdmToolClient;
 import com.example.scm.aiagent.tool.model.ToolRequest;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,7 +19,9 @@ public class MaterialInfoToolExecutor extends AbstractMockReadOnlyToolExecutor {
 
     public MaterialInfoToolExecutor(MdmToolClient mdmToolClient) {
         super("mdm.getMaterial", "mdm", "查询物料主数据基础信息",
-                Map.of("materialId", "物料 ID", "materialCode", "物料编码"));
+                Map.of("materialId", "物料 ID", "materialCode", "物料编码"),
+                List.of(),
+                List.of(List.of("materialId", "materialCode")));
         this.mdmToolClient = mdmToolClient;
     }
 

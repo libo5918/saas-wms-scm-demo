@@ -2,18 +2,19 @@
 
 ## 1. 文档目的
 
-本文档说明当前项目 AI Agent Phase 4 到 Phase 4.2 的 Tools 能力建设情况，重点覆盖：
+本文档说明当前项目 AI Agent Phase 4 到 Phase 4.3 的 Tools 能力建设情况，重点覆盖：
 
 - Tool 抽象设计
 - mock / http adapter 切换方式
 - inventory / material / sales / purchase / warehouse ToolClient 设计
 - Tool 调用审计设计
+- Spring AI Tool Calling 适配层设计
 - 通过 gateway `18080` 的验证方式
 - 后续如何衔接 Spring AI Tool Calling、MCP、Workflow 和 Orchestrator
 
 ## 2. 当前阶段结论
 
-截至 Phase 4.2，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
+截至 Phase 4.3，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
 
 - 已有统一 Tool 协议：`ToolDefinition`、`ToolRequest`、`ToolResponse`、`ToolExecutor`
 - 已有统一 Tool 注册与调用入口：`ToolRegistry`、`ToolInvocationService`
@@ -21,6 +22,8 @@
   - `GET /api/v1/ai/tools`
   - `POST /api/v1/ai/tools/invoke`
   - `GET /api/v1/ai/tools/invocations`
+  - `GET /api/v1/ai/tool-calling/schema`
+  - `POST /api/v1/ai/tool-calling/execute`
 - 已支持 `mock` / `http` 两种 adapter 模式切换
 - 已支持 5 个只读 Tool：
   - `inventory.getBalance`
@@ -29,8 +32,9 @@
   - `purchase.getOrder`
   - `mdm.getWarehouse`
 - 已引入轻量级 Tool 调用审计能力，默认使用 in-memory 存储
+- 已引入 Spring AI Tool Calling 适配层，可把 ToolDefinition 转成模型可消费 schema
 
-本阶段仍然只做只读 Tool，不实现写操作 Tool，不实现 MCP、Workflow、多 Agent 和长任务编排。
+本阶段仍然只做只读 Tool，不实现写操作 Tool，不实现 MCP、Workflow、多 Agent 和长任务编排，也不做真实 LLM 自动多轮 Tool Calling 编排。
 
 ## 3. 当前边界
 
@@ -319,6 +323,66 @@ ai:
 
 这样就可以在不改 Controller 和 Service 的前提下切换存储实现。
 
+## 14. Spring AI Tool Calling 适配层设计
+
+### 14.1 当前阶段目标
+
+Phase 4.3 的目标不是直接让真实大模型自动完成多轮 Tool Calling，而是先把下面两层打通：
+
+- 把当前项目里的 `ToolDefinition` 转成模型可识别的 Tool schema
+- 提供统一的服务端执行入口，模拟“模型返回 toolName + arguments 后”的实际执行链路
+
+这样后续接入真实 Spring AI `ChatClient` 或模型 function calling 时，不需要重写工具执行主链路。
+
+### 14.2 当前新增组件
+
+当前新增了以下适配层组件：
+
+- `ToolSchemaConverter`
+  - 把 `ToolDefinition` 转成 `SpringAiToolDescriptor`
+- `SpringAiToolDescriptor`
+  - 表示模型侧可见的工具描述
+- `SpringAiToolInputSchema`
+  - 表示工具输入 schema
+- `SpringAiToolParameterSchema`
+  - 表示单个参数 schema
+- `SpringAiToolCallingService`
+  - 提供 schema 查询和服务端执行入口
+- `AiToolCallingController`
+  - 暴露 `/api/v1/ai/tool-calling/**` 调试接口
+
+### 14.3 Tool schema 结构
+
+当前每个工具会被转换为一份简化的 schema，至少包含：
+
+- `toolName`
+- `description`
+- `readOnly`
+- `inputSchema.type`
+- `inputSchema.properties`
+- `inputSchema.required`
+- `inputSchema.oneOfRequiredGroups`
+
+这里的 `oneOfRequiredGroups` 用于表达“多个参数至少传一个”的场景，例如：
+
+```text
+sales.getOrder: orderId / orderNo 至少传一个
+purchase.getOrder: orderId / orderNo 至少传一个
+mdm.getMaterial: materialId / materialCode 至少传一个
+mdm.getWarehouse: warehouseId / warehouseCode 至少传一个
+```
+
+### 14.4 和 ToolInvocationService 的关系
+
+Phase 4.3 没有新起一套平行执行体系，而是继续复用现有的 `ToolInvocationService`：
+
+- schema 查询走 `ToolRegistry + ToolSchemaConverter`
+- execute 调试接口做参数校验
+- 校验通过后仍然调用 `ToolInvocationService`
+- Tool 审计继续复用已有 `ToolInvocationAuditService`
+
+这样后续接真实模型时，模型侧只负责“选哪个 tool、带什么 arguments”，服务端仍然走统一执行链路。
+
 ## 14. Gateway 18080 验证方式
 
 ### 14.1 登录获取 Token
@@ -546,6 +610,118 @@ Content-Type: application/json
 
 同时这次失败调用也会写入审计记录。
 
+### 14.8 查询 Tool Calling schema
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/schema
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "code": "200",
+  "data": {
+    "tenantId": 1,
+    "toolCount": 5,
+    "tools": [
+      {
+        "toolName": "sales.getOrder",
+        "description": "查询销售订单概要和明细",
+        "readOnly": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "orderId": {
+              "type": "integer",
+              "description": "销售订单 ID",
+              "required": false
+            }
+          },
+          "oneOfRequiredGroups": [
+            ["orderId", "orderNo"]
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+### 14.9 执行 Tool Calling 调试接口
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/execute
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "toolName": "sales.getOrder",
+  "runId": "run-tool-calling-001",
+  "arguments": {
+    "orderNo": "SO-001"
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "toolName": "sales.getOrder",
+    "arguments": {
+      "orderNo": "SO-001"
+    },
+    "toolResponse": {
+      "success": true,
+      "toolName": "sales.getOrder"
+    }
+  }
+}
+```
+
+### 14.10 参数缺失时的行为
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/execute
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "toolName": "inventory.getBalance",
+  "runId": "run-tool-calling-bad-001",
+  "arguments": {
+    "warehouseId": 1
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": false,
+    "toolName": "inventory.getBalance",
+    "toolResponse": {
+      "success": false,
+      "errorCode": "400",
+      "errorMessage": "Missing required parameter: materialId"
+    }
+  }
+}
+```
+
 ## 15. 测试方式
 
 执行：
@@ -563,13 +739,17 @@ mvn -pl scm-ai-agent -am test
 - ToolInvocationService 会记录成功和失败审计
 - `/api/v1/ai/tools/invocations` 查询接口可用
 - 工具不存在时也会记录失败审计
+- ToolDefinition 能转换为 Tool schema
+- `/api/v1/ai/tool-calling/schema` 查询接口可用
+- `/api/v1/ai/tool-calling/execute` 能走服务端执行入口
+- 参数缺失时会返回明确错误并记录审计
 
 ## 16. 当前阶段不做的事情
 
 本阶段不实现：
 
 - 写操作 Tool
-- Spring AI 自动 Tool Calling
+- 真实 LLM 自动多轮 Tool Calling 编排
 - MCP Server
 - Workflow
 - Multi-Agent
@@ -578,10 +758,10 @@ mvn -pl scm-ai-agent -am test
 
 ## 17. 后续建议
 
-Phase 4.3 可以继续往下面推进：
+Phase 4.4 可以继续往下面推进：
 
-- 把 ToolDefinition 转换为 Spring AI Tool Calling schema
+- 把 Tool Calling 适配层接入真实 `RoutingChatModelClient`
+- 做一个“问句 -> 选 Tool -> 执行 -> 回答”的最小闭环
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略
-- 为 Workflow / Orchestrator 准备结构化 Tool 输出规范
