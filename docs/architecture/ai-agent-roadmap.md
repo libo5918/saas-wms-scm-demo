@@ -303,6 +303,21 @@ docs/architecture/ai-agent-phase3-provider-smoke-test.md
 - 工具调用记录包含 `runId` 和 `tenantId`
 - 写操作工具执行前必须有确认机制
 
+当前落地状态：
+
+- Phase 4 第一版先实现只读 Tool 基础能力。
+- 已在 `scm-ai-agent` 内建立 `ToolDefinition`、`ToolRequest`、`ToolResponse`、`ToolExecutor`、`ToolRegistry` 和 `ToolInvocationService` 抽象。
+- 已提供 `GET /api/v1/ai/tools` 和 `POST /api/v1/ai/tools/invoke` 两个网关验证接口。
+- 当前工具默认使用 mock/local adapter，不依赖真实 SCM 服务、Nacos 或外部网络。
+- 当前已实现工具包括：
+  - `inventory.getBalance`
+  - `mdm.getMaterial`
+  - `sales.getOrder`
+  - `purchase.getOrder`
+  - `mdm.getWarehouse`
+- 后续再把 mock/local adapter 替换或扩展为 REST、OpenFeign、WebClient 或 gateway route 调用真实业务服务。
+- Phase 4 说明文档见 `docs/operations/ai-agent-tools.md`。
+
 ### Phase 5：Orchestrator 与 Multi-Agent
 
 目标：

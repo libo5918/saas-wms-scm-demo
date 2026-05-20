@@ -1,0 +1,80 @@
+package com.example.scm.aiagent.tool;
+
+import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
+import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.tool.executor.InventoryBalanceToolExecutor;
+import com.example.scm.aiagent.tool.executor.MaterialInfoToolExecutor;
+import com.example.scm.aiagent.tool.executor.PurchaseOrderToolExecutor;
+import com.example.scm.aiagent.tool.executor.SalesOrderToolExecutor;
+import com.example.scm.aiagent.tool.executor.WarehouseInfoToolExecutor;
+import com.example.scm.aiagent.tool.service.ToolInvocationService;
+import com.example.scm.aiagent.tool.service.ToolRegistry;
+import com.example.scm.aiagent.tool.spi.ToolExecutor;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class ToolInvocationServiceTest {
+
+    @Test
+    void shouldRegisterAndInvokeMockToolWithTenantContext() {
+        ToolInvocationService service = createService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setToolName("inventory.getBalance");
+        request.setRunId("run-tools-1");
+        request.setParameters(Map.of("materialId", 1001L, "warehouseId", 1L));
+
+        ToolResponse response = service.invoke(request, context);
+
+        assertTrue(response.isSuccess());
+        assertEquals("inventory.getBalance", response.getToolName());
+        assertEquals("run-tools-1", response.getRunId());
+        assertTrue(response.getData() instanceof Map);
+        assertEquals(1L, ((Map<?, ?>) response.getData()).get("tenantId"));
+    }
+
+    @Test
+    void shouldReturnFailureWhenToolNotFound() {
+        ToolInvocationService service = createService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setToolName("unknown.tool");
+
+        ToolResponse response = service.invoke(request, context);
+
+        assertFalse(response.isSuccess());
+        assertEquals("unknown.tool", response.getToolName());
+        assertEquals("404", response.getErrorCode());
+    }
+
+    @Test
+    void shouldListToolDefinitions() {
+        ToolInvocationService service = createService();
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+
+        var response = service.listTools(context);
+
+        assertEquals(5, response.getToolCount());
+        assertTrue(response.getTools().stream().allMatch(tool -> tool.isReadOnly()));
+        assertTrue(response.getTools().stream().anyMatch(tool -> "mdm.getMaterial".equals(tool.getName())));
+    }
+
+    private ToolInvocationService createService() {
+        List<ToolExecutor> executors = List.of(
+                new InventoryBalanceToolExecutor(),
+                new MaterialInfoToolExecutor(),
+                new SalesOrderToolExecutor(),
+                new PurchaseOrderToolExecutor(),
+                new WarehouseInfoToolExecutor()
+        );
+        return new ToolInvocationService(new ToolRegistry(executors));
+    }
+}
