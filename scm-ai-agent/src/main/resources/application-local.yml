@@ -78,10 +78,15 @@ ai:
         max-context-chunks: 5
         max-context-chunk-length: 1200
     tools:
-      # 本地默认仍使用 mock；需要联调真实服务时改成 http。
+      # local profile 当前默认联调真实服务；如果只想本地 mock，可改回 mock。
       adapter-mode: http
       http:
         inventory-base-url: http://localhost:18084
         mdm-base-url: http://localhost:18082
+        sales-base-url: http://localhost:18085
+        purchase-base-url: http://localhost:18083
         connect-timeout-ms: 3000
         read-timeout-ms: 5000
+      audit:
+        mode: in-memory
+        max-records: 500

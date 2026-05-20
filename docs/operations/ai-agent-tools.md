@@ -1,34 +1,68 @@
-# AI Agent Phase 4 Tools 基础能力说明
+﻿# AI Agent Tools 能力说明
 
-## 1. 阶段目标
+## 1. 文档目的
 
-Phase 4 的目标是把 SCM/WMS 现有业务能力逐步封装为 Agent 可以调用的 Tool，为后续 Spring AI Tool Calling、MCP、Workflow、Multi-Agent 和 Orchestrator 做准备。
+本文档说明当前项目 AI Agent Phase 4 到 Phase 4.2 的 Tools 能力建设情况，重点覆盖：
 
-本阶段只实现 Tools 基础底座，不实现 MCP、Workflow、多 Agent 和长任务编排。
+- Tool 抽象设计
+- mock / http adapter 切换方式
+- inventory / material / sales / purchase / warehouse ToolClient 设计
+- Tool 调用审计设计
+- 通过 gateway `18080` 的验证方式
+- 后续如何衔接 Spring AI Tool Calling、MCP、Workflow 和 Orchestrator
 
-## 2. 当前边界
+## 2. 当前阶段结论
 
-当前阶段优先做只读 Tool，避免 Agent 误操作真实业务数据。
+截至 Phase 4.2，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
 
-默认实现使用 mock/local adapter：
+- 已有统一 Tool 协议：`ToolDefinition`、`ToolRequest`、`ToolResponse`、`ToolExecutor`
+- 已有统一 Tool 注册与调用入口：`ToolRegistry`、`ToolInvocationService`
+- 已有统一 API：
+  - `GET /api/v1/ai/tools`
+  - `POST /api/v1/ai/tools/invoke`
+  - `GET /api/v1/ai/tools/invocations`
+- 已支持 `mock` / `http` 两种 adapter 模式切换
+- 已支持 5 个只读 Tool：
+  - `inventory.getBalance`
+  - `mdm.getMaterial`
+  - `sales.getOrder`
+  - `purchase.getOrder`
+  - `mdm.getWarehouse`
+- 已引入轻量级 Tool 调用审计能力，默认使用 in-memory 存储
 
-- 不依赖真实业务服务
-- 不依赖 Nacos
-- 不依赖 MySQL、Milvus、Embedding API 或外部网络
-- 单元测试可以稳定运行
+本阶段仍然只做只读 Tool，不实现写操作 Tool，不实现 MCP、Workflow、多 Agent 和长任务编排。
 
-后续接真实业务服务时，再按工具逐个替换 adapter。
+## 3. 当前边界
 
-## 3. Tool 抽象设计
+当前默认行为仍然是“本地可启动、测试可通过、无外部依赖也能跑”：
 
-当前 `scm-ai-agent` 中的 Tool 基础抽象包括：
+- 默认使用 `mock` adapter
+- 单元测试不依赖真实业务服务
+- 单元测试不依赖 Nacos
+- 单元测试不依赖 MySQL、Milvus、Embedding API 或外部网络
+- Tool 审计默认使用 in-memory，不要求数据库
 
-- `ToolDefinition`：描述工具名称、领域、说明、是否只读和参数定义。
-- `ToolRequest`：工具执行请求，由系统统一补齐 `tenantId`、`userId`、`runId` 和参数。
-- `ToolResponse`：工具执行响应，统一返回成功标识、数据、错误码、错误信息和耗时。
-- `ToolExecutor`：每个具体工具的执行器接口。
-- `ToolRegistry`：启动时收集所有 `ToolExecutor`，按 `toolName` 建立索引。
-- `ToolInvocationService`：统一处理工具查找、执行、异常包装和调用日志。
+这样做的原因是先把 Tool 协议、上下文透传、异常包装、审计链路打稳，再逐步替换为真实业务调用。
+
+## 4. Tool 抽象设计
+
+当前 `scm-ai-agent` 中的 Tool 基础抽象如下：
+
+- `ToolDefinition`
+  - 描述工具名称、领域、说明、只读标记、参数定义
+- `ToolRequest`
+  - 描述一次工具调用请求
+  - 系统统一补齐 `tenantId`、`userId`、`runId`
+- `ToolResponse`
+  - 描述一次工具调用结果
+  - 统一返回 `success`、`toolName`、`data`、`errorCode`、`errorMessage`、`latencyMs`
+- `ToolExecutor`
+  - 具体工具执行器接口
+- `ToolRegistry`
+  - 启动时收集所有 `ToolExecutor`
+  - 按 `toolName` 索引工具
+- `ToolInvocationService`
+  - 统一处理工具查找、执行、异常包装、日志和审计
 
 统一响应字段：
 
@@ -42,98 +76,252 @@ errorMessage
 latencyMs
 ```
 
-## 4. 当前工具清单
+## 5. 当前 Tool 清单
 
-当前已提供 5 个只读 mock 工具：
+| toolName | 领域 | 说明 | 当前支持的 adapter |
+| --- | --- | --- | --- |
+| `inventory.getBalance` | inventory | 查询库存余额 | mock / http |
+| `mdm.getMaterial` | mdm | 查询物料信息 | mock / http |
+| `sales.getOrder` | sales | 查询销售订单 | mock / http |
+| `purchase.getOrder` | purchase | 查询采购订单 | mock / http |
+| `mdm.getWarehouse` | mdm | 查询仓库信息 | mock / http |
 
-| toolName | 领域 | 说明 |
-| --- | --- | --- |
-| `inventory.getBalance` | inventory | 查询库存余额 |
-| `mdm.getMaterial` | mdm | 查询物料信息 |
-| `sales.getOrder` | sales | 查询销售订单 |
-| `purchase.getOrder` | purchase | 查询采购订单 |
-| `mdm.getWarehouse` | mdm | 查询仓库信息 |
+## 6. 请求上下文与身份透传
 
-## 5. 调用流程
+客户端不能在请求体里随意覆盖租户和用户身份。
 
-Tool 调用流程如下：
+Tools API 统一复用 gateway 鉴权后的透传上下文：
+
+- `X-Tenant-Id`
+- `X-User-Id`
+- `X-User-Name`
+- `X-User-Roles`
+- `X-Agent-Run-Id` 或 `runId`
+
+其中：
+
+- `tenantId` 来自网关透传后的租户上下文
+- `userId` / `username` / `roles` 来自网关透传后的用户头
+- `runId` 由调用方显式传入，未传时由 `ToolInvocationService` 自动生成
+
+## 7. Tool 调用流程
 
 ```text
 Client
   -> Gateway 18080
   -> JWT 鉴权
   -> 网关透传租户和用户上下文
-  -> scm-ai-agent AiToolController
+  -> scm-ai-agent /api/v1/ai/tools/**
   -> ToolInvocationService
   -> ToolRegistry 查找 ToolExecutor
-  -> mock/local ToolExecutor
+  -> ToolExecutor 调用对应 ToolClient
+  -> mock 或 http adapter
   -> ToolResponse
+  -> ToolInvocationAuditService 记录审计
 ```
 
-客户端请求体中不允许自行覆盖 `tenantId` 和 `userId`。
+## 8. 为什么先做只读 Tool
 
-`tenantId`、`userId`、用户名和角色必须来自网关认证后的透传上下文。
+真实企业场景里，一旦 Agent Tool 能直接改业务数据，风险会立刻上升，包括：
 
-## 6. 为什么先做只读 Tool
+- 误操作库存或订单
+- 越权修改业务数据
+- 缺少审批和确认流程
+- 缺少幂等和补偿机制
 
-真实企业场景中，Agent Tool 一旦接入业务系统，就具备查询或修改业务数据的能力。
+所以当前阶段先只做只读 Tool，目的是：
 
-本阶段先做只读 Tool，原因是：
+- 先把协议和链路跑稳
+- 先把身份透传和审计打通
+- 先把模型到 Tool 的调用契约固定下来
+- 为后续 Spring AI Tool Calling / MCP / Workflow 做低风险准备
 
-- 降低误操作风险
-- 先稳定工具协议和调用链路
-- 便于后续接入 Spring AI Tool Calling
-- 便于后续 MCP 暴露工具
-- 写操作工具后续必须补充确认机制、权限校验、审计和幂等设计
+## 9. Adapter 模式设计
 
-## 7. 后续如何接真实 SCM 服务
+配置项：
 
-后续每个 mock/local adapter 可以按以下方式升级：
+```yaml
+ai:
+  agent:
+    tools:
+      adapter-mode: mock
+```
 
-- REST client：直接调用已有业务服务 HTTP 接口。
-- OpenFeign：基于 Spring Cloud 服务发现调用业务服务。
-- WebClient：适合响应式或网关转发场景。
-- Gateway route：统一走 `scm-gateway`，复用网关鉴权、限流和审计策略。
+支持的取值：
 
-真实调用时必须继续保留：
+| adapter-mode | 说明 |
+| --- | --- |
+| `mock` | 默认模式，使用本地 mock 数据，不依赖真实业务服务 |
+| `http` | 通过 HTTP 调用真实 SCM/WMS 服务 |
 
-- 租户隔离
-- 用户上下文
-- 权限校验
-- 调用日志
-- 超时控制
-- 异常包装
-- 敏感信息脱敏
+后续预留扩展方向：
 
-## 8. 后续如何接 Spring AI Tool Calling / MCP / Workflow
+- `feign`
+- `webclient`
+- `gateway`
 
-当前 Tool 抽象是后续能力的公共底座：
+## 10. ToolClient 设计
 
-- Spring AI Tool Calling：可以把 `ToolDefinition` 转换为模型可识别的 tool schema。
-- MCP：可以把 `ToolExecutor` 暴露为 MCP tool，供 Dify、Cursor、Claude Code 等外部 Agent 客户端调用。
-- Workflow：可以在工作流节点中调用 `ToolInvocationService`。
-- Multi-Agent：不同领域 Agent 可以绑定不同 Tool 集合。
-- Orchestrator：根据任务规划结果选择合适 Tool 执行。
+### 10.1 已有 Client 抽象
 
-## 9. IDEA 本地验证前提
+当前已引入以下业务服务客户端抽象：
 
-本阶段默认 mock/local adapter，不需要额外配置真实 SCM 服务。
+- `InventoryToolClient`
+- `MdmToolClient`
+- `SalesToolClient`
+- `PurchaseToolClient`
+- `WarehouseToolClient`
 
-建议仍通过 gateway 访问：
+每个抽象都至少有两套实现：
+
+- `Mock*ToolClient`
+- `Http*ToolClient`
+
+### 10.2 设计原则
+
+ToolExecutor 不直接写死 mock 数据，而是统一委托给 ToolClient。
+
+这样做的好处是：
+
+- API 协议层不需要关心底层调用方式
+- mock 切 http 时不用改 Controller 和 ToolRegistry
+- 后续切到 Feign / Gateway 时也只需要替换 Client 实现
+- 更适合后续接 Tool Calling / MCP
+
+## 11. HTTP Adapter 真实接口映射
+
+当前是根据已有业务服务 Controller 做最小适配：
+
+| Tool | 服务 | 真实接口 |
+| --- | --- | --- |
+| `inventory.getBalance` | `scm-inventory` | `GET /api/v1/inventory/balances?materialId=&warehouseId=&locationId=` |
+| `mdm.getMaterial` | `scm-mdm` | `GET /api/v1/materials/{materialId}` |
+| `sales.getOrder` | `scm-sales` | `GET /api/v1/sales-orders/{id}` 或 `GET /api/v1/sales-orders/by-order-no?orderNo=` |
+| `purchase.getOrder` | `scm-purchase` | `GET /api/v1/purchase-orders/{id}` 或 `GET /api/v1/purchase-orders/by-order-no?orderNo=` |
+| `mdm.getWarehouse` | `scm-mdm` | `GET /api/v1/warehouses/{id}` |
+
+说明：
+
+- `mdm.getWarehouse` 当前按 `warehouseId` 查询
+- 如果后续主数据服务新增按仓库编码查询接口，再扩展 `warehouseCode` 分支
+
+## 12. HTTP Adapter 配置
+
+`application.yml` 默认配置：
+
+```yaml
+ai:
+  agent:
+    tools:
+      adapter-mode: ${AI_AGENT_TOOLS_ADAPTER_MODE:mock}
+      http:
+        inventory-base-url: ${INVENTORY_SERVICE_BASE_URL:http://localhost:18084}
+        mdm-base-url: ${MDM_SERVICE_BASE_URL:http://localhost:18082}
+        sales-base-url: ${SALES_SERVICE_BASE_URL:http://localhost:18085}
+        purchase-base-url: ${PURCHASE_SERVICE_BASE_URL:http://localhost:18083}
+        connect-timeout-ms: ${AI_AGENT_TOOLS_HTTP_CONNECT_TIMEOUT_MS:3000}
+        read-timeout-ms: ${AI_AGENT_TOOLS_HTTP_READ_TIMEOUT_MS:5000}
+```
+
+### 12.1 IDEA / application-local.yml 配置示例
+
+如果你本地要联调真实服务，可以在 [application-local.yml](E:/ideaProject/saas-wms-scm/scm-ai-agent/src/main/resources/application-local.yml) 中配置：
+
+```yaml
+ai:
+  agent:
+    tools:
+      adapter-mode: http
+      http:
+        inventory-base-url: http://localhost:18084
+        mdm-base-url: http://localhost:18082
+        sales-base-url: http://localhost:18085
+        purchase-base-url: http://localhost:18083
+```
+
+也可以用环境变量：
 
 ```text
-http://localhost:18080
+AI_AGENT_TOOLS_ADAPTER_MODE=http
+INVENTORY_SERVICE_BASE_URL=http://localhost:18084
+MDM_SERVICE_BASE_URL=http://localhost:18082
+SALES_SERVICE_BASE_URL=http://localhost:18085
+PURCHASE_SERVICE_BASE_URL=http://localhost:18083
 ```
 
-需要启动：
+## 13. Tool 调用审计设计
 
-- `scm-auth`
-- `scm-gateway`
-- `scm-ai-agent`
+### 13.1 审计目标
 
-## 10. Gateway 接口示例
+Phase 4.2 新增 Tool 调用审计，是为了给后续能力提供观测基础：
 
-### 10.1 登录获取 Token
+- Tool Calling 排障
+- Workflow 节点追踪
+- MCP 调用记录
+- Agent run 回放
+- 运维审计与问题定位
+
+### 13.2 当前审计字段
+
+当前最小审计记录 `ToolInvocationAuditRecord` 包含：
+
+- `tenantId`
+- `userId`
+- `runId`
+- `toolName`
+- `adapterMode`
+- `success`
+- `errorCode`
+- `latencyMs`
+- `createdAt`
+
+### 13.3 当前审计实现
+
+当前默认实现为：
+
+- `ToolInvocationAuditStore`
+- `InMemoryToolInvocationAuditStore`
+- `ToolInvocationAuditService`
+
+配置项：
+
+```yaml
+ai:
+  agent:
+    tools:
+      audit:
+        mode: in-memory
+        max-records: 500
+```
+
+当前边界：
+
+- 服务重启后审计记录会丢失
+- 不保存大段业务响应
+- 不保存敏感头、密码、prompt、模型响应
+
+### 13.4 为什么当前先用 in-memory
+
+当前先用 in-memory 的原因：
+
+- 保持本地启动简单
+- 不给 Phase 4.2 引入额外数据库依赖
+- 先验证审计字段和查询接口是否合理
+- 后续切 MySQL 时可以复用同一套服务接口
+
+### 13.5 后续如何升级为 MySQL 审计
+
+后续如果要持久化 Tool 审计，可以新增：
+
+- `MysqlToolInvocationAuditStore`
+- `tool_invocation_audit` 表
+- 条件装配 `ai.agent.tools.audit.mode=mysql`
+
+这样就可以在不改 Controller 和 Service 的前提下切换存储实现。
+
+## 14. Gateway 18080 验证方式
+
+### 14.1 登录获取 Token
 
 ```http
 POST http://localhost:18080/api/v1/auth/login
@@ -148,20 +336,20 @@ X-Tenant-Id: 1
 }
 ```
 
-从返回结果中复制：
+从返回结果中取：
 
 ```text
 data.accessToken
 ```
 
-### 10.2 查询 Tool 列表
+### 14.2 查询 Tool 列表
 
 ```http
 GET http://localhost:18080/api/v1/ai/tools
 Authorization: Bearer <accessToken>
 ```
 
-关键预期返回字段：
+关键预期字段：
 
 ```json
 {
@@ -172,8 +360,8 @@ Authorization: Bearer <accessToken>
     "toolCount": 5,
     "tools": [
       {
-        "name": "inventory.getBalance",
-        "domain": "inventory",
+        "name": "sales.getOrder",
+        "domain": "sales",
         "readOnly": true
       }
     ]
@@ -181,7 +369,7 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-### 10.3 调用库存余额 Tool
+### 14.3 调用销售订单 Tool
 
 ```http
 POST http://localhost:18080/api/v1/ai/tools/invoke
@@ -191,16 +379,15 @@ Content-Type: application/json
 
 ```json
 {
-  "toolName": "inventory.getBalance",
-  "runId": "run-tools-demo-001",
+  "toolName": "sales.getOrder",
+  "runId": "run-tools-sales-001",
   "parameters": {
-    "materialId": 1001,
-    "warehouseId": 1
+    "orderId": 1
   }
 }
 ```
 
-关键预期返回字段：
+mock 模式关键预期字段：
 
 ```json
 {
@@ -208,21 +395,31 @@ Content-Type: application/json
   "code": "200",
   "data": {
     "success": true,
-    "toolName": "inventory.getBalance",
-    "runId": "run-tools-demo-001",
+    "toolName": "sales.getOrder",
+    "runId": "run-tools-sales-001",
     "data": {
-      "tenantId": 1,
-      "materialId": 1001,
-      "warehouseId": 1,
-      "availableQty": 128,
-      "lockedQty": 12,
       "adapterMode": "mock"
     }
   }
 }
 ```
 
-### 10.4 调用物料信息 Tool
+http 模式关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "toolName": "sales.getOrder",
+    "data": {
+      "adapterMode": "http"
+    }
+  }
+}
+```
+
+### 14.4 调用采购订单 Tool
 
 ```http
 POST http://localhost:18080/api/v1/ai/tools/invoke
@@ -232,16 +429,92 @@ Content-Type: application/json
 
 ```json
 {
-  "toolName": "mdm.getMaterial",
-  "runId": "run-tools-demo-002",
+  "toolName": "purchase.getOrder",
+  "runId": "run-tools-purchase-001",
   "parameters": {
-    "materialId": 1001,
-    "materialCode": "MAT-1001"
+    "orderNo": "PO-20260520-001"
   }
 }
 ```
 
-### 10.5 工具不存在时的返回
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "toolName": "purchase.getOrder",
+    "data": {
+      "adapterMode": "mock"
+    }
+  }
+}
+```
+
+### 14.5 调用仓库信息 Tool
+
+```http
+POST http://localhost:18080/api/v1/ai/tools/invoke
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "toolName": "mdm.getWarehouse",
+  "runId": "run-tools-warehouse-001",
+  "parameters": {
+    "warehouseId": 1
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "toolName": "mdm.getWarehouse",
+    "data": {
+      "adapterMode": "mock"
+    }
+  }
+}
+```
+
+### 14.6 查询 Tool 调用审计
+
+```http
+GET http://localhost:18080/api/v1/ai/tools/invocations?toolName=sales.getOrder&runId=run-tools-sales-001&limit=10
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "code": "200",
+  "data": {
+    "tenantId": 1,
+    "count": 1,
+    "records": [
+      {
+        "toolName": "sales.getOrder",
+        "runId": "run-tools-sales-001",
+        "adapterMode": "mock",
+        "success": true,
+        "latencyMs": 12
+      }
+    ]
+  }
+}
+```
+
+### 14.7 工具不存在时的行为
 
 ```http
 POST http://localhost:18080/api/v1/ai/tools/invoke
@@ -252,17 +525,16 @@ Content-Type: application/json
 ```json
 {
   "toolName": "unknown.tool",
-  "runId": "run-tools-demo-404",
+  "runId": "run-tools-404",
   "parameters": {}
 }
 ```
 
-关键预期返回字段：
+关键预期字段：
 
 ```json
 {
   "success": true,
-  "code": "200",
   "data": {
     "success": false,
     "toolName": "unknown.tool",
@@ -272,9 +544,9 @@ Content-Type: application/json
 }
 ```
 
-这里外层 `success=true` 表示 HTTP 请求被 AI Agent 服务正常处理；内层 `data.success=false` 表示工具业务调用失败。
+同时这次失败调用也会写入审计记录。
 
-## 11. 当前阶段测试方式
+## 15. 测试方式
 
 执行：
 
@@ -282,204 +554,34 @@ Content-Type: application/json
 mvn -pl scm-ai-agent -am test
 ```
 
-测试覆盖：
+当前测试重点覆盖：
 
-- `ToolRegistry` 注册和查询工具
-- mock 工具正常执行
-- 不存在的工具返回明确错误
-- Tool API 可以携带租户和用户上下文
-- 缺少用户上下文时返回明确错误
+- ToolRegistry 注册和查询
+- sales / purchase / warehouse Tool 注册成功
+- mock ToolClient 可正常执行
+- http adapter 配置可绑定
+- ToolInvocationService 会记录成功和失败审计
+- `/api/v1/ai/tools/invocations` 查询接口可用
+- 工具不存在时也会记录失败审计
 
-## 12. 当前阶段不做的事情
+## 16. 当前阶段不做的事情
 
 本阶段不实现：
 
-- 真实 SCM 服务调用
+- 写操作 Tool
 - Spring AI 自动 Tool Calling
 - MCP Server
 - Workflow
 - Multi-Agent
 - 长任务编排
-- 写操作 Tool
+- Tool 审计 MySQL 持久化
 
-## 13. Phase 4.1：真实 SCM/WMS 服务调用骨架
+## 17. 后续建议
 
-Phase 4.1 在 Phase 4 的 Tool 协议基础上，新增 Tool Adapter 切换能力。
+Phase 4.3 可以继续往下面推进：
 
-当前目标不是一次性把所有 Tool 都接到真实业务服务，而是先把调用骨架打稳，优先完成：
-
-- `inventory.getBalance`
-- `mdm.getMaterial`
-
-### 13.1 Adapter 模式
-
-配置项：
-
-```yaml
-ai:
-  agent:
-    tools:
-      adapter-mode: mock
-```
-
-可选值：
-
-| adapter-mode | 说明 |
-| --- | --- |
-| `mock` | 默认模式，使用本地 mock/local adapter，不依赖真实业务服务 |
-| `http` | 通过 HTTP 调用真实 SCM/WMS 服务 |
-
-后续可继续扩展：
-
-- `feign`
-- `webclient`
-- `gateway`
-
-### 13.2 Client 抽象
-
-Phase 4.1 新增业务服务 Client 抽象：
-
-- `InventoryToolClient`
-- `MdmToolClient`
-- `MockInventoryToolClient`
-- `MockMdmToolClient`
-- `HttpInventoryToolClient`
-- `HttpMdmToolClient`
-
-ToolExecutor 不再直接写死 mock 数据，而是委托给对应 ToolClient。
-
-这样后续切换真实服务时，不需要改 Tool API 和 ToolRegistry。
-
-### 13.3 HTTP Adapter 真实接口路径
-
-当前根据现有业务 Controller 适配：
-
-| Tool | 真实服务 | HTTP 路径 |
-| --- | --- | --- |
-| `inventory.getBalance` | `scm-inventory` | `GET /api/v1/inventory/balances?materialId=&warehouseId=&locationId=` |
-| `mdm.getMaterial` | `scm-mdm` | `GET /api/v1/materials/{materialId}` |
-
-当前项目默认端口：
-
-| 服务 | 默认端口 |
-| --- | --- |
-| `scm-mdm` | `18082` |
-| `scm-inventory` | `18084` |
-
-### 13.4 HTTP Adapter 配置
-
-`application.yml` 默认配置：
-
-```yaml
-ai:
-  agent:
-    tools:
-      adapter-mode: ${AI_AGENT_TOOLS_ADAPTER_MODE:mock}
-      http:
-        inventory-base-url: ${INVENTORY_SERVICE_BASE_URL:http://localhost:18084}
-        mdm-base-url: ${MDM_SERVICE_BASE_URL:http://localhost:18082}
-        connect-timeout-ms: ${AI_AGENT_TOOLS_HTTP_CONNECT_TIMEOUT_MS:3000}
-        read-timeout-ms: ${AI_AGENT_TOOLS_HTTP_READ_TIMEOUT_MS:5000}
-```
-
-IDEA 本地联调真实业务服务时，可以在 `application-local.yml` 中临时改为：
-
-```yaml
-ai:
-  agent:
-    tools:
-      adapter-mode: http
-      http:
-        inventory-base-url: http://localhost:18084
-        mdm-base-url: http://localhost:18082
-```
-
-也可以使用环境变量：
-
-```text
-AI_AGENT_TOOLS_ADAPTER_MODE=http
-INVENTORY_SERVICE_BASE_URL=http://localhost:18084
-MDM_SERVICE_BASE_URL=http://localhost:18082
-```
-
-### 13.5 身份上下文透传
-
-HTTP adapter 调用下游服务时会透传：
-
-- `X-Tenant-Id`
-- `X-User-Id`
-- `X-User-Name`
-- `X-User-Roles`
-- `X-Agent-Run-Id`
-
-客户端请求体中仍然不允许自行覆盖租户和用户身份。
-
-### 13.6 Gateway 验证方式
-
-默认 mock 模式下，仍然通过 gateway 18080 调用：
-
-```http
-POST http://localhost:18080/api/v1/ai/tools/invoke
-Authorization: Bearer <accessToken>
-Content-Type: application/json
-```
-
-库存余额 Tool：
-
-```json
-{
-  "toolName": "inventory.getBalance",
-  "runId": "run-tools-http-ready-001",
-  "parameters": {
-    "materialId": 1001,
-    "warehouseId": 1,
-    "locationId": 1
-  }
-}
-```
-
-mock 模式关键返回：
-
-```json
-{
-  "success": true,
-  "data": {
-    "success": true,
-    "toolName": "inventory.getBalance",
-    "data": {
-      "adapterMode": "mock"
-    }
-  }
-}
-```
-
-切换到 `adapter-mode=http` 且启动 `scm-inventory` 后，关键返回中的 `adapterMode` 应为：
-
-```json
-{
-  "adapterMode": "http"
-}
-```
-
-物料信息 Tool：
-
-```json
-{
-  "toolName": "mdm.getMaterial",
-  "runId": "run-tools-http-ready-002",
-  "parameters": {
-    "materialId": 1001
-  }
-}
-```
-
-### 13.7 后续扩展方向
-
-Phase 4.2 可以继续做：
-
-- 为 `sales.getOrder` 增加 `SalesToolClient`
-- 为 `purchase.getOrder` 增加 `PurchaseToolClient`
-- 为 `mdm.getWarehouse` 增加仓库 HTTP adapter
-- 增加 Tool 调用审计表
-- 将 ToolDefinition 转换为 Spring AI Tool Calling schema
-- 为 MCP 暴露复用同一套 ToolExecutor
+- 把 ToolDefinition 转换为 Spring AI Tool Calling schema
+- 为 Tool 审计增加 MySQL 持久化
+- 给 Tool 增加权限标签和路由标签
+- 增加 Tool 超时、重试和熔断策略
+- 为 Workflow / Orchestrator 准备结构化 Tool 输出规范

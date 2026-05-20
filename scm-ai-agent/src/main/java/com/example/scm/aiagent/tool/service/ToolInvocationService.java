@@ -1,6 +1,8 @@
 package com.example.scm.aiagent.tool.service;
 
+import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -24,9 +26,15 @@ import java.util.UUID;
 public class ToolInvocationService {
 
     private final ToolRegistry toolRegistry;
+    private final ToolInvocationAuditService toolInvocationAuditService;
+    private final AiAgentProperties aiAgentProperties;
 
-    public ToolInvocationService(ToolRegistry toolRegistry) {
+    public ToolInvocationService(ToolRegistry toolRegistry,
+                                 ToolInvocationAuditService toolInvocationAuditService,
+                                 AiAgentProperties aiAgentProperties) {
         this.toolRegistry = toolRegistry;
+        this.toolInvocationAuditService = toolInvocationAuditService;
+        this.aiAgentProperties = aiAgentProperties;
     }
 
     /**
@@ -44,17 +52,29 @@ public class ToolInvocationService {
     }
 
     /**
+     * 查询最近的 Tool 调用审计记录。
+     */
+    public ToolInvocationAuditListResponse listInvocations(AgentRequestContext context, String toolName, String runId, Integer limit) {
+        log.info("AI tool invocation audit query received, tenantId={}, userId={}, toolName={}, runId={}, limit={}",
+                context.tenantId(), context.userId(), toolName, runId, limit);
+        return toolInvocationAuditService.list(context, toolName, runId, limit);
+    }
+
+    /**
      * 执行指定工具。找不到工具时返回业务失败响应，不抛出系统异常。
      */
     public ToolResponse invoke(ToolInvokeRequest request, AgentRequestContext context) {
         long startedAt = System.nanoTime();
         String runId = StringUtils.hasText(request.getRunId()) ? request.getRunId() : UUID.randomUUID().toString();
         String toolName = request.getToolName();
+        String adapterMode = aiAgentProperties.getTools().getAdapterMode();
         ToolExecutor executor = toolRegistry.findExecutor(toolName).orElse(null);
         if (executor == null) {
             long latencyMs = elapsedMs(startedAt);
             log.warn("AI tool not found, tenantId={}, userId={}, runId={}, toolName={}, latencyMs={}",
                     context.tenantId(), context.userId(), runId, toolName, latencyMs);
+            toolInvocationAuditService.record(context, runId, toolName, adapterMode, false,
+                    CommonErrorCode.NOT_FOUND.code(), latencyMs);
             return ToolResponse.builder()
                     .success(false)
                     .toolName(toolName)
@@ -75,6 +95,7 @@ public class ToolInvocationService {
             long latencyMs = elapsedMs(startedAt);
             log.info("AI tool invoked, tenantId={}, userId={}, runId={}, toolName={}, success=true, latencyMs={}",
                     context.tenantId(), context.userId(), runId, toolName, latencyMs);
+            toolInvocationAuditService.record(context, runId, toolName, adapterMode, true, null, latencyMs);
             return ToolResponse.builder()
                     .success(true)
                     .toolName(toolName)
@@ -86,6 +107,8 @@ public class ToolInvocationService {
             long latencyMs = elapsedMs(startedAt);
             log.warn("AI tool invoke failed, tenantId={}, userId={}, runId={}, toolName={}, success=false, errorType={}, latencyMs={}",
                     context.tenantId(), context.userId(), runId, toolName, ex.getClass().getSimpleName(), latencyMs);
+            toolInvocationAuditService.record(context, runId, toolName, adapterMode, false,
+                    CommonErrorCode.BAD_REQUEST.code(), latencyMs);
             return ToolResponse.builder()
                     .success(false)
                     .toolName(toolName)

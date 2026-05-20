@@ -2,9 +2,11 @@ package com.example.scm.aiagent.tool;
 
 import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.tool.controller.AiToolController;
+import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.tool.model.ToolDefinition;
+import com.example.scm.aiagent.tool.model.ToolInvocationAuditRecord;
 import com.example.scm.aiagent.tool.service.ToolInvocationService;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
@@ -20,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -95,6 +98,38 @@ class AiToolControllerTest {
                 .andExpect(jsonPath("$.data.success").value(true))
                 .andExpect(jsonPath("$.data.toolName").value("inventory.getBalance"))
                 .andExpect(jsonPath("$.data.data.tenantId").value(1));
+    }
+
+    @Test
+    void shouldListToolInvocations() throws Exception {
+        when(toolInvocationService.listInvocations(any(), any(), any(), any())).thenReturn(ToolInvocationAuditListResponse.builder()
+                .tenantId(1L)
+                .count(1)
+                .records(List.of(ToolInvocationAuditRecord.builder()
+                        .tenantId(1L)
+                        .userId(10001L)
+                        .runId("run-tools-1")
+                        .toolName("inventory.getBalance")
+                        .adapterMode("mock")
+                        .success(true)
+                        .latencyMs(5)
+                        .createdAt(Instant.parse("2026-05-20T09:00:00Z"))
+                        .build()))
+                .build());
+
+        mockMvc.perform(get("/api/v1/ai/tools/invocations")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN")
+                        .param("toolName", "inventory.getBalance")
+                        .param("runId", "run-tools-1")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.tenantId").value(1))
+                .andExpect(jsonPath("$.data.count").value(1))
+                .andExpect(jsonPath("$.data.records[0].toolName").value("inventory.getBalance"));
     }
 
     @Test

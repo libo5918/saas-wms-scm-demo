@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.tool.controller;
 
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
@@ -49,6 +51,20 @@ public class AiToolController {
         AgentRequestContext context = buildContext(userId, username, roles);
         log.info("AI tools list request received, tenantId={}, userId={}", context.tenantId(), context.userId());
         return Result.success(toolInvocationService.listTools(context));
+    }
+
+    /**
+     * 查询最近的 Tool 调用审计记录。
+     */
+    @GetMapping("/invocations")
+    public Result<ToolInvocationAuditListResponse> listInvocations(@RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                                   @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                                   @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles,
+                                                                   @RequestParam(value = "toolName", required = false) String toolName,
+                                                                   @RequestParam(value = "runId", required = false) String runId,
+                                                                   @RequestParam(value = "limit", required = false) Integer limit) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        return Result.success(toolInvocationService.listInvocations(context, toolName, runId, limit));
     }
 
     /**

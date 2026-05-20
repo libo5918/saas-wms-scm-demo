@@ -8,479 +8,324 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * AI Agent 模块配置。
+ * AI Agent 模块总配置。
  *
- * <p>该配置只描述模型提供方、模型能力和路由策略，不保存真实密钥。
- * 真实 API Key 应通过环境变量或配置中心注入，避免提交到代码仓库。</p>
+ * <p>集中描述模型路由、RAG、Tools 等能力的静态配置结构。
+ * 真正的 API Key、数据库密码等敏感信息必须通过环境变量或本地配置注入，
+ * 不能直接写入仓库。</p>
  */
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "ai.agent")
 public class AiAgentProperties {
 
-    /**
-     * 当前模型调用模式。
-     * mock 表示只走本地模拟响应；spring-ai 表示通过 Spring AI ChatClient 调用真实模型。
-     */
+    /** 模型调用模式，当前支持 mock 和 spring-ai。 */
     private String providerMode = "mock";
 
-    /**
-     * 默认逻辑模型名称。
-     * 当 requestedModel、taskType、capabilities 都无法命中时，路由器优先回退到该模型。
-     */
+    /** 路由兜底时使用的默认逻辑模型名。 */
     private String defaultModel = "qwen-plus";
 
-    /**
-     * 模型提供方配置，例如 mock、DashScope、OpenAI-compatible、DeepSeek-compatible。
-     */
+    /** 模型提供方配置，例如 mock、dashscope、openai、deepseek。 */
     private List<ProviderProperties> providers = new ArrayList<>();
 
-    /**
-     * 逻辑模型配置。
-     * 一个逻辑模型会绑定到某个 provider，并声明能力标签、任务类型和 fallback 列表。
-     */
+    /** 逻辑模型配置，声明模型能力、任务类型和 fallback 关系。 */
     private List<ModelProperties> models = new ArrayList<>();
 
-    /**
-     * RAG 相关配置。
-     * 默认使用 mock embedding 和 in-memory vector store，保证本地启动和单元测试不依赖外部服务。
-     */
+    /** RAG 相关配置。 */
     private RagProperties rag = new RagProperties();
 
-    /**
-     * Agent Tools 相关配置。
-     * 默认使用 mock adapter，保证本地启动和单元测试不依赖真实业务服务。
-     */
+    /** Agent Tools 相关配置。 */
     private ToolsProperties tools = new ToolsProperties();
 
-    /**
-     * 模型提供方配置。
-     */
+    /** 单个模型提供方配置。 */
     @Getter
     @Setter
     public static class ProviderProperties {
 
-        /**
-         * 提供方唯一名称，例如 mock、dashscope、openai、deepseek。
-         */
+        /** 提供方名称，例如 mock、dashscope、openai。 */
         private String name;
 
-        /**
-         * 提供方类型，例如 mock、dashscope、openai-compatible。
-         */
+        /** 提供方类型，例如 openai-compatible。 */
         private String type;
 
-        /**
-         * 是否启用该提供方。
-         */
+        /** 是否启用该提供方。 */
         private boolean enabled = true;
 
-        /**
-         * OpenAI-compatible 兼容接口地址，DashScope 兼容模式和 DeepSeek 都可通过该字段描述。
-         */
+        /** 兼容 OpenAI 协议时使用的基础地址。 */
         private String baseUrl;
 
-        /**
-         * API Key 直接配置值。
-         * 仅用于本地临时验证，不建议提交真实值。
-         */
+        /** 本地临时调试时可直接注入的 API Key。 */
         private String apiKey;
 
-        /**
-         * API Key 对应的环境变量名称，例如 DASHSCOPE_API_KEY、OPENAI_API_KEY。
-         */
+        /** API Key 对应的环境变量名。 */
         private String apiKeyEnv;
 
-        /**
-         * 调用超时时间，单位毫秒。
-         */
+        /** 调用超时时间，单位毫秒。 */
         private long timeoutMs = 30000;
     }
 
-    /**
-     * 逻辑模型配置。
-     */
+    /** 逻辑模型配置。 */
     @Getter
     @Setter
     public static class ModelProperties {
 
-        /**
-         * 项目内使用的逻辑模型名称，例如 qwen-plus、chatgpt-main、deepseek-chat。
-         */
+        /** 项目内部使用的逻辑模型名。 */
         private String name;
 
-        /**
-         * 提供方里的真实模型名称。
-         * 逻辑名称可以稳定服务项目，真实模型名称可通过配置替换。
-         */
+        /** 提供方侧真实模型名。 */
         private String providerModel;
 
-        /**
-         * 该模型绑定的 provider 名称。
-         */
+        /** 该模型所属提供方名称。 */
         private String provider;
 
-        /**
-         * 是否启用该模型。
-         */
+        /** 是否启用该模型。 */
         private boolean enabled = true;
 
-        /**
-         * 成本等级，例如 low、medium、high。
-         */
+        /** 成本等级，用于后续路由权衡。 */
         private String costLevel = "medium";
 
-        /**
-         * 当前模型支持的调用模式，例如 mock、spring-ai。
-         */
+        /** 该模型允许的 providerMode 列表。 */
         private List<String> providerModes = new ArrayList<>();
 
-        /**
-         * 当前模型具备的能力标签，例如 CHAT、RAG、TOOL_CALLING、PLANNING。
-         */
+        /** 模型能力标签，例如 CHAT、RAG、TOOL_CALLING。 */
         private List<String> capabilities = new ArrayList<>();
 
-        /**
-         * 当前模型优先承接的任务类型，例如 simple_chat、summary、workflow_planning。
-         */
+        /** 模型优先承接的任务类型。 */
         private List<String> taskTypes = new ArrayList<>();
 
-        /**
-         * 当前模型调用失败时可以降级尝试的逻辑模型名称列表。
-         */
+        /** 当前模型失败后的降级模型列表。 */
         private List<String> fallbackModels = new ArrayList<>();
 
-        /**
-         * 路由优先级，数值越小优先级越高。
-         */
+        /** 路由优先级，数值越小优先级越高。 */
         private int priority = 100;
 
-        /**
-         * 当前模型期望最大延迟，单位毫秒。
-         * 后续可用于实时任务过滤高延迟模型。
-         */
+        /** 允许的最大延迟，用于后续路由约束。 */
         private Long maxLatencyMs;
     }
 
-    /**
-     * RAG 配置聚合。
-     */
+    /** RAG 聚合配置。 */
     @Getter
     @Setter
     public static class RagProperties {
 
-        /**
-         * 文档切片配置。
-         */
+        /** 文档切片配置。 */
         private ChunkProperties chunk = new ChunkProperties();
 
-        /**
-         * Embedding 配置。
-         */
+        /** Embedding 配置。 */
         private EmbeddingProperties embedding = new EmbeddingProperties();
 
-        /**
-         * 向量存储配置。
-         */
+        /** 向量存储配置。 */
         private VectorStoreProperties vectorStore = new VectorStoreProperties();
 
-        /**
-         * 检索配置。
-         */
+        /** 检索配置。 */
         private RetrievalProperties retrieval = new RetrievalProperties();
 
-        /**
-         * docs 目录自动导入配置。
-         */
+        /** docs 目录导入配置。 */
         private DocsImportProperties docsImport = new DocsImportProperties();
 
-        /** RAG 文档治理元数据存储配置。 */
+        /** RAG 文档治理元数据配置。 */
         private RegistryProperties registry = new RegistryProperties();
     }
 
-    /**
-     * 文档切片配置。
-     */
+    /** 文档切片参数。 */
     @Getter
     @Setter
     public static class ChunkProperties {
 
-        /**
-         * 单个切片最大字符数。
-         */
+        /** 单个切片的最大字符数。 */
         private int size = 800;
 
-        /**
-         * 相邻切片重叠字符数，用于减少上下文断裂。
-         */
+        /** 相邻切片重叠字符数，用于减少上下文断裂。 */
         private int overlap = 100;
     }
 
-    /**
-     * Embedding 配置。
-     */
+    /** Embedding 配置。 */
     @Getter
     @Setter
     public static class EmbeddingProperties {
 
-        /**
-         * embedding 模式，mock 表示本地确定性向量，spring-ai 预留给真实 EmbeddingModel。
-         */
+        /** embedding 模式，当前支持 mock、dashscope、openai-compatible。 */
         private String mode = "mock";
 
-        /**
-         * mock embedding 向量维度。
-         */
+        /** 向量维度。 */
         private int dimension = 64;
 
-        /**
-         * 真实 embedding 模型名称，后续接入 DashScope/OpenAI embedding 时使用。
-         */
+        /** embedding 模型名。 */
         private String model = "mock-embedding";
 
-        /**
-         * 真实 embedding provider 名称，例如 dashscope 或 openai-compatible。
-         */
+        /** embedding provider 名称。 */
         private String provider = "mock";
 
-        /**
-         * OpenAI-compatible embedding 接口地址，仅通过环境变量或本地配置注入。
-         */
+        /** OpenAI-compatible embedding 基础地址。 */
         private String baseUrl;
 
-        /**
-         * DashScope/OpenAI embedding API Key 环境变量名，用于文档和日志排查，不保存真实密钥。
-         */
+        /** embedding API Key 对应的环境变量名。 */
         private String apiKeyEnv;
 
-        /**
-         * 是否预留 rerank 扩展点；当前阶段只记录配置，不实现复杂 rerank。
-         */
+        /** 是否预留 rerank 扩展点。 */
         private boolean rerankEnabled = false;
     }
 
-    /**
-     * 向量存储配置。
-     */
+    /** 向量存储配置。 */
     @Getter
     @Setter
     public static class VectorStoreProperties {
 
-        /**
-         * 向量存储模式，当前默认 in-memory，milvus 为后续真实接入预留。
-         */
+        /** 向量存储模式，当前支持 in-memory 和 milvus。 */
         private String mode = "in-memory";
 
-        /**
-         * Milvus 连接配置。
-         */
+        /** Milvus 连接配置。 */
         private MilvusProperties milvus = new MilvusProperties();
     }
 
-    /**
-     * Milvus 连接配置骨架。
-     */
+    /** Milvus 配置骨架。 */
     @Getter
     @Setter
     public static class MilvusProperties {
 
-        /**
-         * Milvus 服务地址。
-         */
+        /** Milvus 服务地址。 */
         private String uri = "http://localhost:19530";
 
-        /**
-         * Milvus token，必须通过环境变量或本地配置注入，不能硬编码真实值。
-         */
+        /** Milvus 访问令牌。 */
         private String token;
 
-        /**
-         * Milvus collection 名称。
-         */
+        /** Collection 名称。 */
         private String collectionName = "scm_ai_rag_chunks";
 
-        /**
-         * Milvus 主键字段名称，对应每个 chunk 的唯一 ID。
-         */
+        /** 主键字段名。 */
         private String primaryField = "chunk_id";
 
-        /**
-         * 向量字段名称。
-         */
+        /** 向量字段名。 */
         private String vectorField = "embedding";
 
-        /**
-         * 相似度度量方式，默认 COSINE。
-         */
+        /** 相似度计算方式。 */
         private String metricType = "COSINE";
 
-        /**
-         * Milvus 向量索引类型，Standalone 演示默认使用 AUTOINDEX。
-         */
+        /** 索引类型。 */
         private String indexType = "AUTOINDEX";
     }
 
-    /**
-     * 检索配置。
-     */
+    /** 检索参数配置。 */
     @Getter
     @Setter
     public static class RetrievalProperties {
 
-        /**
-         * 默认返回切片数量。
-         */
+        /** 默认返回的 topK。 */
         private int defaultTopK = 3;
 
-        /**
-         * 单次请求允许返回的最大切片数量。
-         */
+        /** 接口允许的最大 topK。 */
         private int maxTopK = 10;
 
-        /**
-         * 最小检索分数阈值，0 表示默认不过滤低分结果。
-         */
+        /** 最低分数阈值，0 表示默认不过滤。 */
         private double scoreThreshold = 0.0;
 
-        /**
-         * RAG Chat 最多拼接到提示词中的 chunk 数量，避免 prompt 过长。
-         */
+        /** RAG Chat 最多拼接的上下文 chunk 数量。 */
         private int maxContextChunks = 5;
 
-        /**
-         * 单个 chunk 拼接到 RAG Chat 上下文时允许的最大字符数。
-         */
+        /** 单个上下文 chunk 允许的最大字符数。 */
         private int maxContextChunkLength = 1200;
     }
-    /**
-     * docs 目录导入 RAG 知识库的配置。
-     */
+
+    /** docs 目录导入配置。 */
     @Getter
     @Setter
     public static class DocsImportProperties {
 
-        /**
-         * 是否启用 docs 导入能力；本阶段只支持手动接口触发，不在启动时自动导入。
-         */
+        /** 是否启用 docs 导入能力。 */
         private boolean enabled = true;
 
-        /**
-         * docs 根目录，默认使用项目根目录下的 docs。
-         */
+        /** docs 根目录。 */
         private String rootPath = "docs";
 
-        /**
-         * 默认写入的知识库 ID。
-         */
+        /** 默认写入的知识库 ID。 */
         private String knowledgeBaseId = "kb-project-docs";
 
-        /**
-         * 默认扫描的 docs 子目录，避免误扫整个大目录。
-         */
+        /** 默认扫描的子目录。 */
         private List<String> includeDirectories = new ArrayList<>(
                 List.of("architecture", "business", "operations", "database"));
 
-        /**
-         * 支持导入的文件后缀，当前默认只导入 Markdown。
-         */
+        /** 支持导入的文件后缀。 */
         private List<String> supportedExtensions = new ArrayList<>(List.of(".md"));
 
-        /**
-         * 单次最大导入文件数，避免误扫大目录导致长时间 IO。
-         */
+        /** 单次最大导入文件数。 */
         private int maxFiles = 100;
     }
 
-    /**
-     * RAG Document Registry 存储配置。
-     */
+    /** RAG Document Registry 配置。 */
     @Getter
     @Setter
     public static class RegistryProperties {
 
-        /**
-         * 文档治理元数据存储模式。
-         *
-         * <p>默认使用 mysql；单元测试或无数据库临时启动时可显式切换为 in-memory。</p>
-         */
+        /** Registry 存储模式，当前支持 in-memory 和 mysql。 */
         private String mode = "mysql";
 
-        /**
-         * MySQL Registry 连接配置。
-         *
-         * <p>只有 mode=mysql 时才会读取并创建数据源。</p>
-         */
+        /** MySQL Registry 连接配置。 */
         private MysqlRegistryProperties mysql = new MysqlRegistryProperties();
     }
 
-    /**
-     * RAG Document Registry 的 MySQL 连接配置。
-     */
+    /** MySQL Registry 连接信息。 */
     @Getter
     @Setter
     public static class MysqlRegistryProperties {
 
-        /**
-         * MySQL JDBC 地址，例如 jdbc:mysql://127.0.0.1:3306/scm_ai_agent。
-         */
+        /** JDBC 地址。 */
         private String url;
 
-        /**
-         * MySQL 用户名。
-         */
+        /** 数据库用户名。 */
         private String username;
 
-        /**
-         * MySQL 密码，必须通过环境变量或本地配置注入，不能提交真实密码。
-         */
+        /** 数据库密码。 */
         private String password;
     }
 
-    /**
-     * Agent Tool 调用配置。
-     */
+    /** Agent Tools 配置。 */
     @Getter
     @Setter
     public static class ToolsProperties {
 
-        /**
-         * Tool adapter 模式。
-         *
-         * <p>mock 表示本地模拟数据；http 表示通过 HTTP 调用真实 SCM/WMS 服务。</p>
-         */
+        /** Tool 适配模式，当前支持 mock 和 http。 */
         private String adapterMode = "mock";
 
-        /**
-         * HTTP adapter 配置。
-         */
+        /** HTTP ToolClient 连接配置。 */
         private HttpToolClientProperties http = new HttpToolClientProperties();
+
+        /** Tool 调用审计配置。 */
+        private AuditProperties audit = new AuditProperties();
     }
 
-    /**
-     * Tool HTTP adapter 连接配置。
-     */
+    /** Tool HTTP 客户端配置。 */
     @Getter
     @Setter
     public static class HttpToolClientProperties {
 
-        /**
-         * 库存服务基础地址，例如 http://localhost:18084。
-         */
+        /** 库存服务基础地址。 */
         private String inventoryBaseUrl = "http://localhost:18084";
 
-        /**
-         * 主数据服务基础地址，例如 http://localhost:18082。
-         */
+        /** 主数据服务基础地址。 */
         private String mdmBaseUrl = "http://localhost:18082";
 
-        /**
-         * HTTP 连接超时时间，单位毫秒。
-         */
+        /** 销售服务基础地址。 */
+        private String salesBaseUrl = "http://localhost:18085";
+
+        /** 采购服务基础地址。 */
+        private String purchaseBaseUrl = "http://localhost:18083";
+
+        /** HTTP 连接超时，单位毫秒。 */
         private int connectTimeoutMs = 3000;
 
-        /**
-         * HTTP 读取超时时间，单位毫秒。
-         */
+        /** HTTP 读取超时，单位毫秒。 */
         private int readTimeoutMs = 5000;
+    }
+
+    /** Tool 调用审计配置。 */
+    @Getter
+    @Setter
+    public static class AuditProperties {
+
+        /** 审计存储模式，当前默认 in-memory，后续可扩展 mysql。 */
+        private String mode = "in-memory";
+
+        /** 内存模式下最多保留的审计记录数。 */
+        private int maxRecords = 500;
     }
 }

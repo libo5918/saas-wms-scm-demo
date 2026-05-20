@@ -133,8 +133,13 @@ ai:
       http:
         inventory-base-url: ${INVENTORY_SERVICE_BASE_URL:http://localhost:18084}
         mdm-base-url: ${MDM_SERVICE_BASE_URL:http://localhost:18082}
+        sales-base-url: ${SALES_SERVICE_BASE_URL:http://localhost:18085}
+        purchase-base-url: ${PURCHASE_SERVICE_BASE_URL:http://localhost:18083}
         connect-timeout-ms: ${AI_AGENT_TOOLS_HTTP_CONNECT_TIMEOUT_MS:3000}
         read-timeout-ms: ${AI_AGENT_TOOLS_HTTP_READ_TIMEOUT_MS:5000}
+      audit:
+        mode: ${AI_AGENT_TOOLS_AUDIT_MODE:in-memory}
+        max-records: ${AI_AGENT_TOOLS_AUDIT_MAX_RECORDS:500}
     providers:
       - name: mock
         type: mock
