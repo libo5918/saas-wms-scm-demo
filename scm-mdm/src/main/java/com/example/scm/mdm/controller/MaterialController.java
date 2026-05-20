@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -40,17 +41,24 @@ public class MaterialController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "修改物料", description = "根据物料ID修改物料基础属性。")
+    @Operation(summary = "修改物料", description = "根据物料 ID 修改物料基础属性。")
     public Result<MaterialVO> update(@PathVariable("id") Long id, @Valid @RequestBody UpdateMaterialRequest request) {
         log.info("Receive update material request, id={}", id);
         return Result.success(materialService.update(id, request));
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "查询物料详情", description = "根据物料ID查询当前租户下的物料详情。")
+    @Operation(summary = "按 ID 查询物料详情", description = "根据物料 ID 查询当前租户下的物料详情。")
     public Result<MaterialVO> getById(@PathVariable("id") Long id) {
         log.info("Receive get material detail request, id={}", id);
         return Result.success(materialService.getById(id));
+    }
+
+    @GetMapping("/by-code")
+    @Operation(summary = "按编码查询物料详情", description = "根据物料编码查询当前租户下的物料详情。")
+    public Result<MaterialVO> getByCode(@RequestParam("materialCode") String materialCode) {
+        log.info("Receive get material detail by code request, materialCode={}", materialCode);
+        return Result.success(materialService.getByCode(materialCode));
     }
 
     @GetMapping({"", "/"})

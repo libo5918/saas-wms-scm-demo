@@ -24,7 +24,7 @@ public class ToolCallingChatRequest {
     /** planner 模式，允许显式覆盖默认配置。 */
     private String plannerMode;
 
-    /** 显式指定的目标工具，优先级高于规则规划。 */
+    /** 显式指定的目标工具，优先级高于模型规划。 */
     private String requestedTool;
 
     /** 显式传入的工具参数。 */

@@ -10,9 +10,8 @@ import java.util.List;
 /**
  * AI Agent 模块总配置。
  *
- * <p>集中描述模型路由、RAG、Tools 等能力的静态配置结构。
- * 真正的 API Key、数据库密码等敏感信息必须通过环境变量或本地配置注入，
- * 不能直接写入仓库。</p>
+ * <p>集中描述模型路由、RAG、Tools、Tool Calling 等能力的静态配置结构。
+ * API Key、数据库密码等敏感信息必须通过环境变量或本地配置注入，不能直接写入仓库。</p>
  */
 @Getter
 @Setter
@@ -22,7 +21,7 @@ public class AiAgentProperties {
     /** 模型调用模式，当前支持 mock 和 spring-ai。 */
     private String providerMode = "mock";
 
-    /** 路由兜底时使用的默认逻辑模型名。 */
+    /** 路由兜底时使用的默认逻辑模型名称。 */
     private String defaultModel = "qwen-plus";
 
     /** 模型提供方配置，例如 mock、dashscope、openai、deepseek。 */
@@ -72,10 +71,10 @@ public class AiAgentProperties {
     @Setter
     public static class ModelProperties {
 
-        /** 项目内部使用的逻辑模型名。 */
+        /** 项目内部使用的逻辑模型名称。 */
         private String name;
 
-        /** 提供方侧真实模型名。 */
+        /** 提供方侧真实模型名称。 */
         private String providerModel;
 
         /** 该模型所属提供方名称。 */
@@ -153,7 +152,7 @@ public class AiAgentProperties {
         /** 向量维度。 */
         private int dimension = 64;
 
-        /** embedding 模型名。 */
+        /** embedding 模型名称。 */
         private String model = "mock-embedding";
 
         /** embedding provider 名称。 */
@@ -339,5 +338,26 @@ public class AiAgentProperties {
 
         /** planner 模式，当前支持 mock 和 spring-ai。 */
         private String plannerMode = "mock";
+
+        /** Spring AI Planner 细分配置。 */
+        private SpringAiPlannerProperties springAiPlanner = new SpringAiPlannerProperties();
+    }
+
+    /** Spring AI Planner 配置。 */
+    @Getter
+    @Setter
+    public static class SpringAiPlannerProperties {
+
+        /** 是否启用真实 Spring AI Planner。 */
+        private boolean enabled = false;
+
+        /** 真实模型规划失败时是否回退到 mock planner。 */
+        private boolean fallbackToMock = true;
+
+        /** 规划最大重试次数。 */
+        private int maxRetries = 1;
+
+        /** 用于模型路由的任务类型。 */
+        private String taskType = "tool_calling";
     }
 }

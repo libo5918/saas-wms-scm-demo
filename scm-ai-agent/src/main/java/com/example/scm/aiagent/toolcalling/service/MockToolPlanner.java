@@ -14,24 +14,39 @@ import java.util.Map;
 /**
  * 基于规则的 mock planner。
  *
- * <p>当前阶段不依赖真实大模型，先把“问题 -> 工具 -> 参数”的最小链路打通。</p>
+ * <p>用于测试和真实模型不可用时的兜底规划，不依赖外部模型服务。</p>
  */
 @Component
 public class MockToolPlanner {
 
     /**
-     * 根据用户问题和显式参数规划本次 Tool Calling。
+     * 兼容旧调用方式的默认入口。
      */
     public ToolCallingPlan plan(ToolCallingChatRequest request) {
         if (StringUtils.hasText(request.getRequestedTool())) {
-            return ToolCallingPlan.builder()
-                    .plannerMode("mock")
-                    .selectedTool(request.getRequestedTool())
-                    .toolArguments(withDefaults(request.getRequestedTool(), request.getToolArguments()))
-                    .reason("requested_tool")
-                    .build();
+            return planRequestedTool("mock", request.getRequestedTool(), request.getToolArguments());
         }
+        return planByRules("mock", request);
+    }
 
+    /**
+     * 针对显式指定工具的规划结果。
+     */
+    public ToolCallingPlan planRequestedTool(String plannerMode, String requestedTool, Map<String, Object> toolArguments) {
+        return ToolCallingPlan.builder()
+                .plannerMode(plannerMode)
+                .planningSource("requested")
+                .fallbackUsed(false)
+                .selectedTool(requestedTool)
+                .toolArguments(applyDefaults(requestedTool, toolArguments))
+                .reason("requested_tool")
+                .build();
+    }
+
+    /**
+     * 按关键字规则进行工具规划。
+     */
+    public ToolCallingPlan planByRules(String plannerMode, ToolCallingChatRequest request) {
         String message = request.getMessage() == null ? "" : request.getMessage().toLowerCase(Locale.ROOT);
         String selectedTool;
         if (containsAny(message, "库存", "balance", "available")) {
@@ -50,14 +65,34 @@ public class MockToolPlanner {
         }
 
         return ToolCallingPlan.builder()
-                .plannerMode("mock")
+                .plannerMode(plannerMode)
+                .planningSource("mock")
+                .fallbackUsed(false)
                 .selectedTool(selectedTool)
-                .toolArguments(withDefaults(selectedTool, request.getToolArguments()))
+                .toolArguments(applyDefaults(selectedTool, request.getToolArguments()))
                 .reason("mock_rule")
                 .build();
     }
 
-    private Map<String, Object> withDefaults(String selectedTool, Map<String, Object> inputArguments) {
+    /**
+     * 当模型规划失败时，按规则兜底，并在结果里标记 fallback。
+     */
+    public ToolCallingPlan planFallback(String plannerMode, ToolCallingChatRequest request, String reason) {
+        ToolCallingPlan fallbackPlan = planByRules(plannerMode, request);
+        return ToolCallingPlan.builder()
+                .plannerMode(plannerMode)
+                .planningSource("mock-fallback")
+                .fallbackUsed(true)
+                .selectedTool(fallbackPlan.selectedTool())
+                .toolArguments(fallbackPlan.toolArguments())
+                .reason(reason)
+                .build();
+    }
+
+    /**
+     * 按工具类型补齐最小默认参数，便于本地联调时快速验证链路。
+     */
+    public Map<String, Object> applyDefaults(String selectedTool, Map<String, Object> inputArguments) {
         Map<String, Object> arguments = new HashMap<>(inputArguments == null ? Map.of() : inputArguments);
         return switch (selectedTool) {
             case "inventory.getBalance" -> fillInventoryDefaults(arguments);

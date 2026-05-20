@@ -13,7 +13,7 @@ spring:
         enabled: true
   ai:
     model:
-      # 本地验证真实 Chat / Embedding 时启用 DashScope；接口仍通过 providerMode 控制是否真实调用。
+      # local profile 默认启用 DashScope 的真实 Chat / Embedding。
       chat: dashscope
       embedding: dashscope
     dashscope:
@@ -46,7 +46,7 @@ ai:
         api-key-env: DASHSCOPE_API_KEY
         rerank-enabled: false
       vector-store:
-        # local profile 默认写入本地 Milvus，和默认 application.yml 的 in-memory 隔离。
+        # local profile 默认写入本地 Milvus，和 application.yml 的 in-memory 隔离。
         mode: milvus
         milvus:
           uri: http://localhost:19530
@@ -58,7 +58,7 @@ ai:
           metric-type: COSINE
           index-type: AUTOINDEX
       registry:
-        # 本地默认使用 MySQL 持久化；如需临时无数据库启动，可改为 in-memory。
+        # local profile 默认使用 MySQL 持久化；如需临时无数据库启动，可改为 in-memory。
         mode: mysql
         mysql:
           url: jdbc:mysql://127.0.0.1:3306/scm_ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
@@ -78,7 +78,7 @@ ai:
         max-context-chunks: 5
         max-context-chunk-length: 1200
     tools:
-      # local profile 当前默认联调真实服务；如果只想本地 mock，可改回 mock。
+      # local profile 当前默认联调真实服务；如只想本地 mock，可改回 mock。
       adapter-mode: http
       http:
         inventory-base-url: http://localhost:18084
@@ -91,4 +91,10 @@ ai:
         mode: in-memory
         max-records: 500
     tool-calling:
+      # local profile 默认走真实 Spring AI Planner，而不是 mock planner。
       planner-mode: spring-ai
+      spring-ai-planner:
+        enabled: true
+        fallback-to-mock: false
+        max-retries: 1
+        task-type: tool_calling

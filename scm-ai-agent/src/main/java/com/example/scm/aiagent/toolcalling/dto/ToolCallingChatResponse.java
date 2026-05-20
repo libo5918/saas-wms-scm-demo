@@ -18,6 +18,12 @@ public class ToolCallingChatResponse {
     /** 实际使用的 planner 模式。 */
     private String plannerMode;
 
+    /** 本次规划来源，例如 requested、spring-ai、mock、mock-fallback。 */
+    private String planningSource;
+
+    /** 是否发生了 mock fallback。 */
+    private boolean fallbackUsed;
+
     /** 本次选中的工具名。 */
     private String selectedTool;
 

@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文档说明当前项目 AI Agent Phase 4 到 Phase 4.4 的 Tools 能力建设情况，重点覆盖：
+本文档说明当前项目 AI Agent Phase 4 到 Phase 4.5 的 Tools 能力建设情况，重点覆盖：
 
 - Tool 抽象设计
 - mock / http adapter 切换方式
@@ -10,12 +10,13 @@
 - Tool 调用审计设计
 - Spring AI Tool Calling 适配层设计
 - Tool Calling Chat 最小闭环设计
+- 真实 Spring AI Planner 设计
 - 通过 gateway `18080` 的验证方式
 - 后续如何衔接 Spring AI Tool Calling、MCP、Workflow 和 Orchestrator
 
 ## 2. 当前阶段结论
 
-截至 Phase 4.4，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
+截至 Phase 4.5，`scm-ai-agent` 已具备一套可扩展的 Tools 基础底座：
 
 - 已有统一 Tool 协议：`ToolDefinition`、`ToolRequest`、`ToolResponse`、`ToolExecutor`
 - 已有统一 Tool 注册与调用入口：`ToolRegistry`、`ToolInvocationService`
@@ -36,20 +37,26 @@
 - 已引入轻量级 Tool 调用审计能力，默认使用 in-memory 存储
 - 已引入 Spring AI Tool Calling 适配层，可把 ToolDefinition 转成模型可消费 schema
 - 已实现最小 Tool Calling Chat 闭环，可完成“问题 -> 选 Tool -> 执行 -> 回答”
+- 已实现真实 Spring AI Planner，可由模型基于 Tool schema 输出结构化 Tool Plan
 
 本阶段仍然只做只读 Tool，不实现写操作 Tool，不实现 MCP、Workflow、多 Agent 和长任务编排，也不做真实 LLM 自动多轮 Tool Calling 编排。
 
 ## 3. 当前边界
 
-当前默认行为仍然是“本地可启动、测试可通过、无外部依赖也能跑”：
+当前默认行为区分“本地联调”和“测试验证”两套路径：
 
-- 默认使用 `mock` adapter
-- 单元测试不依赖真实业务服务
+- 本地 `application-local.yml` 默认使用真实 Spring AI Planner
+- 本地 Tools adapter 默认使用 `http`
+- 单元测试仍不依赖真实业务服务
 - 单元测试不依赖 Nacos
 - 单元测试不依赖 MySQL、Milvus、Embedding API 或外部网络
 - Tool 审计默认使用 in-memory，不要求数据库
 
-这样做的原因是先把 Tool 协议、上下文透传、异常包装、审计链路打稳，再逐步替换为真实业务调用。
+这样做的原因是：
+
+- 运行时优先验证真实链路
+- 测试时保持稳定、低成本和可重复
+- 把真实模型波动对 CI 的影响隔离在测试之外
 
 ## 4. Tool 抽象设计
 
@@ -202,7 +209,7 @@ ToolExecutor 不直接写死 mock 数据，而是统一委托给 ToolClient。
 | Tool | 服务 | 真实接口 |
 | --- | --- | --- |
 | `inventory.getBalance` | `scm-inventory` | `GET /api/v1/inventory/balances?materialId=&warehouseId=&locationId=` |
-| `mdm.getMaterial` | `scm-mdm` | `GET /api/v1/materials/{materialId}` |
+| `mdm.getMaterial` | `scm-mdm` | `GET /api/v1/materials/{materialId}` 或 `GET /api/v1/materials/by-code?materialCode=` |
 | `sales.getOrder` | `scm-sales` | `GET /api/v1/sales-orders/{id}` 或 `GET /api/v1/sales-orders/by-order-no?orderNo=` |
 | `purchase.getOrder` | `scm-purchase` | `GET /api/v1/purchase-orders/{id}` 或 `GET /api/v1/purchase-orders/by-order-no?orderNo=` |
 | `mdm.getWarehouse` | `scm-mdm` | `GET /api/v1/warehouses/{id}` |
@@ -905,8 +912,141 @@ mvn -pl scm-ai-agent -am test
 - mock-planner 可按问题路由到正确 Tool
 - `requestedTool` 优先级高于规则路由
 - `/api/v1/ai/tool-calling/chat` 可返回结构化聊天结果
+- Spring AI Planner 的 JSON 输出可被解析成 Tool Plan
+- Spring AI Planner 失败后的 fallback 策略可被验证
 
-## 16. 当前阶段不做的事情
+## 16. Phase 4.5：真实 Spring AI Planner
+
+### 16.1 阶段目标
+
+Phase 4.5 的重点是把之前的 `spring-ai` 占位分支升级成真实模型规划链路：
+
+- 模型读取当前 Tool schema
+- 模型只输出 JSON Tool Plan
+- 服务端解析 JSON
+- 服务端继续复用现有 Tool Calling 执行链路
+
+### 16.2 plannerMode 设计
+
+当前 `tool-calling/chat` 支持两种 plannerMode：
+
+| plannerMode | 用途 |
+| --- | --- |
+| `spring-ai` | 本地联调默认模式，使用真实模型规划 Tool |
+| `mock` | 测试和兜底模式，按规则规划 Tool |
+
+同时新增两个返回字段：
+
+- `planningSource`
+  - `requested`
+  - `spring-ai`
+  - `mock`
+  - `mock-fallback`
+- `fallbackUsed`
+
+### 16.3 requestedTool 优先级
+
+如果请求显式传入 `requestedTool`，服务端直接执行该工具，不走模型规划。
+
+### 16.4 Spring AI Planner 设计
+
+新增以下组件：
+
+- `ToolPlanningPromptBuilder`
+- `ToolPlanParser`
+- `SpringAiToolPlanner`
+
+规划链路：
+
+```text
+tool-calling/chat
+  -> requestedTool 优先判断
+  -> SpringAiToolPlanner
+  -> ToolSchemaConverter 生成 schema
+  -> ToolPlanningPromptBuilder 组装提示词
+  -> RoutingChatModelClient 调真实模型
+  -> ToolPlanParser 解析 JSON
+  -> SpringAiToolCallingService.execute
+  -> ToolInvocationService
+```
+
+### 16.5 JSON 输出协议
+
+当前要求模型只返回一个 JSON 对象：
+
+```json
+{
+  "toolName": "mdm.getMaterial",
+  "arguments": {
+    "materialCode": "MAT-001"
+  },
+  "reason": "用户在查询物料信息"
+}
+```
+
+### 16.6 fallback 策略
+
+新增配置：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      planner-mode: spring-ai
+      spring-ai-planner:
+        enabled: true
+        fallback-to-mock: false
+        max-retries: 1
+        task-type: tool_calling
+```
+
+说明：
+
+- 本地 `application-local.yml` 默认 `fallback-to-mock=false`
+- 这样可以更早暴露真实模型规划问题
+- 测试时通过 mock/stub 单独验证 fallback 分支
+
+### 16.7 本地运行配置
+
+当前 [application-local.yml](E:/ideaProject/saas-wms-scm/scm-ai-agent/src/main/resources/application-local.yml) 已默认设置：
+
+- `ai.agent.tool-calling.planner-mode=spring-ai`
+- `ai.agent.tool-calling.spring-ai-planner.enabled=true`
+- `ai.agent.tool-calling.spring-ai-planner.fallback-to-mock=false`
+- `ai.agent.tools.adapter-mode=http`
+
+### 16.8 gateway 18080 验证示例
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查物料 MAT-001",
+  "runId": "run-tool-chat-phase45-001",
+  "plannerMode": "spring-ai"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase45-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "fallbackUsed": false,
+    "selectedTool": "mdm.getMaterial"
+  }
+}
+```
+
+## 17. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -919,12 +1059,13 @@ mvn -pl scm-ai-agent -am test
 - 长任务编排
 - Tool 审计 MySQL 持久化
 
-## 17. 后续建议
+## 18. 后续建议
 
-Phase 4.5 可以继续往下面推进：
+Phase 4.6 可以继续往下面推进：
 
-- 把 `spring-ai-planner` 接到真实 `RoutingChatModelClient`
-- 支持模型根据 Tool schema 自动输出 toolName 和 arguments
+- 把 Tool Planning 进一步升级成真实多轮 Tool Calling
+- 在模型回答里融合 Tool 结果，生成更自然的最终答复
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略
+

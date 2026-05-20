@@ -142,6 +142,11 @@ ai:
         max-records: ${AI_AGENT_TOOLS_AUDIT_MAX_RECORDS:500}
     tool-calling:
       planner-mode: ${AI_AGENT_TOOL_CALLING_PLANNER_MODE:mock}
+      spring-ai-planner:
+        enabled: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_ENABLED:false}
+        fallback-to-mock: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_FALLBACK_TO_MOCK:true}
+        max-retries: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_MAX_RETRIES:1}
+        task-type: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_TASK_TYPE:tool_calling}
     providers:
       - name: mock
         type: mock

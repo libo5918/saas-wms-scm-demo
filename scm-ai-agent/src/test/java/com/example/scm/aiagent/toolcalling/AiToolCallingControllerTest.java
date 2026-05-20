@@ -2,8 +2,8 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.toolcalling.controller.AiToolCallingController;
-import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolInputSchema;
@@ -135,7 +135,9 @@ class AiToolCallingControllerTest {
     void shouldExecuteToolCallingChat() throws Exception {
         when(toolCallingChatService.chat(any(), any())).thenReturn(ToolCallingChatResponse.builder()
                 .runId("run-tool-chat-1")
-                .plannerMode("mock")
+                .plannerMode("spring-ai")
+                .planningSource("spring-ai")
+                .fallbackUsed(false)
                 .selectedTool("sales.getOrder")
                 .toolArguments(Map.of("orderNo", "SO-001"))
                 .toolResponse(ToolCallingExecuteResponse.builder()
@@ -158,7 +160,7 @@ class AiToolCallingControllerTest {
                                 {
                                   "message": "帮我查一下销售订单",
                                   "runId": "run-tool-chat-1",
-                                  "plannerMode": "mock",
+                                  "plannerMode": "spring-ai",
                                   "toolArguments": {
                                     "orderNo": "SO-001"
                                   }
@@ -167,7 +169,8 @@ class AiToolCallingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.runId").value("run-tool-chat-1"))
-                .andExpect(jsonPath("$.data.plannerMode").value("mock"))
+                .andExpect(jsonPath("$.data.plannerMode").value("spring-ai"))
+                .andExpect(jsonPath("$.data.planningSource").value("spring-ai"))
                 .andExpect(jsonPath("$.data.selectedTool").value("sales.getOrder"));
     }
 }

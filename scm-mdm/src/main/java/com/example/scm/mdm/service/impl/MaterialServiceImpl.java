@@ -84,13 +84,25 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     /**
-     * 查询单个物料详情。
+     * 按物料 ID 查询单个物料详情。
      */
     @Override
     public MaterialVO getById(Long id) {
         Long tenantId = TenantContext.getRequiredTenantId();
         log.info("Query material detail, tenantId={}, materialId={}", tenantId, id);
         return materialMapper.selectById(tenantId, id)
+                .map(materialAssembler::toVO)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Material not found"));
+    }
+
+    /**
+     * 按物料编码查询单个物料详情。
+     */
+    @Override
+    public MaterialVO getByCode(String materialCode) {
+        Long tenantId = TenantContext.getRequiredTenantId();
+        log.info("Query material detail by code, tenantId={}, materialCode={}", tenantId, materialCode);
+        return materialMapper.selectByCode(tenantId, materialCode)
                 .map(materialAssembler::toVO)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.NOT_FOUND.code(), "Material not found"));
     }

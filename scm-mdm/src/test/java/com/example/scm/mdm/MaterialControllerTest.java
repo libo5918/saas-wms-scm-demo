@@ -45,6 +45,7 @@ class MaterialControllerTest {
 
         when(materialService.create(any())).thenReturn(material);
         when(materialService.getById(1L)).thenReturn(material);
+        when(materialService.getByCode("MAT-TEST-001")).thenReturn(material);
         when(materialService.list()).thenReturn(List.of(material));
 
         String requestBody = """
@@ -72,6 +73,14 @@ class MaterialControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.materialName").value("TEST-MATERIAL"));
+
+        mockMvc.perform(get("/api/v1/materials/by-code")
+                        .header("X-Tenant-Id", "1")
+                        .param("materialCode", "MAT-TEST-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.materialCode").value("MAT-TEST-001"));
 
         mockMvc.perform(get("/api/v1/materials")
                         .header("X-Tenant-Id", "1"))

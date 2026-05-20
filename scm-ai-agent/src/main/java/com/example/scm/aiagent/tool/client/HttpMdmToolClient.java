@@ -8,14 +8,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * 主数据 Tool 的 HTTP 客户端。
  *
- * <p>仅在 `ai.agent.tools.adapter-mode=http` 时启用，当前优先适配物料详情查询。</p>
+ * <p>仅在 `ai.agent.tools.adapter-mode=http` 时启用，当前支持按物料 ID
+ * 或物料编码查询物料详情。</p>
  */
 @Slf4j
 @Component
@@ -40,24 +43,42 @@ public class HttpMdmToolClient extends AbstractToolClientSupport implements MdmT
     @Override
     public Map<String, Object> getMaterial(ToolRequest request) {
         long startedAt = System.nanoTime();
-        Long materialId = longParam(request.getParameters(), "materialId", 1001L);
+        String materialCode = stringParam(request.getParameters(), "materialCode", null);
+        Long materialId = longParam(request.getParameters(), "materialId", null);
         try {
-            Result<Map<String, Object>> result = restClient.get()
-                    .uri(mdmBaseUrl + "/api/v1/materials/{materialId}", materialId)
-                    .headers(headers -> headers.addAll(identityHeaders(request)))
-                    .retrieve()
-                    .body(RESULT_TYPE);
+            Result<Map<String, Object>> result;
+            Map<String, Object> queryMetadata = new HashMap<>();
+            if (StringUtils.hasText(materialCode)) {
+                result = restClient.get()
+                        .uri(mdmBaseUrl + "/api/v1/materials/by-code?materialCode={materialCode}", materialCode)
+                        .headers(headers -> headers.addAll(identityHeaders(request)))
+                        .retrieve()
+                        .body(RESULT_TYPE);
+                queryMetadata.put("queryType", "materialCode");
+                queryMetadata.put("materialCode", materialCode);
+            } else if (materialId != null) {
+                result = restClient.get()
+                        .uri(mdmBaseUrl + "/api/v1/materials/{materialId}", materialId)
+                        .headers(headers -> headers.addAll(identityHeaders(request)))
+                        .retrieve()
+                        .body(RESULT_TYPE);
+                queryMetadata.put("queryType", "materialId");
+                queryMetadata.put("materialId", materialId);
+            } else {
+                throw new ToolClientException("MDM material tool requires materialId or materialCode");
+            }
             if (result == null) {
                 throw new ToolClientException("MDM service returned empty response");
             }
             if (!result.success()) {
                 throw new ToolClientException("MDM service failed: " + result.message());
             }
-            log.info("MDM material tool HTTP call success, tenantId={}, userId={}, runId={}, materialId={}, latencyMs={}",
+            log.info("MDM material tool HTTP call success, tenantId={}, userId={}, runId={}, queryType={}, materialId={}, materialCode={}, latencyMs={}",
                     request.getContext().tenantId(), request.getContext().userId(), request.getRunId(),
-                    materialId, elapsedMs(startedAt));
+                    queryMetadata.get("queryType"), queryMetadata.get("materialId"), queryMetadata.get("materialCode"),
+                    elapsedMs(startedAt));
             Map<String, Object> data = result.data() == null ? Map.of() : result.data();
-            return withAdapterMode(data);
+            return withAdapterMode(data, queryMetadata);
         } catch (ToolClientException ex) {
             throw ex;
         } catch (RuntimeException ex) {
@@ -65,9 +86,10 @@ public class HttpMdmToolClient extends AbstractToolClientSupport implements MdmT
         }
     }
 
-    private Map<String, Object> withAdapterMode(Map<String, Object> data) {
-        java.util.HashMap<String, Object> result = new java.util.HashMap<>(data);
+    private Map<String, Object> withAdapterMode(Map<String, Object> data, Map<String, Object> queryMetadata) {
+        HashMap<String, Object> result = new HashMap<>(data);
         result.put("adapterMode", "http");
+        result.putAll(queryMetadata);
         return result;
     }
 

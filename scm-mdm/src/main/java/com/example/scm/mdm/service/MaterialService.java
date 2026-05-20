@@ -22,9 +22,14 @@ public interface MaterialService {
     MaterialVO update(Long id, UpdateMaterialRequest request);
 
     /**
-     * 查询物料详情。
+     * 按物料 ID 查询物料详情。
      */
     MaterialVO getById(Long id);
+
+    /**
+     * 按物料编码查询物料详情。
+     */
+    MaterialVO getByCode(String materialCode);
 
     /**
      * 查询物料列表。
