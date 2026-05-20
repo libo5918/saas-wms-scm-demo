@@ -824,15 +824,16 @@ Content-Type: application/json
   "data": {
     "runId": "run-tool-chat-001",
     "plannerMode": "mock",
+    "planningSource": "mock",
     "selectedTool": "sales.getOrder",
     "toolArguments": {
       "orderNo": "SO-001"
     },
-    "toolResponse": {
+    "execution": {
       "success": true,
       "toolName": "sales.getOrder"
     },
-    "answer": "已根据你的问题调用工具 `sales.getOrder` 完成查询。"
+    "answer": "已查询到销售订单 SO-001，状态 ALLOCATED。"
   }
 }
 ```
@@ -866,6 +867,10 @@ Content-Type: application/json
     "selectedTool": "mdm.getMaterial",
     "toolArguments": {
       "materialCode": "MAT-001"
+    },
+    "execution": {
+      "success": true,
+      "toolName": "mdm.getMaterial"
     }
   }
 }
@@ -877,10 +882,10 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "success": false,
-    "toolName": "inventory.getBalance",
-    "toolResponse": {
+    "selectedTool": "inventory.getBalance",
+    "execution": {
       "success": false,
+      "toolName": "inventory.getBalance",
       "errorCode": "400",
       "errorMessage": "Missing required parameter: materialId"
     }
@@ -1046,7 +1051,58 @@ Content-Type: application/json
 }
 ```
 
-## 17. 当前阶段不做的事情
+## 17. Phase 4.6：Chat 返回结构与答案表达优化
+
+### 17.1 阶段目标
+
+Phase 4.6 的重点是把当前 Tool Calling Chat 从“能跑通”提升到“更适合真实联调和展示”：
+
+- 压平 chat 接口返回结构
+- 明确区分规划结果、执行结果、最终回答
+- 让 answer 更充分利用 Tool data
+
+### 17.2 chat 返回结构
+
+当前 `/api/v1/ai/tool-calling/chat` 关键返回字段：
+
+- `runId`
+- `plannerMode`
+- `planningSource`
+- `fallbackUsed`
+- `selectedTool`
+- `toolArguments`
+- `planningReason`
+- `execution`
+- `answer`
+- `latencyMs`
+
+其中 `execution` 结构为：
+
+- `success`
+- `toolName`
+- `errorCode`
+- `errorMessage`
+- `data`
+- `latencyMs`
+
+### 17.3 answer 生成策略
+
+当前先使用服务端模板增强，不强制引入第二次 LLM 总结：
+
+- `mdm.getMaterial`
+  - 优先输出物料名称、物料编码、状态、分类、单位
+- `inventory.getBalance`
+  - 优先输出物料、仓库、库位、可用量、锁定量、单位
+- `sales.getOrder`
+  - 优先输出订单号、状态、客户、明细行数
+- `purchase.getOrder`
+  - 优先输出订单号、状态、供应商、明细行数
+- `mdm.getWarehouse`
+  - 优先输出仓库名称、仓库编码、类型、状态
+
+如果 Tool 执行失败，则保留明确失败原因，不吞掉下游错误。
+
+## 18. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1059,12 +1115,12 @@ Content-Type: application/json
 - 长任务编排
 - Tool 审计 MySQL 持久化
 
-## 18. 后续建议
+## 19. 后续建议
 
-Phase 4.6 可以继续往下面推进：
+Phase 4.7 可以继续往下面推进：
 
 - 把 Tool Planning 进一步升级成真实多轮 Tool Calling
-- 在模型回答里融合 Tool 结果，生成更自然的最终答复
+- 在 Tool 执行后增加二次模型总结，让回答更自然
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略

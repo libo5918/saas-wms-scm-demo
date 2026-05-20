@@ -2,22 +2,23 @@ package com.example.scm.aiagent.toolcalling.service;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Map;
 import java.util.UUID;
 
 /**
  * Tool Calling Chat 应用服务。
  *
- * <p>当前阶段实现最小闭环：规划工具、执行工具、拼装答案，
+ * <p>当前阶段实现最小闭环：规划工具、执行工具、拼装回答，
  * 并支持 requestedTool、mock planner、spring-ai planner 三种入口。</p>
  */
 @Slf4j
@@ -28,15 +29,18 @@ public class ToolCallingChatService {
     private final MockToolPlanner mockToolPlanner;
     private final SpringAiToolPlanner springAiToolPlanner;
     private final SpringAiToolCallingService springAiToolCallingService;
+    private final ToolCallingAnswerBuilder toolCallingAnswerBuilder;
 
     public ToolCallingChatService(AiAgentProperties properties,
                                   MockToolPlanner mockToolPlanner,
                                   SpringAiToolPlanner springAiToolPlanner,
-                                  SpringAiToolCallingService springAiToolCallingService) {
+                                  SpringAiToolCallingService springAiToolCallingService,
+                                  ToolCallingAnswerBuilder toolCallingAnswerBuilder) {
         this.properties = properties;
         this.mockToolPlanner = mockToolPlanner;
         this.springAiToolPlanner = springAiToolPlanner;
         this.springAiToolCallingService = springAiToolCallingService;
+        this.toolCallingAnswerBuilder = toolCallingAnswerBuilder;
     }
 
     /**
@@ -59,13 +63,14 @@ public class ToolCallingChatService {
         executeRequest.setToolName(plan.selectedTool());
         executeRequest.setArguments(plan.toolArguments());
 
-        ToolCallingExecuteResponse toolResponse = springAiToolCallingService.execute(executeRequest, context);
-        String answer = buildAnswer(plan.selectedTool(), plan.toolArguments(), toolResponse);
+        ToolCallingExecuteResponse executeResponse = springAiToolCallingService.execute(executeRequest, context);
+        ToolCallingExecutionView execution = toExecutionView(executeResponse);
+        String answer = toolCallingAnswerBuilder.buildAnswer(plan, execution);
 
         long latencyMs = elapsedMs(startedAt);
         log.info("AI tool calling chat finished, tenantId={}, userId={}, runId={}, plannerMode={}, planningSource={}, fallbackUsed={}, selectedTool={}, success={}, latencyMs={}",
                 context.tenantId(), context.userId(), runId, plan.plannerMode(), plan.planningSource(),
-                plan.fallbackUsed(), plan.selectedTool(), toolResponse.isSuccess(), latencyMs);
+                plan.fallbackUsed(), plan.selectedTool(), execution.isSuccess(), latencyMs);
 
         return ToolCallingChatResponse.builder()
                 .runId(runId)
@@ -74,7 +79,8 @@ public class ToolCallingChatService {
                 .fallbackUsed(plan.fallbackUsed())
                 .selectedTool(plan.selectedTool())
                 .toolArguments(plan.toolArguments())
-                .toolResponse(toolResponse)
+                .planningReason(plan.reason())
+                .execution(execution)
                 .answer(answer)
                 .latencyMs(latencyMs)
                 .build();
@@ -104,15 +110,21 @@ public class ToolCallingChatService {
         return mockToolPlanner.planByRules(plannerMode, request);
     }
 
-    private String buildAnswer(String selectedTool, Map<String, Object> arguments,
-                               ToolCallingExecuteResponse toolResponse) {
-        if (!toolResponse.isSuccess()) {
-            return "我已尝试调用工具 `" + selectedTool + "`，但执行失败："
-                    + toolResponse.getToolResponse().getErrorMessage();
-        }
-        return "已根据你的问题调用工具 `" + selectedTool + "` 完成查询。"
-                + " toolArguments=" + arguments
-                + "，可继续基于这次结果追问更细的信息。";
+    /**
+     * 将底层 Tool Calling 执行结果压平成更适合 chat 接口展示的 execution 结构。
+     */
+    private ToolCallingExecutionView toExecutionView(ToolCallingExecuteResponse executeResponse) {
+        ToolResponse toolResponse = executeResponse.getToolResponse();
+        return ToolCallingExecutionView.builder()
+                .success(toolResponse != null ? toolResponse.isSuccess() : executeResponse.isSuccess())
+                .toolName(StringUtils.hasText(executeResponse.getToolName())
+                        ? executeResponse.getToolName()
+                        : toolResponse == null ? null : toolResponse.getToolName())
+                .errorCode(toolResponse == null ? null : toolResponse.getErrorCode())
+                .errorMessage(toolResponse == null ? null : toolResponse.getErrorMessage())
+                .data(toolResponse == null ? null : toolResponse.getData())
+                .latencyMs(executeResponse.getLatencyMs())
+                .build();
     }
 
     private int safeLength(String value) {

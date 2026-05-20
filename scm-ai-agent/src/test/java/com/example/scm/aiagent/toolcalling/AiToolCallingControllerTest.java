@@ -4,6 +4,7 @@ import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.toolcalling.controller.AiToolCallingController;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
+import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolInputSchema;
@@ -140,13 +141,14 @@ class AiToolCallingControllerTest {
                 .fallbackUsed(false)
                 .selectedTool("sales.getOrder")
                 .toolArguments(Map.of("orderNo", "SO-001"))
-                .toolResponse(ToolCallingExecuteResponse.builder()
+                .planningReason("model_plan")
+                .execution(ToolCallingExecutionView.builder()
                         .success(true)
                         .toolName("sales.getOrder")
-                        .arguments(Map.of("orderNo", "SO-001"))
+                        .data(Map.of("orderNo", "SO-001", "status", "ALLOCATED"))
                         .latencyMs(8)
                         .build())
-                .answer("已根据你的问题调用工具 `sales.getOrder` 完成查询。")
+                .answer("已查询到销售订单 SO-001，状态 ALLOCATED。")
                 .latencyMs(12)
                 .build());
 
@@ -171,6 +173,9 @@ class AiToolCallingControllerTest {
                 .andExpect(jsonPath("$.data.runId").value("run-tool-chat-1"))
                 .andExpect(jsonPath("$.data.plannerMode").value("spring-ai"))
                 .andExpect(jsonPath("$.data.planningSource").value("spring-ai"))
-                .andExpect(jsonPath("$.data.selectedTool").value("sales.getOrder"));
+                .andExpect(jsonPath("$.data.selectedTool").value("sales.getOrder"))
+                .andExpect(jsonPath("$.data.execution.success").value(true))
+                .andExpect(jsonPath("$.data.execution.toolName").value("sales.getOrder"))
+                .andExpect(jsonPath("$.data.answer").value("已查询到销售订单 SO-001，状态 ALLOCATED。"));
     }
 }

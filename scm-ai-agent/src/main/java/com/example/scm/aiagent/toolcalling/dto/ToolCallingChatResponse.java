@@ -21,17 +21,20 @@ public class ToolCallingChatResponse {
     /** 本次规划来源，例如 requested、spring-ai、mock、mock-fallback。 */
     private String planningSource;
 
-    /** 是否发生了 mock fallback。 */
+    /** 是否发生 mock fallback。 */
     private boolean fallbackUsed;
 
-    /** 本次选中的工具名。 */
+    /** 本次选中的工具名称。 */
     private String selectedTool;
 
     /** 最终执行时使用的工具参数。 */
     private Map<String, Object> toolArguments;
 
-    /** 工具调用结果。 */
-    private ToolCallingExecuteResponse toolResponse;
+    /** 本次规划原因或备注。 */
+    private String planningReason;
+
+    /** 已压平的工具执行结果。 */
+    private ToolCallingExecutionView execution;
 
     /** 最终返回给用户的答案。 */
     private String answer;
