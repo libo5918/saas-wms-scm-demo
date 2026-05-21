@@ -25,10 +25,15 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tools.audit.mode", "in-memory")
                 .withProperty("ai.agent.tools.audit.max-records", "200")
                 .withProperty("ai.agent.tool-calling.planner-mode", "spring-ai")
+                .withProperty("ai.agent.tool-calling.answer-mode", "spring-ai")
                 .withProperty("ai.agent.tool-calling.spring-ai-planner.enabled", "true")
                 .withProperty("ai.agent.tool-calling.spring-ai-planner.fallback-to-mock", "false")
                 .withProperty("ai.agent.tool-calling.spring-ai-planner.max-retries", "2")
-                .withProperty("ai.agent.tool-calling.spring-ai-planner.task-type", "tool_calling");
+                .withProperty("ai.agent.tool-calling.spring-ai-planner.task-type", "tool_calling")
+                .withProperty("ai.agent.tool-calling.spring-ai-answer.enabled", "true")
+                .withProperty("ai.agent.tool-calling.spring-ai-answer.fallback-to-template", "true")
+                .withProperty("ai.agent.tool-calling.spring-ai-answer.max-retries", "3")
+                .withProperty("ai.agent.tool-calling.spring-ai-answer.task-type", "tool_calling_answer");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -44,9 +49,14 @@ class ToolAdapterPropertiesTest {
         assertEquals("in-memory", properties.getTools().getAudit().getMode());
         assertEquals(200, properties.getTools().getAudit().getMaxRecords());
         assertEquals("spring-ai", properties.getToolCalling().getPlannerMode());
+        assertEquals("spring-ai", properties.getToolCalling().getAnswerMode());
         assertTrue(properties.getToolCalling().getSpringAiPlanner().isEnabled());
         assertFalse(properties.getToolCalling().getSpringAiPlanner().isFallbackToMock());
         assertEquals(2, properties.getToolCalling().getSpringAiPlanner().getMaxRetries());
         assertEquals("tool_calling", properties.getToolCalling().getSpringAiPlanner().getTaskType());
+        assertTrue(properties.getToolCalling().getSpringAiAnswer().isEnabled());
+        assertTrue(properties.getToolCalling().getSpringAiAnswer().isFallbackToTemplate());
+        assertEquals(3, properties.getToolCalling().getSpringAiAnswer().getMaxRetries());
+        assertEquals("tool_calling_answer", properties.getToolCalling().getSpringAiAnswer().getTaskType());
     }
 }

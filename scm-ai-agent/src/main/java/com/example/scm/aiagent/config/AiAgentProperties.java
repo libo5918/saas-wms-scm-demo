@@ -339,8 +339,14 @@ public class AiAgentProperties {
         /** planner 模式，当前支持 mock 和 spring-ai。 */
         private String plannerMode = "mock";
 
+        /** answer 模式，当前支持 template 和 spring-ai。 */
+        private String answerMode = "template";
+
         /** Spring AI Planner 细分配置。 */
         private SpringAiPlannerProperties springAiPlanner = new SpringAiPlannerProperties();
+
+        /** Spring AI Answer 细分配置。 */
+        private SpringAiAnswerProperties springAiAnswer = new SpringAiAnswerProperties();
     }
 
     /** Spring AI Planner 配置。 */
@@ -354,10 +360,28 @@ public class AiAgentProperties {
         /** 真实模型规划失败时是否回退到 mock planner。 */
         private boolean fallbackToMock = true;
 
-        /** 规划最大重试次数。 */
+        /** 规划阶段最大重试次数。 */
         private int maxRetries = 1;
 
         /** 用于模型路由的任务类型。 */
         private String taskType = "tool_calling";
+    }
+
+    /** Spring AI Answer 配置。 */
+    @Getter
+    @Setter
+    public static class SpringAiAnswerProperties {
+
+        /** 是否启用真实 Spring AI 总结答案。 */
+        private boolean enabled = false;
+
+        /** 总结答案失败时是否回退到模板答案。 */
+        private boolean fallbackToTemplate = true;
+
+        /** 总结答案阶段最大重试次数。 */
+        private int maxRetries = 1;
+
+        /** 用于答案总结模型路由的任务类型。 */
+        private String taskType = "tool_calling_answer";
     }
 }

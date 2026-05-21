@@ -142,11 +142,17 @@ ai:
         max-records: ${AI_AGENT_TOOLS_AUDIT_MAX_RECORDS:500}
     tool-calling:
       planner-mode: ${AI_AGENT_TOOL_CALLING_PLANNER_MODE:mock}
+      answer-mode: ${AI_AGENT_TOOL_CALLING_ANSWER_MODE:template}
       spring-ai-planner:
         enabled: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_ENABLED:false}
         fallback-to-mock: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_FALLBACK_TO_MOCK:true}
         max-retries: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_MAX_RETRIES:1}
         task-type: ${AI_AGENT_TOOL_CALLING_SPRING_AI_PLANNER_TASK_TYPE:tool_calling}
+      spring-ai-answer:
+        enabled: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_ENABLED:false}
+        fallback-to-template: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_FALLBACK_TO_TEMPLATE:true}
+        max-retries: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_MAX_RETRIES:1}
+        task-type: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_TASK_TYPE:tool_calling_answer}
     providers:
       - name: mock
         type: mock
@@ -177,7 +183,7 @@ ai:
         cost-level: medium
         provider-modes: [mock, spring-ai]
         capabilities: [CHAT, RAG, TOOL_CALLING, STRUCTURED_OUTPUT]
-        task-types: [simple_chat, rag_qa, tool_calling]
+        task-types: [simple_chat, rag_qa, tool_calling, tool_calling_answer]
         fallback-models: [qwen-turbo, chatgpt-main]
         priority: 20
       - name: qwen-turbo
@@ -187,7 +193,7 @@ ai:
         cost-level: low
         provider-modes: [mock, spring-ai]
         capabilities: [CHAT, LOW_COST]
-        task-types: [summary]
+        task-types: [summary, tool_calling_answer]
         fallback-models: [chatgpt-main]
         priority: 10
       - name: chatgpt-main
@@ -197,7 +203,7 @@ ai:
         cost-level: high
         provider-modes: [mock, spring-ai]
         capabilities: [CHAT, TOOL_CALLING, STRUCTURED_OUTPUT, PLANNING, HIGH_QUALITY]
-        task-types: [workflow_planning, complex_reasoning]
+        task-types: [workflow_planning, complex_reasoning, tool_calling_answer]
         fallback-models: [qwen-plus, deepseek-chat]
         priority: 30
       - name: deepseek-chat

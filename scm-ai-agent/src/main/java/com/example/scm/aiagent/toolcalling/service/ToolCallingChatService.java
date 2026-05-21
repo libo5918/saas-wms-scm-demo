@@ -8,6 +8,7 @@ import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,8 +19,10 @@ import java.util.UUID;
 /**
  * Tool Calling Chat 应用服务。
  *
- * <p>当前阶段实现最小闭环：规划工具、执行工具、拼装回答，
- * 并支持 requestedTool、mock planner、spring-ai planner 三种入口。</p>
+ * <p>当前阶段实现三段式最小闭环：
+ * 1. 规划工具；
+ * 2. 执行工具；
+ * 3. 基于执行结果生成最终答案。</p>
  */
 @Slf4j
 @Service
@@ -29,18 +32,18 @@ public class ToolCallingChatService {
     private final MockToolPlanner mockToolPlanner;
     private final SpringAiToolPlanner springAiToolPlanner;
     private final SpringAiToolCallingService springAiToolCallingService;
-    private final ToolCallingAnswerBuilder toolCallingAnswerBuilder;
+    private final ToolCallingAnswerSummaryService answerSummaryService;
 
     public ToolCallingChatService(AiAgentProperties properties,
                                   MockToolPlanner mockToolPlanner,
                                   SpringAiToolPlanner springAiToolPlanner,
                                   SpringAiToolCallingService springAiToolCallingService,
-                                  ToolCallingAnswerBuilder toolCallingAnswerBuilder) {
+                                  ToolCallingAnswerSummaryService answerSummaryService) {
         this.properties = properties;
         this.mockToolPlanner = mockToolPlanner;
         this.springAiToolPlanner = springAiToolPlanner;
         this.springAiToolCallingService = springAiToolCallingService;
-        this.toolCallingAnswerBuilder = toolCallingAnswerBuilder;
+        this.answerSummaryService = answerSummaryService;
     }
 
     /**
@@ -53,8 +56,9 @@ public class ToolCallingChatService {
                 ? request.getPlannerMode()
                 : properties.getToolCalling().getPlannerMode();
 
-        log.info("AI tool calling chat request received, tenantId={}, userId={}, runId={}, plannerMode={}, requestedTool={}, messageLength={}",
-                context.tenantId(), context.userId(), runId, plannerMode, request.getRequestedTool(), safeLength(request.getMessage()));
+        log.info("AI tool calling chat request received, tenantId={}, userId={}, runId={}, plannerMode={}, requestedTool={}, answerMode={}, messageLength={}",
+                context.tenantId(), context.userId(), runId, plannerMode, request.getRequestedTool(),
+                properties.getToolCalling().getAnswerMode(), safeLength(request.getMessage()));
 
         ToolCallingPlan plan = resolvePlan(request, context, runId, plannerMode);
 
@@ -65,12 +69,14 @@ public class ToolCallingChatService {
 
         ToolCallingExecuteResponse executeResponse = springAiToolCallingService.execute(executeRequest, context);
         ToolCallingExecutionView execution = toExecutionView(executeResponse);
-        String answer = toolCallingAnswerBuilder.buildAnswer(plan, execution);
+        ToolCallingAnswerSummaryResult answerSummary = answerSummaryService.summarize(
+                request, context, plan, execution, runId);
 
         long latencyMs = elapsedMs(startedAt);
-        log.info("AI tool calling chat finished, tenantId={}, userId={}, runId={}, plannerMode={}, planningSource={}, fallbackUsed={}, selectedTool={}, success={}, latencyMs={}",
-                context.tenantId(), context.userId(), runId, plan.plannerMode(), plan.planningSource(),
-                plan.fallbackUsed(), plan.selectedTool(), execution.isSuccess(), latencyMs);
+        boolean fallbackUsed = plan.fallbackUsed() || answerSummary.fallbackUsed();
+        log.info("AI tool calling chat finished, tenantId={}, userId={}, runId={}, plannerMode={}, answerMode={}, planningSource={}, selectedTool={}, success={}, fallbackUsed={}, latencyMs={}",
+                context.tenantId(), context.userId(), runId, plan.plannerMode(), answerSummary.answerMode(),
+                plan.planningSource(), plan.selectedTool(), execution.isSuccess(), fallbackUsed, latencyMs);
 
         return ToolCallingChatResponse.builder()
                 .runId(runId)
@@ -81,13 +87,15 @@ public class ToolCallingChatService {
                 .toolArguments(plan.toolArguments())
                 .planningReason(plan.reason())
                 .execution(execution)
-                .answer(answer)
+                .answer(answerSummary.answer())
                 .latencyMs(latencyMs)
                 .build();
     }
 
-    private ToolCallingPlan resolvePlan(ToolCallingChatRequest request, AgentRequestContext context,
-                                        String runId, String plannerMode) {
+    private ToolCallingPlan resolvePlan(ToolCallingChatRequest request,
+                                        AgentRequestContext context,
+                                        String runId,
+                                        String plannerMode) {
         if (StringUtils.hasText(request.getRequestedTool())) {
             return mockToolPlanner.planRequestedTool(plannerMode, request.getRequestedTool(), request.getToolArguments());
         }
@@ -111,7 +119,7 @@ public class ToolCallingChatService {
     }
 
     /**
-     * 将底层 Tool Calling 执行结果压平成更适合 chat 接口展示的 execution 结构。
+     * 将底层 Tool Calling 执行结果压平为 chat 接口使用的 execution 结构。
      */
     private ToolCallingExecutionView toExecutionView(ToolCallingExecuteResponse executeResponse) {
         ToolResponse toolResponse = executeResponse.getToolResponse();

@@ -6,11 +6,12 @@ import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import com.example.scm.aiagent.toolcalling.service.MockToolPlanner;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolCallingService;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolPlanner;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerBuilder;
+import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerSummaryService;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingChatService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
@@ -34,6 +35,7 @@ class ToolCallingChatServiceTest {
 
     private SpringAiToolPlanner springAiToolPlanner;
     private SpringAiToolCallingService springAiToolCallingService;
+    private ToolCallingAnswerSummaryService answerSummaryService;
     private ToolCallingChatService service;
     private AgentRequestContext context;
 
@@ -41,16 +43,21 @@ class ToolCallingChatServiceTest {
     void setUp() {
         springAiToolPlanner = mock(SpringAiToolPlanner.class);
         springAiToolCallingService = mock(SpringAiToolCallingService.class);
+        answerSummaryService = mock(ToolCallingAnswerSummaryService.class);
+
         AiAgentProperties properties = new AiAgentProperties();
         properties.getToolCalling().setPlannerMode("spring-ai");
+        properties.getToolCalling().setAnswerMode("spring-ai");
         properties.getToolCalling().getSpringAiPlanner().setEnabled(true);
         properties.getToolCalling().getSpringAiPlanner().setFallbackToMock(true);
+
         service = new ToolCallingChatService(
                 properties,
                 new MockToolPlanner(),
                 springAiToolPlanner,
                 springAiToolCallingService,
-                new ToolCallingAnswerBuilder());
+                answerSummaryService
+        );
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
     }
 
@@ -64,17 +71,20 @@ class ToolCallingChatServiceTest {
                         .success(true)
                         .toolName("mdm.getMaterial")
                         .runId("run-chat-1")
-                        .data(Map.of(
-                                "materialCode", "MAT-001",
-                                "materialName", "标准零件",
-                                "status", "ENABLED"))
+                        .data(Map.of("materialCode", "MAT-001"))
                         .latencyMs(5)
                         .build())
                 .latencyMs(8)
                 .build());
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-1")))
+                .thenReturn(ToolCallingAnswerSummaryResult.builder()
+                        .answer("已查询到物料 MAT-001。")
+                        .answerMode("spring-ai")
+                        .fallbackUsed(false)
+                        .build());
 
         ToolCallingChatRequest request = new ToolCallingChatRequest();
-        request.setMessage("帮我查库存");
+        request.setMessage("帮我查物料");
         request.setRequestedTool("mdm.getMaterial");
         request.setToolArguments(Map.of("materialCode", "MAT-001"));
         request.setRunId("run-chat-1");
@@ -89,8 +99,9 @@ class ToolCallingChatServiceTest {
         assertEquals("MAT-001", response.getToolArguments().get("materialCode"));
         assertTrue(response.getExecution().isSuccess());
         assertEquals("mdm.getMaterial", response.getExecution().getToolName());
-        assertTrue(response.getAnswer().contains("标准零件"));
+        assertEquals("已查询到物料 MAT-001。", response.getAnswer());
         verify(springAiToolCallingService).execute(any(), eq(context));
+        verify(answerSummaryService).summarize(any(), eq(context), any(), any(), eq("run-chat-1"));
         verifyNoInteractions(springAiToolPlanner);
     }
 
@@ -112,15 +123,17 @@ class ToolCallingChatServiceTest {
                         .success(true)
                         .toolName("sales.getOrder")
                         .runId("run-chat-2")
-                        .data(Map.of(
-                                "orderNo", "SO-20260520-001",
-                                "status", "ALLOCATED",
-                                "customerName", "测试客户",
-                                "items", List.of(Map.of("materialId", 1001L, "qty", 10))))
+                        .data(Map.of("orderNo", "SO-20260520-001", "status", "ALLOCATED"))
                         .latencyMs(5)
                         .build())
                 .latencyMs(7)
                 .build());
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-2")))
+                .thenReturn(ToolCallingAnswerSummaryResult.builder()
+                        .answer("销售订单 SO-20260520-001 当前状态为 ALLOCATED。")
+                        .answerMode("spring-ai")
+                        .fallbackUsed(false)
+                        .build());
 
         ToolCallingChatRequest request = new ToolCallingChatRequest();
         request.setMessage("帮我查一下销售订单");
@@ -134,8 +147,8 @@ class ToolCallingChatServiceTest {
         assertEquals("sales.getOrder", response.getSelectedTool());
         assertFalse(response.isFallbackUsed());
         assertEquals("model_plan", response.getPlanningReason());
-        assertTrue(response.getAnswer().contains("销售订单"));
-        assertTrue(response.getAnswer().contains("测试客户"));
+        assertTrue(response.getExecution().isSuccess());
+        assertEquals("销售订单 SO-20260520-001 当前状态为 ALLOCATED。", response.getAnswer());
     }
 
     @Test
@@ -150,16 +163,17 @@ class ToolCallingChatServiceTest {
                         .success(true)
                         .toolName("inventory.getBalance")
                         .runId("run-chat-3")
-                        .data(Map.of(
-                                "materialId", 1001L,
-                                "warehouseId", 1L,
-                                "availableQty", 128,
-                                "lockedQty", 12,
-                                "unit", "PCS"))
+                        .data(Map.of("materialId", 1001L, "warehouseId", 1L, "availableQty", 128))
                         .latencyMs(5)
                         .build())
                 .latencyMs(6)
                 .build());
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-3")))
+                .thenReturn(ToolCallingAnswerSummaryResult.builder()
+                        .answer("库存可用数量为 128。")
+                        .answerMode("template")
+                        .fallbackUsed(true)
+                        .build());
 
         ToolCallingChatRequest request = new ToolCallingChatRequest();
         request.setMessage("帮我查库存");
@@ -171,11 +185,11 @@ class ToolCallingChatServiceTest {
         assertEquals("mock-fallback", response.getPlanningSource());
         assertTrue(response.isFallbackUsed());
         assertEquals("inventory.getBalance", response.getSelectedTool());
-        assertTrue(response.getAnswer().contains("库存余额"));
+        assertEquals("库存可用数量为 128。", response.getAnswer());
     }
 
     @Test
-    void shouldKeepFailureReasonInAnswer() {
+    void shouldKeepFailureExecutionStable() {
         when(springAiToolCallingService.execute(any(), eq(context))).thenReturn(ToolCallingExecuteResponse.builder()
                 .success(false)
                 .toolName("mdm.getMaterial")
@@ -190,6 +204,12 @@ class ToolCallingChatServiceTest {
                         .build())
                 .latencyMs(10)
                 .build());
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-4")))
+                .thenReturn(ToolCallingAnswerSummaryResult.builder()
+                        .answer("未查询到物料，原因是 MDM service failed: Material not found。")
+                        .answerMode("spring-ai")
+                        .fallbackUsed(false)
+                        .build());
 
         ToolCallingChatRequest request = new ToolCallingChatRequest();
         request.setRequestedTool("mdm.getMaterial");
@@ -201,6 +221,7 @@ class ToolCallingChatServiceTest {
 
         assertFalse(response.getExecution().isSuccess());
         assertEquals("404", response.getExecution().getErrorCode());
+        assertEquals("mdm.getMaterial", response.getExecution().getToolName());
         assertTrue(response.getAnswer().contains("Material not found"));
     }
 }

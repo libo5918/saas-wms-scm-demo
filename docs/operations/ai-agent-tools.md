@@ -998,11 +998,17 @@ ai:
   agent:
     tool-calling:
       planner-mode: spring-ai
+      answer-mode: spring-ai
       spring-ai-planner:
         enabled: true
         fallback-to-mock: false
         max-retries: 1
         task-type: tool_calling
+      spring-ai-answer:
+        enabled: true
+        fallback-to-template: true
+        max-retries: 1
+        task-type: tool_calling_answer
 ```
 
 说明：
@@ -1016,8 +1022,11 @@ ai:
 当前 [application-local.yml](E:/ideaProject/saas-wms-scm/scm-ai-agent/src/main/resources/application-local.yml) 已默认设置：
 
 - `ai.agent.tool-calling.planner-mode=spring-ai`
+- `ai.agent.tool-calling.answer-mode=spring-ai`
 - `ai.agent.tool-calling.spring-ai-planner.enabled=true`
 - `ai.agent.tool-calling.spring-ai-planner.fallback-to-mock=false`
+- `ai.agent.tool-calling.spring-ai-answer.enabled=true`
+- `ai.agent.tool-calling.spring-ai-answer.fallback-to-template=true`
 - `ai.agent.tools.adapter-mode=http`
 
 ### 16.8 gateway 18080 验证示例
@@ -1102,7 +1111,170 @@ Phase 4.6 的重点是把当前 Tool Calling Chat 从“能跑通”提升到“
 
 如果 Tool 执行失败，则保留明确失败原因，不吞掉下游错误。
 
-## 18. 当前阶段不做的事情
+## 18. Phase 4.7：Tool 执行后再由模型总结答案
+
+### 18.1 阶段目标
+
+Phase 4.7 的重点是在 Phase 4.6 已有 execution 结构稳定的前提下，引入“第二阶段模型总结答案”：
+
+- 第一阶段：模型规划 Tool
+- 第二阶段：服务端执行 Tool
+- 第三阶段：模型基于 Tool 执行结果总结最终 answer
+
+这样可以让 `/api/v1/ai/tool-calling/chat` 的最终回答从“模板增强”升级成“真实模型总结 + 结构化执行结果”的闭环。
+
+### 18.2 answer-mode 设计
+
+当前支持两种 answer-mode：
+
+| answer-mode | 说明 |
+| --- | --- |
+| `template` | 直接复用服务端模板回答，不依赖第二次模型总结 |
+| `spring-ai` | Tool 执行后再次调用真实模型，根据 execution 结果总结最终中文答案 |
+
+当前本地 [application-local.yml](E:/ideaProject/saas-wms-scm/scm-ai-agent/src/main/resources/application-local.yml) 默认使用：
+
+- `ai.agent.tool-calling.answer-mode=spring-ai`
+- `ai.agent.tool-calling.spring-ai-answer.enabled=true`
+- `ai.agent.tool-calling.spring-ai-answer.fallback-to-template=true`
+- `ai.agent.tool-calling.spring-ai-answer.task-type=tool_calling_answer`
+
+### 18.3 二阶段回答生成设计
+
+当前主链路关系如下：
+
+- `SpringAiToolPlanner`
+  - 负责第一阶段工具规划
+- `SpringAiToolCallingService`
+  - 负责第二阶段工具执行
+- `ToolCallingAnswerSummaryService`
+  - 负责第三阶段最终答案生成
+- `ToolCallingAnswerPromptBuilder`
+  - 负责构造“工具执行结果总结”提示词
+- `ToolCallingAnswerBuilder`
+  - 作为模板回答兜底
+
+第二阶段模型总结时，输入上下文至少包含：
+
+- 用户原始问题
+- `selectedTool`
+- `toolArguments`
+- `execution.success`
+- `execution.data`
+- `execution.errorCode`
+- `execution.errorMessage`
+
+### 18.4 fallback 策略
+
+当前运行时策略：
+
+- 如果 `answer-mode=template`
+  - 直接走模板回答
+- 如果 `answer-mode=spring-ai`
+  - 优先尝试真实模型总结
+  - 如果模型总结失败，且 `fallback-to-template=true`
+    - 回退到模板回答
+  - 如果模型总结失败，且 `fallback-to-template=false`
+    - 直接抛出错误，暴露真实问题
+
+### 18.5 execution 结构保持稳定
+
+Phase 4.7 不改变 `execution` 结构，仍然保持：
+
+- `success`
+- `toolName`
+- `errorCode`
+- `errorMessage`
+- `data`
+- `latencyMs`
+
+也就是说，前端或联调脚本即使切换了 `answer-mode`，也不需要改 `execution` 解析逻辑。
+
+### 18.6 gateway 18080 验证示例
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查物料 MAT-001",
+  "runId": "run-tool-chat-phase47-001",
+  "plannerMode": "spring-ai"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase47-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "mdm.getMaterial",
+    "execution": {
+      "success": true,
+      "toolName": "mdm.getMaterial"
+    },
+    "answer": "这里会是模型基于物料查询结果生成的中文回答"
+  }
+}
+```
+
+失败场景示例：
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查物料 MAT-404",
+  "runId": "run-tool-chat-phase47-002",
+  "plannerMode": "spring-ai",
+  "requestedTool": "mdm.getMaterial",
+  "toolArguments": {
+    "materialCode": "MAT-404"
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "selectedTool": "mdm.getMaterial",
+    "execution": {
+      "success": false,
+      "toolName": "mdm.getMaterial",
+      "errorCode": "404",
+      "errorMessage": "MDM service failed: Material not found"
+    },
+    "answer": "这里会是模型或模板基于失败原因生成的中文说明"
+  }
+}
+```
+
+### 18.7 当前边界
+
+本阶段仍然不实现：
+
+- 多轮 Tool Calling
+- 多 Tool 自动编排
+- MCP Server
+- Workflow
+- Multi-Agent
+- 长任务编排
+
+## 19. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1115,12 +1287,12 @@ Phase 4.6 的重点是把当前 Tool Calling Chat 从“能跑通”提升到“
 - 长任务编排
 - Tool 审计 MySQL 持久化
 
-## 19. 后续建议
+## 20. 后续建议
 
-Phase 4.7 可以继续往下面推进：
+Phase 4.8 可以继续往下面推进：
 
-- 把 Tool Planning 进一步升级成真实多轮 Tool Calling
-- 在 Tool 执行后增加二次模型总结，让回答更自然
+- 把 Tool 执行结果进一步收敛成统一展示 schema
+- 引入更细的 answer prompt 策略，按工具类型优化模型总结质量
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略

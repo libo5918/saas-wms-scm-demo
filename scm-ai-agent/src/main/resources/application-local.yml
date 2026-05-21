@@ -78,7 +78,7 @@ ai:
         max-context-chunks: 5
         max-context-chunk-length: 1200
     tools:
-      # local profile 当前默认联调真实服务；如只想本地 mock，可改回 mock。
+      # local profile 默认联调真实业务服务；如只想本地 mock，可改回 mock。
       adapter-mode: http
       http:
         inventory-base-url: http://localhost:18084
@@ -93,8 +93,14 @@ ai:
     tool-calling:
       # local profile 默认走真实 Spring AI Planner，而不是 mock planner。
       planner-mode: spring-ai
+      answer-mode: spring-ai
       spring-ai-planner:
         enabled: true
         fallback-to-mock: false
         max-retries: 1
         task-type: tool_calling
+      spring-ai-answer:
+        enabled: true
+        fallback-to-template: true
+        max-retries: 1
+        task-type: tool_calling_answer
