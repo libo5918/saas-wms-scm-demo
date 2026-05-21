@@ -6,6 +6,7 @@ import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.tool.model.ToolRequest;
 import com.example.scm.aiagent.tool.spi.ToolExecutor;
 import com.example.scm.common.core.CommonErrorCode;
@@ -27,13 +28,19 @@ public class ToolInvocationService {
 
     private final ToolRegistry toolRegistry;
     private final ToolInvocationAuditService toolInvocationAuditService;
+    private final ToolPermissionService toolPermissionService;
+    private final ToolRuntimeProtectionService runtimeProtectionService;
     private final AiAgentProperties aiAgentProperties;
 
     public ToolInvocationService(ToolRegistry toolRegistry,
                                  ToolInvocationAuditService toolInvocationAuditService,
+                                 ToolPermissionService toolPermissionService,
+                                 ToolRuntimeProtectionService runtimeProtectionService,
                                  AiAgentProperties aiAgentProperties) {
         this.toolRegistry = toolRegistry;
         this.toolInvocationAuditService = toolInvocationAuditService;
+        this.toolPermissionService = toolPermissionService;
+        this.runtimeProtectionService = runtimeProtectionService;
         this.aiAgentProperties = aiAgentProperties;
     }
 
@@ -85,16 +92,38 @@ public class ToolInvocationService {
                     .build();
         }
 
+        ToolDefinition definition = executor.definition();
+        ToolPermissionService.ToolPermissionDecision permissionDecision =
+                toolPermissionService.authorize(definition, context);
+        if (!permissionDecision.allowed()) {
+            long latencyMs = elapsedMs(startedAt);
+            log.warn("AI tool permission denied, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, permissionDecision={}, routeTags={}, latencyMs={}",
+                    context.tenantId(), context.userId(), runId, toolName, adapterMode, permissionDecision.reason(),
+                    definition.getRouteTags(), latencyMs);
+            toolInvocationAuditService.record(context, runId, toolName, adapterMode, false,
+                    CommonErrorCode.FORBIDDEN.code(), latencyMs);
+            return ToolResponse.builder()
+                    .success(false)
+                    .toolName(toolName)
+                    .runId(runId)
+                    .errorCode(CommonErrorCode.FORBIDDEN.code())
+                    .errorMessage("Tool permission denied: " + permissionDecision.reason())
+                    .latencyMs(latencyMs)
+                    .build();
+        }
+
         try {
-            Object data = executor.execute(ToolRequest.builder()
+            ToolRequest toolRequest = ToolRequest.builder()
                     .runId(runId)
                     .toolName(toolName)
                     .context(context)
                     .parameters(request.getParameters() == null ? Map.of() : request.getParameters())
-                    .build());
+                    .build();
+            Object data = runtimeProtectionService.execute(toolName, () -> executor.execute(toolRequest));
             long latencyMs = elapsedMs(startedAt);
-            log.info("AI tool invoked, tenantId={}, userId={}, runId={}, toolName={}, success=true, latencyMs={}",
-                    context.tenantId(), context.userId(), runId, toolName, latencyMs);
+            log.info("AI tool invoked, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=true, permissionDecision={}, routeTags={}, timeoutMs={}, latencyMs={}",
+                    context.tenantId(), context.userId(), runId, toolName, adapterMode, permissionDecision.reason(),
+                    definition.getRouteTags(), aiAgentProperties.getTools().getRuntime().getTimeoutMs(), latencyMs);
             toolInvocationAuditService.record(context, runId, toolName, adapterMode, true, null, latencyMs);
             return ToolResponse.builder()
                     .success(true)
@@ -105,8 +134,10 @@ public class ToolInvocationService {
                     .build();
         } catch (RuntimeException ex) {
             long latencyMs = elapsedMs(startedAt);
-            log.warn("AI tool invoke failed, tenantId={}, userId={}, runId={}, toolName={}, success=false, errorType={}, latencyMs={}",
-                    context.tenantId(), context.userId(), runId, toolName, ex.getClass().getSimpleName(), latencyMs);
+            log.warn("AI tool invoke failed, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=false, errorType={}, permissionDecision={}, routeTags={}, timeoutMs={}, latencyMs={}",
+                    context.tenantId(), context.userId(), runId, toolName, adapterMode, ex.getClass().getSimpleName(),
+                    permissionDecision.reason(), definition.getRouteTags(),
+                    aiAgentProperties.getTools().getRuntime().getTimeoutMs(), latencyMs);
             toolInvocationAuditService.record(context, runId, toolName, adapterMode, false,
                     CommonErrorCode.BAD_REQUEST.code(), latencyMs);
             return ToolResponse.builder()

@@ -1562,7 +1562,191 @@ Content-Type: application/json
 
 后续新增类优先放入对应职责包；只有跨多个子域的应用编排逻辑才放入 `toolcalling.application`。
 
-## 21. 当前阶段不做的事情
+## 21. Phase 4.10：Tool 权限标签、路由标签与运行时保护
+
+### 21.1 阶段目标
+
+Phase 4.10 在 Phase 4.9 的 answer prompt strategy 和 Tool audit MySQL 持久化基础上，继续增强 Tool Calling Chat 的工程治理能力：
+
+- 为 ToolDefinition 增加权限标签和租户/用户作用域标记
+- 为 ToolDefinition 增加 domain、category、routeTags 等路由元数据
+- 在 ToolInvocationService 主链路增加权限校验
+- 增加 Tool runtime timeout / retry / 轻量熔断预留配置
+- 保持 `/api/v1/ai/tool-calling/chat` 顶层返回字段和 `execution` 顶层字段不变
+
+本阶段仍然只治理只读 Tool，不新增写操作 Tool，不实现 MCP、Workflow、Multi-Agent、长任务编排、多轮 Tool Calling 或多 Tool 自动编排。
+
+### 21.2 Tool 权限标签设计
+
+当前 ToolDefinition 已增加以下治理字段：
+
+- `requiredPermissions`
+- `requiredRoles`
+- `tenantScoped`
+- `userScoped`
+
+当前只读 Tool 默认携带通用权限和业务域权限：
+
+| Tool | requiredPermissions |
+| --- | --- |
+| `mdm.getMaterial` | `ai.tool.read`, `ai.tool.mdm.read` |
+| `mdm.getWarehouse` | `ai.tool.read`, `ai.tool.mdm.read` |
+| `inventory.getBalance` | `ai.tool.read`, `ai.tool.inventory.read` |
+| `sales.getOrder` | `ai.tool.read`, `ai.tool.sales.read` |
+| `purchase.getOrder` | `ai.tool.read`, `ai.tool.purchase.read` |
+
+权限校验由 `ToolPermissionService` 负责。默认配置保持本地只读联调放行；开启严格模式后，会基于 `AgentRequestContext.roles` 中的角色/权限标签判断是否允许执行。
+
+权限失败时：
+
+- 不执行真实 Tool
+- 返回稳定的 ToolResponse 失败结构
+- `errorCode=403`
+- `errorMessage` 保留权限不足语义
+- 继续写入 Tool audit
+
+### 21.3 Tool 路由标签设计
+
+当前 ToolDefinition 已增加：
+
+- `domain`
+- `category`
+- `routeTags`
+- `adapterMode`
+- `readOnly`
+
+`routeTags` 主要服务后续 Orchestrator / 多轮 Tool Calling 的工具分流，不改变当前 Planner 输出格式。Tool schema 暴露给模型时仅包含安全的 `domain`、`category`、`readOnly`、`routeTags` 等信息，不暴露内部 URL、token、密钥或敏感请求头。
+
+### 21.4 runtime 保护策略
+
+当前新增配置：
+
+```yaml
+ai:
+  agent:
+    tools:
+      runtime:
+        timeout-ms: 5000
+        retry-enabled: true
+        max-retries: 1
+        circuit-breaker-enabled: false
+        failure-threshold: 5
+        open-duration-ms: 30000
+```
+
+Phase 4.10 已实现：
+
+- `timeout-ms` 配置绑定与日志记录
+- `retry-enabled` / `max-retries` 配置绑定
+- 对 `ToolClientException` 的最小 retry 封装
+- 非可重试 RuntimeException 不重复执行
+- 轻量熔断配置预留，不引入复杂第三方依赖
+
+runtime 失败不改变 ToolResponse / execution 顶层结构，并继续写入 Tool audit。
+
+### 21.5 权限配置示例
+
+默认本地联调配置：
+
+```yaml
+ai:
+  agent:
+    tools:
+      access-control:
+        strict-enabled: false
+        default-allow-read-only: true
+        admin-roles:
+          - ROLE_ADMIN
+```
+
+严格权限校验示例：
+
+```yaml
+ai:
+  agent:
+    tools:
+      access-control:
+        strict-enabled: true
+        default-allow-read-only: false
+        admin-roles:
+          - ROLE_ADMIN
+```
+
+严格模式下，调用上下文需要包含对应权限标签，例如 `ai.tool.inventory.read` 或管理员角色 `ROLE_ADMIN`。
+
+### 21.6 gateway 18080 验证示例
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查库存，物料 1001 在仓库 1 的余额",
+  "runId": "run-tool-chat-phase410-001",
+  "plannerMode": "spring-ai"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase410-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "errorCode": null,
+      "errorMessage": null,
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "displayFields": [],
+        "displayItems": [],
+        "rawData": {}
+      },
+      "latencyMs": 0
+    },
+    "answer": "模型基于展示 schema 和原始数据生成的中文回答"
+  }
+}
+```
+
+严格权限校验开启且权限不足时，关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": false,
+      "toolName": "inventory.getBalance",
+      "errorCode": "403",
+      "errorMessage": "Tool permission denied: missing_permission",
+      "data": null
+    }
+  }
+}
+```
+
+### 21.7 后续升级方向
+
+Phase 4.11 可以在当前治理元数据基础上继续推进：
+
+- Orchestrator 使用 `domain/category/routeTags` 做工具候选集过滤
+- 在多轮 Tool Calling 中复用权限校验和 runtime 保护
+- 将轻量熔断配置升级为可观测状态和半开探测
+- 增加更细粒度的 Tool policy 和租户级策略
+
+## 22. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1574,10 +1758,10 @@ Content-Type: application/json
 - Multi-Agent
 - 长任务编排
 
-## 22. 后续建议
+## 23. 后续建议
 
-Phase 4.10 可以继续往下面推进：
+Phase 4.11 可以继续往下面推进：
 
-- 给 Tool 增加权限标签和路由标签
-- 增加 Tool 超时、重试和熔断策略
+- 基于 routeTags 做 Orchestrator 工具候选集过滤
+- 增加 Tool runtime 保护的状态查询和熔断半开探测
 

@@ -293,6 +293,12 @@ public class AiAgentProperties {
 
         /** Tool 调用审计配置。 */
         private AuditProperties audit = new AuditProperties();
+
+        /** Tool 权限治理配置。 */
+        private AccessControlProperties accessControl = new AccessControlProperties();
+
+        /** Tool 运行时保护配置。 */
+        private RuntimeProperties runtime = new RuntimeProperties();
     }
 
     /** Tool HTTP 客户端配置。 */
@@ -329,6 +335,45 @@ public class AiAgentProperties {
 
         /** 内存模式下最多保留的审计记录数。 */
         private int maxRecords = 500;
+    }
+
+    /** Tool 权限治理配置。 */
+    @Getter
+    @Setter
+    public static class AccessControlProperties {
+
+        /** 是否开启严格权限校验；默认关闭，避免影响本地只读联调。 */
+        private boolean strictEnabled = false;
+
+        /** 严格模式关闭时，是否默认放行只读 Tool。 */
+        private boolean defaultAllowReadOnly = true;
+
+        /** 可绕过权限标签校验的管理员角色。 */
+        private List<String> adminRoles = new ArrayList<>(List.of("ROLE_ADMIN"));
+    }
+
+    /** Tool 运行时保护配置。 */
+    @Getter
+    @Setter
+    public static class RuntimeProperties {
+
+        /** 单次 Tool 执行超时阈值，当前用于日志和超时语义保护。 */
+        private long timeoutMs = 5000;
+
+        /** 是否对可重试异常执行重试。 */
+        private boolean retryEnabled = true;
+
+        /** 可重试异常的最大重试次数，不包含首次调用。 */
+        private int maxRetries = 1;
+
+        /** 是否开启轻量熔断；Phase 4.10 仅完成配置预留。 */
+        private boolean circuitBreakerEnabled = false;
+
+        /** 轻量熔断失败阈值；Phase 4.10 仅完成配置预留。 */
+        private int failureThreshold = 5;
+
+        /** 熔断打开时长；Phase 4.10 仅完成配置预留。 */
+        private long openDurationMs = 30000;
     }
 
     /** Tool Calling Chat 配置。 */

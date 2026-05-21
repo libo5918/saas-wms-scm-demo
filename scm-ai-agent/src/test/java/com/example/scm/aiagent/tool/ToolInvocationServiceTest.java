@@ -17,6 +17,8 @@ import com.example.scm.aiagent.tool.executor.SalesOrderToolExecutor;
 import com.example.scm.aiagent.tool.executor.WarehouseInfoToolExecutor;
 import com.example.scm.aiagent.tool.service.ToolInvocationAuditService;
 import com.example.scm.aiagent.tool.service.ToolInvocationService;
+import com.example.scm.aiagent.tool.service.ToolPermissionService;
+import com.example.scm.aiagent.tool.service.ToolRuntimeProtectionService;
 import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.tool.store.InMemoryToolInvocationAuditStore;
 import com.example.scm.aiagent.tool.spi.ToolExecutor;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,15 +79,25 @@ class ToolInvocationServiceTest {
         assertEquals(5, response.getToolCount());
         assertTrue(response.getTools().stream().allMatch(tool -> tool.isReadOnly()));
         assertTrue(response.getTools().stream().anyMatch(tool -> "mdm.getMaterial".equals(tool.getName())));
+        assertTrue(response.getTools().stream()
+                .filter(tool -> "mdm.getMaterial".equals(tool.getName()))
+                .allMatch(tool -> tool.getRequiredPermissions().contains("ai.tool.mdm.read")
+                        && tool.getRouteTags().contains("mdm")));
+        assertTrue(response.getTools().stream()
+                .filter(tool -> "inventory.getBalance".equals(tool.getName()))
+                .allMatch(tool -> tool.getRequiredPermissions().contains("ai.tool.inventory.read")
+                        && tool.getRouteTags().contains("inventory")));
     }
 
     @Test
     void shouldReturnFailureWhenToolClientThrowsException() {
+        AiAgentProperties properties = new AiAgentProperties();
         ToolInvocationService service = new ToolInvocationService(new ToolRegistry(List.of(
                 new InventoryBalanceToolExecutor(request -> {
                     throw new ToolClientException("Inventory service call failed");
                 })
-        )), new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(new AiAgentProperties()), new AiAgentProperties()), new AiAgentProperties());
+        )), new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties), properties),
+                new ToolPermissionService(properties), new ToolRuntimeProtectionService(properties), properties);
         AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         ToolInvokeRequest request = new ToolInvokeRequest();
         request.setToolName("inventory.getBalance");
@@ -97,6 +110,57 @@ class ToolInvocationServiceTest {
         assertEquals(1, service.listInvocations(context, "inventory.getBalance", response.getRunId(), 10).getCount());
     }
 
+    @Test
+    void shouldDenyPermissionAndWriteAuditWithoutExecutingTool() {
+        AiAgentProperties properties = new AiAgentProperties();
+        properties.getTools().getAccessControl().setStrictEnabled(true);
+        properties.getTools().getAccessControl().setAdminRoles(List.of());
+        ToolInvocationAuditService auditService = new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties), properties);
+        AtomicInteger executions = new AtomicInteger();
+        ToolInvocationService service = new ToolInvocationService(new ToolRegistry(List.of(
+                new InventoryBalanceToolExecutor(request -> {
+                    executions.incrementAndGet();
+                    return Map.of();
+                })
+        )), auditService, new ToolPermissionService(properties), new ToolRuntimeProtectionService(properties), properties);
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "user", List.of("ai.tool.sales.read"));
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setToolName("inventory.getBalance");
+        request.setParameters(Map.of("materialId", 1001L, "warehouseId", 1L));
+
+        ToolResponse response = service.invoke(request, context);
+
+        assertFalse(response.isSuccess());
+        assertEquals("403", response.getErrorCode());
+        assertEquals(0, executions.get());
+        assertEquals(1, service.listInvocations(context, "inventory.getBalance", response.getRunId(), 10).getCount());
+    }
+
+    @Test
+    void shouldRetryRetryableToolFailureBeforeReturningSuccess() {
+        AiAgentProperties properties = new AiAgentProperties();
+        properties.getTools().getRuntime().setMaxRetries(1);
+        ToolInvocationAuditService auditService = new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties), properties);
+        AtomicInteger executions = new AtomicInteger();
+        ToolInvocationService service = new ToolInvocationService(new ToolRegistry(List.of(
+                new InventoryBalanceToolExecutor(request -> {
+                    if (executions.incrementAndGet() == 1) {
+                        throw new ToolClientException("temporary failure");
+                    }
+                    return Map.of("availableQty", 10);
+                })
+        )), auditService, new ToolPermissionService(properties), new ToolRuntimeProtectionService(properties), properties);
+        AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setToolName("inventory.getBalance");
+        request.setParameters(Map.of("materialId", 1001L, "warehouseId", 1L));
+
+        ToolResponse response = service.invoke(request, context);
+
+        assertTrue(response.isSuccess());
+        assertEquals(2, executions.get());
+    }
+
     private ToolInvocationService createService() {
         AiAgentProperties properties = new AiAgentProperties();
         ToolInvocationAuditService auditService = new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties), properties);
@@ -107,6 +171,7 @@ class ToolInvocationServiceTest {
                 new PurchaseOrderToolExecutor(new MockPurchaseToolClient()),
                 new WarehouseInfoToolExecutor(new MockWarehouseToolClient())
         );
-        return new ToolInvocationService(new ToolRegistry(executors), auditService, properties);
+        return new ToolInvocationService(new ToolRegistry(executors), auditService,
+                new ToolPermissionService(properties), new ToolRuntimeProtectionService(properties), properties);
     }
 }
