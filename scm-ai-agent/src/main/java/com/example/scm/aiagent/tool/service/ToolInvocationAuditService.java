@@ -1,5 +1,6 @@
 package com.example.scm.aiagent.tool.service;
 
+import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.model.ToolInvocationAuditRecord;
@@ -17,9 +18,12 @@ import java.time.Instant;
 public class ToolInvocationAuditService {
 
     private final ToolInvocationAuditStore toolInvocationAuditStore;
+    private final AiAgentProperties properties;
 
-    public ToolInvocationAuditService(ToolInvocationAuditStore toolInvocationAuditStore) {
+    public ToolInvocationAuditService(ToolInvocationAuditStore toolInvocationAuditStore,
+                                      AiAgentProperties properties) {
         this.toolInvocationAuditStore = toolInvocationAuditStore;
+        this.properties = properties;
     }
 
     /**
@@ -39,8 +43,9 @@ public class ToolInvocationAuditService {
                 .createdAt(Instant.now())
                 .build();
         toolInvocationAuditStore.save(record);
-        log.info("AI tool audit recorded, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success={}, latencyMs={}",
-                context.tenantId(), context.userId(), runId, toolName, adapterMode, success, latencyMs);
+        log.info("AI tool audit recorded, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success={}, errorCode={}, latencyMs={}, auditMode={}",
+                context.tenantId(), context.userId(), runId, toolName, adapterMode, success, errorCode,
+                latencyMs, properties.getTools().getAudit().getMode());
     }
 
     /**

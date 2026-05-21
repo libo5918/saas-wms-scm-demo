@@ -59,4 +59,28 @@ class ToolAdapterPropertiesTest {
         assertEquals(3, properties.getToolCalling().getSpringAiAnswer().getMaxRetries());
         assertEquals("tool_calling_answer", properties.getToolCalling().getSpringAiAnswer().getTaskType());
     }
+
+    @Test
+    void shouldDefaultAuditModeToInMemory() {
+        AiAgentProperties properties = Binder.get(new MockEnvironment())
+                .bind("ai.agent", Bindable.of(AiAgentProperties.class))
+                .orElseGet(AiAgentProperties::new);
+
+        assertEquals("in-memory", properties.getTools().getAudit().getMode());
+        assertEquals(500, properties.getTools().getAudit().getMaxRecords());
+    }
+
+    @Test
+    void shouldBindMysqlAuditMode() {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("ai.agent.tools.audit.mode", "mysql")
+                .withProperty("ai.agent.tools.audit.max-records", "300");
+
+        AiAgentProperties properties = Binder.get(environment)
+                .bind("ai.agent", Bindable.of(AiAgentProperties.class))
+                .get();
+
+        assertEquals("mysql", properties.getTools().getAudit().getMode());
+        assertEquals(300, properties.getTools().getAudit().getMaxRecords());
+    }
 }

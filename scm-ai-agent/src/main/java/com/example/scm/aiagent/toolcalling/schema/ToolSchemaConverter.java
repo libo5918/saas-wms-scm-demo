@@ -1,4 +1,4 @@
-package com.example.scm.aiagent.toolcalling.service;
+package com.example.scm.aiagent.toolcalling.schema;
 
 import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;

@@ -88,7 +88,7 @@ ai:
         connect-timeout-ms: 3000
         read-timeout-ms: 5000
       audit:
-        mode: in-memory
+        mode: mysql
         max-records: 500
     tool-calling:
       # local profile 默认走真实 Spring AI Planner，而不是 mock planner。

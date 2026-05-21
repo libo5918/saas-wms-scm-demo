@@ -11,10 +11,12 @@ import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerBuilder;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerPromptBuilder;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerSummaryService;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingDisplaySchemaBuilder;
+import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerBuilder;
+import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerPromptBuilder;
+import com.example.scm.aiagent.toolcalling.answer.strategy.ToolCallingAnswerPromptStrategy;
+import com.example.scm.aiagent.toolcalling.answer.strategy.ToolCallingAnswerPromptStrategyRegistry;
+import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryService;
+import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +55,7 @@ class ToolCallingAnswerSummaryServiceTest {
                 modelRouter,
                 chatModelClient,
                 new ToolCallingAnswerBuilder(),
-                new ToolCallingAnswerPromptBuilder(new ObjectMapper())
+                new ToolCallingAnswerPromptBuilder(new ObjectMapper(), promptStrategyRegistry())
         );
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         plan = ToolCallingPlan.builder()
@@ -161,5 +163,20 @@ class ToolCallingAnswerSummaryServiceTest {
         } catch (Exception ex) {
             assertTrue(ex.getMessage().contains("Spring AI answer summary is disabled"));
         }
+    }
+
+    private ToolCallingAnswerPromptStrategyRegistry promptStrategyRegistry() {
+        ToolCallingAnswerPromptStrategy materialStrategy = new ToolCallingAnswerPromptStrategy() {
+            @Override
+            public boolean supports(String toolName) {
+                return "mdm.getMaterial".equals(toolName);
+            }
+
+            @Override
+            public String instructions() {
+                return "物料查询结果：优先说明物料编码、物料名称、状态、单位和分类。";
+            }
+        };
+        return new ToolCallingAnswerPromptStrategyRegistry(List.of(materialStrategy));
     }
 }

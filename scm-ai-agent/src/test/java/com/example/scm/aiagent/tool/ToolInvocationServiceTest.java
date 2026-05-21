@@ -84,7 +84,7 @@ class ToolInvocationServiceTest {
                 new InventoryBalanceToolExecutor(request -> {
                     throw new ToolClientException("Inventory service call failed");
                 })
-        )), new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(new AiAgentProperties())), new AiAgentProperties());
+        )), new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(new AiAgentProperties()), new AiAgentProperties()), new AiAgentProperties());
         AgentRequestContext context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         ToolInvokeRequest request = new ToolInvokeRequest();
         request.setToolName("inventory.getBalance");
@@ -99,7 +99,7 @@ class ToolInvocationServiceTest {
 
     private ToolInvocationService createService() {
         AiAgentProperties properties = new AiAgentProperties();
-        ToolInvocationAuditService auditService = new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties));
+        ToolInvocationAuditService auditService = new ToolInvocationAuditService(new InMemoryToolInvocationAuditStore(properties), properties);
         List<ToolExecutor> executors = List.of(
                 new InventoryBalanceToolExecutor(new MockInventoryToolClient()),
                 new MaterialInfoToolExecutor(new MockMdmToolClient()),

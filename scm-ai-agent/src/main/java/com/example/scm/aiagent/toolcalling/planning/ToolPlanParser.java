@@ -1,4 +1,4 @@
-package com.example.scm.aiagent.toolcalling.service;
+package com.example.scm.aiagent.toolcalling.planning;
 
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import com.example.scm.common.core.BusinessException;

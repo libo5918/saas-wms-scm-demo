@@ -1,4 +1,4 @@
-package com.example.scm.aiagent.toolcalling.service;
+package com.example.scm.aiagent.toolcalling.application;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
@@ -11,6 +11,7 @@ import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
+import com.example.scm.aiagent.toolcalling.schema.ToolSchemaConverter;
 import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

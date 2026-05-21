@@ -1,7 +1,7 @@
 package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
-import com.example.scm.aiagent.toolcalling.service.ToolCallingDisplaySchemaBuilder;
+import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

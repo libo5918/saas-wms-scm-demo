@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.scm.aiagent.tool.persistence.mapper.ToolInvocationAuditMapper">
+
+    <resultMap id="auditResultMap" type="com.example.scm.aiagent.tool.persistence.po.ToolInvocationAuditPO">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="runId" column="run_id"/>
+        <result property="toolName" column="tool_name"/>
+        <result property="adapterMode" column="adapter_mode"/>
+        <result property="success" column="success"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="latencyMs" column="latency_ms"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.scm.aiagent.tool.persistence.po.ToolInvocationAuditPO">
+        INSERT INTO tool_invocation_audit(
+            tenant_id, user_id, run_id, tool_name, adapter_mode, success, error_code, latency_ms, created_at
+        ) VALUES (
+            #{tenantId}, #{userId}, #{runId}, #{toolName}, #{adapterMode}, #{success}, #{errorCode}, #{latencyMs}, #{createdAt}
+        )
+    </insert>
+
+    <select id="selectRecent" resultMap="auditResultMap">
+        SELECT id, tenant_id, user_id, run_id, tool_name, adapter_mode, success, error_code, latency_ms, created_at
+        FROM tool_invocation_audit
+        WHERE tenant_id = #{tenantId}
+        <if test="toolName != null and toolName != ''">
+          AND tool_name = #{toolName}
+        </if>
+        <if test="runId != null and runId != ''">
+          AND run_id = #{runId}
+        </if>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

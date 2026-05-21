@@ -2,7 +2,7 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;
-import com.example.scm.aiagent.toolcalling.service.ToolSchemaConverter;
+import com.example.scm.aiagent.toolcalling.schema.ToolSchemaConverter;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

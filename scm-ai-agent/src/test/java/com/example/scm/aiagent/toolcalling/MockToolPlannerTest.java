@@ -2,7 +2,7 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
-import com.example.scm.aiagent.toolcalling.service.MockToolPlanner;
+import com.example.scm.aiagent.toolcalling.planning.MockToolPlanner;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

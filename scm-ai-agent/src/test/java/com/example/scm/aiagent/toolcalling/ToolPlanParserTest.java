@@ -1,7 +1,7 @@
 package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
-import com.example.scm.aiagent.toolcalling.service.ToolPlanParser;
+import com.example.scm.aiagent.toolcalling.planning.ToolPlanParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 

@@ -2,11 +2,13 @@ package com.example.scm.aiagent.rag;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.config.RagRegistryMysqlDataSourceConfiguration;
+import com.example.scm.aiagent.config.ToolAuditMysqlDataSourceConfiguration;
 import com.example.scm.aiagent.rag.persistence.mapper.RagDocumentRegistryMapper;
 import com.example.scm.aiagent.rag.service.InMemoryRagDocumentRegistry;
 import com.example.scm.aiagent.rag.service.MysqlRagDocumentRegistry;
 import com.example.scm.aiagent.rag.service.RagDocumentRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +17,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.mybatis.spring.SqlSessionTemplate;
 
 import javax.sql.DataSource;
 
@@ -86,6 +89,23 @@ class RagRegistryConfigurationSmokeTest {
                 .run(context -> assertEquals(1, context.getBeanNamesForType(DataSource.class).length));
     }
 
+    @Test
+    void shouldStartWhenRagRegistryAndToolAuditMysqlAreBothEnabled() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(MultipleMysqlMybatisTestConfiguration.class)
+                .withPropertyValues(
+                        "ai.agent.rag.registry.mode=mysql",
+                        "ai.agent.tools.audit.mode=mysql",
+                        "ai.agent.rag.registry.mysql.url=jdbc:mysql://127.0.0.1:3306/scm_ai_agent",
+                        "ai.agent.rag.registry.mysql.username=root",
+                        "ai.agent.rag.registry.mysql.password=secret"
+                )
+                .run(context -> {
+                    assertEquals(2, context.getBeanNamesForType(SqlSessionFactory.class).length);
+                    assertEquals(2, context.getBeanNamesForType(SqlSessionTemplate.class).length);
+                });
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     @EnableConfigurationProperties(AiAgentProperties.class)
     @Import(MysqlRagDocumentRegistry.class)
@@ -96,5 +116,11 @@ class RagRegistryConfigurationSmokeTest {
     @EnableConfigurationProperties(AiAgentProperties.class)
     @Import(RagRegistryMysqlDataSourceConfiguration.class)
     static class MysqlDataSourceTestConfiguration {
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(AiAgentProperties.class)
+    @Import({RagRegistryMysqlDataSourceConfiguration.class, ToolAuditMysqlDataSourceConfiguration.class})
+    static class MultipleMysqlMybatisTestConfiguration {
     }
 }

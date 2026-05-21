@@ -1,4 +1,4 @@
-package com.example.scm.aiagent.toolcalling.service;
+package com.example.scm.aiagent.toolcalling.planning;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
@@ -11,6 +11,7 @@ import com.example.scm.aiagent.service.ModelRouter;
 import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
+import com.example.scm.aiagent.toolcalling.schema.ToolSchemaConverter;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;

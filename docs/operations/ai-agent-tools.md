@@ -1398,7 +1398,171 @@ Content-Type: application/json
 - 长任务编排
 - 严格 JSON answer
 
-## 20. 当前阶段不做的事情
+## 20. Phase 4.9：按 Tool 类型优化 answer prompt 与 Tool 审计 MySQL 持久化
+
+### 20.1 阶段目标
+
+Phase 4.9 在 Phase 4.8 统一展示 schema 基础上继续增强两件事：
+
+- 按 Tool 类型细化模型总结提示词，让 answer 更贴近业务对象
+- 为 Tool 调用审计增加 MySQL 存储模式，保留默认 in-memory 测试路径
+
+本阶段不改变 `/api/v1/ai/tool-calling/chat` 顶层返回字段，不改变 `execution` 顶层字段，也不删除 `execution.data.rawData`。
+
+### 20.2 answer prompt strategy 设计
+
+当前新增 `ToolCallingAnswerPromptStrategy` 和 `ToolCallingAnswerPromptStrategyRegistry`：
+
+- `ToolCallingAnswerPromptBuilder` 仍负责拼装最终 prompt
+- strategy 只提供“Tool 类型专项要求”
+- strategy 不参与 Tool 执行、不参与 Planner、不改变 answer-mode
+- 未匹配 Tool 时使用 fallback 策略
+
+当前策略差异：
+
+| Tool | Prompt 重点 |
+| --- | --- |
+| `mdm.getMaterial` | 物料编码、物料名称、状态、单位、分类 |
+| `mdm.getWarehouse` | 仓库编码、仓库名称、仓库类型、状态 |
+| `inventory.getBalance` | 可用数量、锁定数量、仓库、库位、单位 |
+| `sales.getOrder` | 订单号、订单状态、客户、明细行数 |
+| `purchase.getOrder` | 订单号、订单状态、供应商、明细行数 |
+| fallback | 优先引用展示摘要和展示字段，不扩展猜测 |
+
+prompt 中仍然只包含必要的 display schema、执行状态和错误信息，不写入 API Key、用户 token、敏感请求头、系统环境变量、完整 prompt 日志或模型响应全文。
+
+### 20.3 Tool audit MySQL 持久化
+
+当前 Tool 审计支持两种模式：
+
+```yaml
+ai:
+  agent:
+    tools:
+      audit:
+        mode: in-memory
+        max-records: 500
+```
+
+MySQL 模式：
+
+```yaml
+ai:
+  agent:
+    tools:
+      audit:
+        mode: mysql
+```
+
+环境变量示例：
+
+```bash
+AI_AGENT_TOOLS_AUDIT_MODE=mysql
+AI_AGENT_RAG_REGISTRY_MYSQL_URL=jdbc:mysql://127.0.0.1:3306/scm_ai_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+AI_AGENT_RAG_REGISTRY_MYSQL_USERNAME=root
+AI_AGENT_RAG_REGISTRY_MYSQL_PASSWORD=你的本地密码
+```
+
+当前最小持久化字段：
+
+- `id`
+- `tenant_id`
+- `user_id`
+- `run_id`
+- `tool_name`
+- `adapter_mode`
+- `success`
+- `error_code`
+- `latency_ms`
+- `created_at`
+
+SQL 脚本位置：
+
+- [deploy/sql/ai-agent-tool-audit.sql](E:/ideaProject/saas-wms-scm/deploy/sql/ai-agent-tool-audit.sql)
+
+该表不保存 API Key、用户 token、敏感请求头、完整 prompt、完整模型响应或大段业务数据。
+
+### 20.4 gateway 18080 验证示例
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查库存，物料 1001 在仓库 1 的余额",
+  "runId": "run-tool-chat-phase49-001",
+  "plannerMode": "spring-ai"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase49-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "displayFields": [
+          {
+            "key": "availableQty",
+            "label": "可用数量",
+            "value": 128
+          }
+        ],
+        "displayItems": [],
+        "rawData": {}
+      }
+    },
+    "answer": "模型会按库存策略优先说明可用数量、锁定数量、仓库、库位和单位"
+  }
+}
+```
+
+如果 `ai.agent.tools.audit.mode=mysql`，调用完成后可在 `tool_invocation_audit` 表看到对应 `tenant_id`、`user_id`、`run_id`、`tool_name`、`adapter_mode`、`success`、`error_code`、`latency_ms`。
+
+### 20.5 当前边界
+
+本阶段仍然不实现：
+
+- 多轮 Tool Calling
+- 多 Tool 自动编排
+- MCP Server
+- Workflow
+- Multi-Agent
+- 长任务编排
+- 严格 JSON answer
+
+### 20.6 Tool Calling 包结构约定
+
+为避免 `toolcalling.service` 继续承载过多职责，当前 Tool Calling 相关类按职责拆分：
+
+| 包 | 职责 |
+| --- | --- |
+| `toolcalling.controller` | HTTP 入口与调试接口 |
+| `toolcalling.application` | Tool Calling Chat 应用编排，串联规划、执行、展示 schema 与 answer |
+| `toolcalling.planning` | Spring AI Planner、Mock Planner、规划 prompt 与 plan 解析 |
+| `toolcalling.answer` | answer 生成、template fallback 与模型总结 prompt 组装 |
+| `toolcalling.answer.strategy` | 按 Tool 类型细化 answer prompt 的策略 |
+| `toolcalling.display` | Tool 执行结果统一展示 schema 构建 |
+| `toolcalling.schema` | ToolDefinition 到 Spring AI tool schema 的转换 |
+| `toolcalling.dto` | 接口请求与响应 DTO |
+| `toolcalling.model` | 规划、展示 schema、Spring AI descriptor 等内部模型 |
+
+后续新增类优先放入对应职责包；只有跨多个子域的应用编排逻辑才放入 `toolcalling.application`。
+
+## 21. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1409,14 +1573,11 @@ Content-Type: application/json
 - Workflow
 - Multi-Agent
 - 长任务编排
-- Tool 审计 MySQL 持久化
 
-## 21. 后续建议
+## 22. 后续建议
 
-Phase 4.9 可以继续往下面推进：
+Phase 4.10 可以继续往下面推进：
 
-- 引入更细的 answer prompt 策略，按工具类型优化模型总结质量
-- 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签
 - 增加 Tool 超时、重试和熔断策略
 
