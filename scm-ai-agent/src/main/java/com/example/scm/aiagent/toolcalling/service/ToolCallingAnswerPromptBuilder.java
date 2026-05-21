@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.toolcalling.service;
 
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
@@ -40,6 +41,7 @@ public class ToolCallingAnswerPromptBuilder {
         executionContext.put("latencyMs", execution.getLatencyMs());
         summaryContext.put("selectedTool", selectedTool);
         summaryContext.put("toolArguments", toolArguments == null ? Map.of() : toolArguments);
+        summaryContext.put("display", buildDisplayContext(execution.getData()));
         summaryContext.put("execution", executionContext);
 
         return """
@@ -69,5 +71,21 @@ public class ToolCallingAnswerPromptBuilder {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private Object buildDisplayContext(Object data) {
+        if (data instanceof ToolCallingDisplayData displayData) {
+            Map<String, Object> displayContext = new LinkedHashMap<>();
+            displayContext.put("displayTitle", displayData.displayTitle());
+            displayContext.put("displaySummary", displayData.displaySummary());
+            displayContext.put("displayFields", displayData.displayFields());
+            displayContext.put("displayItems", displayData.displayItems());
+            displayContext.put("rawData", displayData.rawData());
+            return displayContext;
+        }
+        if (data instanceof Map<?, ?> map && map.containsKey("displayTitle")) {
+            return data;
+        }
+        return null;
     }
 }

@@ -33,17 +33,20 @@ public class ToolCallingChatService {
     private final SpringAiToolPlanner springAiToolPlanner;
     private final SpringAiToolCallingService springAiToolCallingService;
     private final ToolCallingAnswerSummaryService answerSummaryService;
+    private final ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
 
     public ToolCallingChatService(AiAgentProperties properties,
                                   MockToolPlanner mockToolPlanner,
                                   SpringAiToolPlanner springAiToolPlanner,
                                   SpringAiToolCallingService springAiToolCallingService,
-                                  ToolCallingAnswerSummaryService answerSummaryService) {
+                                  ToolCallingAnswerSummaryService answerSummaryService,
+                                  ToolCallingDisplaySchemaBuilder displaySchemaBuilder) {
         this.properties = properties;
         this.mockToolPlanner = mockToolPlanner;
         this.springAiToolPlanner = springAiToolPlanner;
         this.springAiToolCallingService = springAiToolCallingService;
         this.answerSummaryService = answerSummaryService;
+        this.displaySchemaBuilder = displaySchemaBuilder;
     }
 
     /**
@@ -123,14 +126,17 @@ public class ToolCallingChatService {
      */
     private ToolCallingExecutionView toExecutionView(ToolCallingExecuteResponse executeResponse) {
         ToolResponse toolResponse = executeResponse.getToolResponse();
+        boolean success = toolResponse != null ? toolResponse.isSuccess() : executeResponse.isSuccess();
+        String toolName = StringUtils.hasText(executeResponse.getToolName())
+                ? executeResponse.getToolName()
+                : toolResponse == null ? null : toolResponse.getToolName();
+        Object rawData = toolResponse == null ? null : toolResponse.getData();
         return ToolCallingExecutionView.builder()
-                .success(toolResponse != null ? toolResponse.isSuccess() : executeResponse.isSuccess())
-                .toolName(StringUtils.hasText(executeResponse.getToolName())
-                        ? executeResponse.getToolName()
-                        : toolResponse == null ? null : toolResponse.getToolName())
+                .success(success)
+                .toolName(toolName)
                 .errorCode(toolResponse == null ? null : toolResponse.getErrorCode())
                 .errorMessage(toolResponse == null ? null : toolResponse.getErrorMessage())
-                .data(toolResponse == null ? null : toolResponse.getData())
+                .data(success ? displaySchemaBuilder.build(toolName, rawData) : rawData)
                 .latencyMs(executeResponse.getLatencyMs())
                 .build();
     }

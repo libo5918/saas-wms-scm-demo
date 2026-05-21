@@ -1,6 +1,8 @@
 package com.example.scm.aiagent.toolcalling.service;
 
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayField;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,10 @@ public class ToolCallingAnswerBuilder {
         }
 
         Map<String, Object> data = asMap(execution.getData());
+        ToolCallingDisplayData displayData = asDisplayData(execution.getData());
+        if (displayData != null) {
+            return buildDisplayAnswer(displayData);
+        }
         return switch (plan.selectedTool()) {
             case "mdm.getMaterial" -> buildMaterialAnswer(data);
             case "inventory.getBalance" -> buildInventoryAnswer(data);
@@ -159,6 +165,39 @@ public class ToolCallingAnswerBuilder {
         if (StringUtils.hasText(value)) {
             answer.append("，").append(label).append(" ").append(value);
         }
+    }
+
+    private String buildDisplayAnswer(ToolCallingDisplayData displayData) {
+        StringBuilder answer = new StringBuilder(defaultText(displayData.displaySummary(), "已完成工具查询"));
+        if (displayData.displayFields() != null) {
+            for (ToolCallingDisplayField field : displayData.displayFields()) {
+                if (field != null && field.value() != null && StringUtils.hasText(String.valueOf(field.value()))) {
+                    answer.append("，").append(defaultText(field.label(), field.key())).append(" ").append(field.value());
+                }
+            }
+        }
+        answer.append("。");
+        return answer.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private ToolCallingDisplayData asDisplayData(Object data) {
+        if (data instanceof ToolCallingDisplayData displayData) {
+            return displayData;
+        }
+        if (data instanceof Map<?, ?> map && map.containsKey("displayTitle")) {
+            Object fieldsValue = map.get("displayFields");
+            return ToolCallingDisplayData.builder()
+                    .displayTitle(String.valueOf(map.get("displayTitle")))
+                    .displaySummary(String.valueOf(map.get("displaySummary")))
+                    .displayFields(fieldsValue instanceof List<?> list
+                            ? (List<ToolCallingDisplayField>) list
+                            : List.of())
+                    .displayItems(List.of())
+                    .rawData(map.get("rawData"))
+                    .build();
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

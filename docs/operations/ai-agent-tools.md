@@ -1274,7 +1274,131 @@ Content-Type: application/json
 - Multi-Agent
 - 长任务编排
 
-## 19. 当前阶段不做的事情
+## 19. Phase 4.8：Tool 执行结果统一展示 schema
+
+### 19.1 阶段目标
+
+Phase 4.8 的重点是在 Phase 4.7 已有“模型总结 answer”闭环基础上，把不同 Tool 的执行结果收敛成统一展示结构：
+
+- 继续保留 `execution` 顶层结构稳定
+- 在成功场景下把 `execution.data` 包装为展示 schema
+- 展示字段优先服务于模型总结、前端展示和后续 Orchestrator 上下文沉淀
+- 原始 Tool 返回数据通过 `rawData` 保留，不丢失追溯能力
+
+### 19.2 display schema 结构
+
+成功场景下，`execution.data` 统一包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `displayTitle` | 展示标题，例如“物料信息”“库存余额” |
+| `displaySummary` | 展示摘要，用于模型总结和前端快速展示 |
+| `displayFields` | 展示字段列表，每项包含 `key`、`label`、`value` |
+| `displayItems` | 展示明细列表，用于订单行、库存明细等列表数据 |
+| `rawData` | Tool 原始返回数据 |
+
+当前已为以下 Tool 提供专用展示适配：
+
+- `mdm.getMaterial`
+- `mdm.getWarehouse`
+- `inventory.getBalance`
+- `sales.getOrder`
+- `purchase.getOrder`
+
+如果 Tool 暂无专用适配器，则使用通用 fallback schema：`displayTitle` 为工具名，`displaySummary` 为“已完成工具查询”，并从原始 Map 的简单标量字段生成 `displayFields`。
+
+### 19.3 display schema 与 rawData 的关系
+
+`displayTitle`、`displaySummary`、`displayFields`、`displayItems` 是稳定展示层，不要求完整覆盖业务返回。
+
+`rawData` 是原始业务数据，用于：
+
+- 排查展示字段遗漏
+- 后续扩展更细粒度 prompt
+- Orchestrator 保存完整执行上下文
+- 前端在需要时查看原始字段
+
+本阶段不删除原始 Tool 返回数据，不把模型总结限制在裁剪后的字段内。
+
+### 19.4 answer prompt 使用方式
+
+`ToolCallingAnswerPromptBuilder` 会优先把 display schema 放入总结上下文，使模型更稳定地读取标题、摘要、字段和明细。
+
+同时，prompt 仍保留：
+
+- `selectedTool`
+- `toolArguments`
+- `execution.success`
+- `execution.errorCode`
+- `execution.errorMessage`
+- `execution.latencyMs`
+- `rawData`
+
+这样既能提升回答质量，又不破坏 Phase 4.7 的失败说明和模板 fallback 语义。
+
+### 19.5 gateway 18080 验证示例
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查物料 MAT-001",
+  "runId": "run-tool-chat-phase48-001",
+  "plannerMode": "spring-ai"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase48-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "mdm.getMaterial",
+    "execution": {
+      "success": true,
+      "toolName": "mdm.getMaterial",
+      "data": {
+        "displayTitle": "物料信息",
+        "displaySummary": "已查询到物料 MAT-001",
+        "displayFields": [
+          {
+            "key": "materialCode",
+            "label": "物料编码",
+            "value": "MAT-001"
+          }
+        ],
+        "displayItems": [],
+        "rawData": {
+          "materialCode": "MAT-001"
+        }
+      }
+    },
+    "answer": "模型基于展示 schema 和原始数据生成的中文回答"
+  }
+}
+```
+
+### 19.6 当前边界
+
+本阶段仍然不实现：
+
+- 多轮 Tool Calling
+- 多 Tool 自动编排
+- MCP Server
+- Workflow
+- Multi-Agent
+- 长任务编排
+- 严格 JSON answer
+
+## 20. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1287,11 +1411,10 @@ Content-Type: application/json
 - 长任务编排
 - Tool 审计 MySQL 持久化
 
-## 20. 后续建议
+## 21. 后续建议
 
-Phase 4.8 可以继续往下面推进：
+Phase 4.9 可以继续往下面推进：
 
-- 把 Tool 执行结果进一步收敛成统一展示 schema
 - 引入更细的 answer prompt 策略，按工具类型优化模型总结质量
 - 为 Tool 审计增加 MySQL 持久化
 - 给 Tool 增加权限标签和路由标签

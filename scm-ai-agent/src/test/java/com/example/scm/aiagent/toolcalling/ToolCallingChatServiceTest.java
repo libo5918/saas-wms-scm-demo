@@ -7,12 +7,14 @@ import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import com.example.scm.aiagent.toolcalling.service.MockToolPlanner;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolCallingService;
 import com.example.scm.aiagent.toolcalling.service.SpringAiToolPlanner;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerSummaryService;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingChatService;
+import com.example.scm.aiagent.toolcalling.service.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +58,8 @@ class ToolCallingChatServiceTest {
                 new MockToolPlanner(),
                 springAiToolPlanner,
                 springAiToolCallingService,
-                answerSummaryService
+                answerSummaryService,
+                new ToolCallingDisplaySchemaBuilder()
         );
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
     }
@@ -99,6 +102,9 @@ class ToolCallingChatServiceTest {
         assertEquals("MAT-001", response.getToolArguments().get("materialCode"));
         assertTrue(response.getExecution().isSuccess());
         assertEquals("mdm.getMaterial", response.getExecution().getToolName());
+        ToolCallingDisplayData displayData = (ToolCallingDisplayData) response.getExecution().getData();
+        assertEquals("物料信息", displayData.displayTitle());
+        assertEquals("MAT-001", ((Map<?, ?>) displayData.rawData()).get("materialCode"));
         assertEquals("已查询到物料 MAT-001。", response.getAnswer());
         verify(springAiToolCallingService).execute(any(), eq(context));
         verify(answerSummaryService).summarize(any(), eq(context), any(), any(), eq("run-chat-1"));
@@ -148,6 +154,9 @@ class ToolCallingChatServiceTest {
         assertFalse(response.isFallbackUsed());
         assertEquals("model_plan", response.getPlanningReason());
         assertTrue(response.getExecution().isSuccess());
+        ToolCallingDisplayData displayData = (ToolCallingDisplayData) response.getExecution().getData();
+        assertEquals("销售订单", displayData.displayTitle());
+        assertEquals("SO-20260520-001", ((Map<?, ?>) displayData.rawData()).get("orderNo"));
         assertEquals("销售订单 SO-20260520-001 当前状态为 ALLOCATED。", response.getAnswer());
     }
 
@@ -185,6 +194,9 @@ class ToolCallingChatServiceTest {
         assertEquals("mock-fallback", response.getPlanningSource());
         assertTrue(response.isFallbackUsed());
         assertEquals("inventory.getBalance", response.getSelectedTool());
+        ToolCallingDisplayData displayData = (ToolCallingDisplayData) response.getExecution().getData();
+        assertEquals("库存余额", displayData.displayTitle());
+        assertEquals(128, ((Map<?, ?>) displayData.rawData()).get("availableQty"));
         assertEquals("库存可用数量为 128。", response.getAnswer());
     }
 
@@ -222,6 +234,7 @@ class ToolCallingChatServiceTest {
         assertFalse(response.getExecution().isSuccess());
         assertEquals("404", response.getExecution().getErrorCode());
         assertEquals("mdm.getMaterial", response.getExecution().getToolName());
+        assertEquals(null, response.getExecution().getData());
         assertTrue(response.getAnswer().contains("Material not found"));
     }
 }

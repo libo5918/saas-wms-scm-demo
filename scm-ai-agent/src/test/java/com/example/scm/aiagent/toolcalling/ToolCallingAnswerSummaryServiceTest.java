@@ -2,6 +2,7 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.model.ChatModelInvocation;
 import com.example.scm.aiagent.model.ChatModelResult;
 import com.example.scm.aiagent.model.ModelRoute;
 import com.example.scm.aiagent.service.ChatModelClient;
@@ -13,7 +14,9 @@ import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerBuilder;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerPromptBuilder;
 import com.example.scm.aiagent.toolcalling.service.ToolCallingAnswerSummaryService;
+import com.example.scm.aiagent.toolcalling.service.ToolCallingDisplaySchemaBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ToolCallingAnswerSummaryServiceTest {
@@ -33,6 +37,7 @@ class ToolCallingAnswerSummaryServiceTest {
     private ChatModelClient chatModelClient;
     private AiAgentProperties properties;
     private ToolCallingAnswerSummaryService service;
+    private ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
     private AgentRequestContext context;
     private ToolCallingPlan plan;
     private ToolCallingChatRequest request;
@@ -42,6 +47,7 @@ class ToolCallingAnswerSummaryServiceTest {
         modelRouter = mock(ModelRouter.class);
         chatModelClient = mock(ChatModelClient.class);
         properties = new AiAgentProperties();
+        displaySchemaBuilder = new ToolCallingDisplaySchemaBuilder();
         service = new ToolCallingAnswerSummaryService(
                 properties,
                 modelRouter,
@@ -97,7 +103,8 @@ class ToolCallingAnswerSummaryServiceTest {
         ToolCallingExecutionView execution = ToolCallingExecutionView.builder()
                 .success(true)
                 .toolName("mdm.getMaterial")
-                .data(Map.of("materialCode", "MAT-001", "materialName", "标准零件", "status", "ENABLED"))
+                .data(displaySchemaBuilder.build("mdm.getMaterial",
+                        Map.of("materialCode", "MAT-001", "materialName", "标准零件", "status", "ENABLED")))
                 .latencyMs(8)
                 .build();
 
@@ -106,6 +113,11 @@ class ToolCallingAnswerSummaryServiceTest {
         assertEquals("spring-ai", result.answerMode());
         assertFalse(result.fallbackUsed());
         assertTrue(result.answer().contains("MAT-001"));
+        ArgumentCaptor<ChatModelInvocation> invocationCaptor = ArgumentCaptor.forClass(ChatModelInvocation.class);
+        verify(chatModelClient).chat(invocationCaptor.capture());
+        assertTrue(invocationCaptor.getValue().message().contains("\"displayTitle\""));
+        assertTrue(invocationCaptor.getValue().message().contains("物料信息"));
+        assertTrue(invocationCaptor.getValue().message().contains("\"rawData\""));
     }
 
     @Test
