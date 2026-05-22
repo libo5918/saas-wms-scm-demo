@@ -15,6 +15,8 @@ import com.example.scm.aiagent.toolcalling.planning.SpringAiToolPlanner;
 import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryService;
 import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRunStore;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +61,8 @@ class ToolCallingChatServiceTest {
                 springAiToolPlanner,
                 springAiToolCallingService,
                 answerSummaryService,
-                new ToolCallingDisplaySchemaBuilder()
+                new ToolCallingDisplaySchemaBuilder(),
+                new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties))
         );
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
     }

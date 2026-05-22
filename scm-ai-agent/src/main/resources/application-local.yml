@@ -104,3 +104,7 @@ ai:
         fallback-to-template: true
         max-retries: 1
         task-type: tool_calling_answer
+      orchestrator:
+        enabled: true
+        record-runs: true
+        max-records: 100

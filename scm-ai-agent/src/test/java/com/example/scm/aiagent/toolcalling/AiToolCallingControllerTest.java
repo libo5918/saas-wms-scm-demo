@@ -1,6 +1,9 @@
 package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentSecurityConfig;
+import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.toolcalling.application.SpringAiToolCallingService;
+import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.controller.AiToolCallingController;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
@@ -9,8 +12,11 @@ import com.example.scm.aiagent.toolcalling.dto.ToolCallingSchemaListResponse;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolDescriptor;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolInputSchema;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolParameterSchema;
-import com.example.scm.aiagent.toolcalling.application.SpringAiToolCallingService;
-import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationExecutionSummary;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStep;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepStatus;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
 import com.example.scm.common.web.TenantHeaderInterceptor;
@@ -23,6 +29,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +52,9 @@ class AiToolCallingControllerTest {
 
     @MockitoBean
     private ToolCallingChatService toolCallingChatService;
+
+    @MockitoBean
+    private ToolCallingOrchestratorService orchestratorService;
 
     @Test
     void shouldListToolCallingSchemas() throws Exception {
@@ -85,7 +95,7 @@ class AiToolCallingControllerTest {
                 .success(true)
                 .toolName("sales.getOrder")
                 .arguments(Map.of("orderNo", "SO-001"))
-                .toolResponse(com.example.scm.aiagent.tool.dto.ToolResponse.builder()
+                .toolResponse(ToolResponse.builder()
                         .success(true)
                         .toolName("sales.getOrder")
                         .runId("run-tool-calling-1")
@@ -177,5 +187,70 @@ class AiToolCallingControllerTest {
                 .andExpect(jsonPath("$.data.execution.success").value(true))
                 .andExpect(jsonPath("$.data.execution.toolName").value("sales.getOrder"))
                 .andExpect(jsonPath("$.data.answer").value("已查询到销售订单 SO-001，状态 ALLOCATED。"));
+    }
+
+    @Test
+    void shouldListOrchestrationRuns() throws Exception {
+        when(orchestratorService.listRuns(20)).thenReturn(List.of(orchestrationRun()));
+
+        mockMvc.perform(get("/api/v1/ai/tool-calling/orchestrations")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].runId").value("run-orch-1"))
+                .andExpect(jsonPath("$.data[0].steps[0].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].steps[0].execution.displayTitle").value("库存余额"))
+                .andExpect(jsonPath("$.data[0].steps[0].execution.rawData").doesNotExist());
+    }
+
+    @Test
+    void shouldGetOrchestrationRunByRunId() throws Exception {
+        when(orchestratorService.getRun("run-orch-1")).thenReturn(orchestrationRun());
+
+        mockMvc.perform(get("/api/v1/ai/tool-calling/orchestrations/run-orch-1")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.runId").value("run-orch-1"))
+                .andExpect(jsonPath("$.data.steps[0].execution.toolName").value("inventory.getBalance"));
+    }
+
+    private ToolOrchestrationRun orchestrationRun() {
+        return ToolOrchestrationRun.builder()
+                .runId("run-orch-1")
+                .tenantId(1L)
+                .userId(10001L)
+                .plannerMode("spring-ai")
+                .answerMode("spring-ai")
+                .routeTags(List.of("inventory"))
+                .steps(List.of(ToolOrchestrationStep.builder()
+                        .stepId("run-orch-1-step-1")
+                        .stepNo(1)
+                        .toolName("inventory.getBalance")
+                        .status(ToolOrchestrationStepStatus.SUCCESS)
+                        .startedAt(Instant.parse("2026-05-23T01:00:00Z"))
+                        .finishedAt(Instant.parse("2026-05-23T01:00:01Z"))
+                        .latencyMs(1000)
+                        .execution(ToolOrchestrationExecutionSummary.builder()
+                                .success(true)
+                                .toolName("inventory.getBalance")
+                                .latencyMs(8)
+                                .displayTitle("库存余额")
+                                .displaySummary("已查询到库存余额")
+                                .build())
+                        .build()))
+                .success(true)
+                .finalAnswer("库存可用数量为 128")
+                .createdAt(Instant.parse("2026-05-23T01:00:00Z"))
+                .finishedAt(Instant.parse("2026-05-23T01:00:01Z"))
+                .latencyMs(1000)
+                .build();
     }
 }

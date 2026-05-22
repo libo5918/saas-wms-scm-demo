@@ -12,6 +12,8 @@ import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryServic
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
 import com.example.scm.aiagent.toolcalling.planning.MockToolPlanner;
 import com.example.scm.aiagent.toolcalling.planning.SpringAiToolPlanner;
 import lombok.extern.slf4j.Slf4j;
@@ -38,19 +40,22 @@ public class ToolCallingChatService {
     private final SpringAiToolCallingService springAiToolCallingService;
     private final ToolCallingAnswerSummaryService answerSummaryService;
     private final ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
+    private final ToolCallingOrchestratorService orchestratorService;
 
     public ToolCallingChatService(AiAgentProperties properties,
                                   MockToolPlanner mockToolPlanner,
                                   SpringAiToolPlanner springAiToolPlanner,
                                   SpringAiToolCallingService springAiToolCallingService,
                                   ToolCallingAnswerSummaryService answerSummaryService,
-                                  ToolCallingDisplaySchemaBuilder displaySchemaBuilder) {
+                                  ToolCallingDisplaySchemaBuilder displaySchemaBuilder,
+                                  ToolCallingOrchestratorService orchestratorService) {
         this.properties = properties;
         this.mockToolPlanner = mockToolPlanner;
         this.springAiToolPlanner = springAiToolPlanner;
         this.springAiToolCallingService = springAiToolCallingService;
         this.answerSummaryService = answerSummaryService;
         this.displaySchemaBuilder = displaySchemaBuilder;
+        this.orchestratorService = orchestratorService;
     }
 
     /**
@@ -67,7 +72,10 @@ public class ToolCallingChatService {
                 context.tenantId(), context.userId(), runId, plannerMode, request.getRequestedTool(),
                 properties.getToolCalling().getAnswerMode(), safeLength(request.getMessage()));
 
+        ToolOrchestrationRun orchestrationRun = orchestratorService.startRun(request, context, runId, plannerMode,
+                properties.getToolCalling().getAnswerMode());
         ToolCallingPlan plan = resolvePlan(request, context, runId, plannerMode);
+        orchestratorService.startStep(orchestrationRun, plan);
 
         ToolCallingExecuteRequest executeRequest = new ToolCallingExecuteRequest();
         executeRequest.setRunId(runId);
@@ -76,6 +84,7 @@ public class ToolCallingChatService {
 
         ToolCallingExecuteResponse executeResponse = springAiToolCallingService.execute(executeRequest, context);
         ToolCallingExecutionView execution = toExecutionView(executeResponse);
+        orchestratorService.finishStep(orchestrationRun, execution);
         ToolCallingAnswerSummaryResult answerSummary = answerSummaryService.summarize(
                 request, context, plan, execution, runId);
 
@@ -84,6 +93,7 @@ public class ToolCallingChatService {
         log.info("AI tool calling chat finished, tenantId={}, userId={}, runId={}, plannerMode={}, answerMode={}, planningSource={}, selectedTool={}, success={}, fallbackUsed={}, latencyMs={}",
                 context.tenantId(), context.userId(), runId, plan.plannerMode(), answerSummary.answerMode(),
                 plan.planningSource(), plan.selectedTool(), execution.isSuccess(), fallbackUsed, latencyMs);
+        orchestratorService.finishRun(orchestrationRun, execution.isSuccess(), answerSummary.answer(), latencyMs);
 
         return ToolCallingChatResponse.builder()
                 .runId(runId)

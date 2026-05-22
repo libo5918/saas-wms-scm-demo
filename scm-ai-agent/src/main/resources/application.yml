@@ -153,6 +153,10 @@ ai:
         fallback-to-template: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_FALLBACK_TO_TEMPLATE:true}
         max-retries: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_MAX_RETRIES:1}
         task-type: ${AI_AGENT_TOOL_CALLING_SPRING_AI_ANSWER_TASK_TYPE:tool_calling_answer}
+      orchestrator:
+        enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_ENABLED:false}
+        record-runs: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_RECORD_RUNS:true}
+        max-records: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MAX_RECORDS:100}
     providers:
       - name: mock
         type: mock

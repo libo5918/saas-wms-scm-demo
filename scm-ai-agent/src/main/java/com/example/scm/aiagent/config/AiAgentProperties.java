@@ -392,6 +392,9 @@ public class AiAgentProperties {
 
         /** Spring AI Answer 细分配置。 */
         private SpringAiAnswerProperties springAiAnswer = new SpringAiAnswerProperties();
+
+        /** Orchestrator 单步运行记录配置。 */
+        private OrchestratorProperties orchestrator = new OrchestratorProperties();
     }
 
     /** Spring AI Planner 配置。 */
@@ -428,5 +431,20 @@ public class AiAgentProperties {
 
         /** 用于答案总结模型路由的任务类型。 */
         private String taskType = "tool_calling_answer";
+    }
+
+    /** Tool Calling Orchestrator 配置。 */
+    @Getter
+    @Setter
+    public static class OrchestratorProperties {
+
+        /** 是否启用 Orchestrator 单步记录；默认关闭，保持 Phase 4.11 行为。 */
+        private boolean enabled = false;
+
+        /** 是否记录 run/step 状态；关闭后 Orchestrator 不保留调试状态。 */
+        private boolean recordRuns = true;
+
+        /** in-memory run store 最多保留的记录数。 */
+        private int maxRecords = 100;
     }
 }

@@ -44,7 +44,10 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tool-calling.spring-ai-answer.enabled", "true")
                 .withProperty("ai.agent.tool-calling.spring-ai-answer.fallback-to-template", "true")
                 .withProperty("ai.agent.tool-calling.spring-ai-answer.max-retries", "3")
-                .withProperty("ai.agent.tool-calling.spring-ai-answer.task-type", "tool_calling_answer");
+                .withProperty("ai.agent.tool-calling.spring-ai-answer.task-type", "tool_calling_answer")
+                .withProperty("ai.agent.tool-calling.orchestrator.enabled", "true")
+                .withProperty("ai.agent.tool-calling.orchestrator.record-runs", "true")
+                .withProperty("ai.agent.tool-calling.orchestrator.max-records", "120");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -78,6 +81,9 @@ class ToolAdapterPropertiesTest {
         assertTrue(properties.getToolCalling().getSpringAiAnswer().isFallbackToTemplate());
         assertEquals(3, properties.getToolCalling().getSpringAiAnswer().getMaxRetries());
         assertEquals("tool_calling_answer", properties.getToolCalling().getSpringAiAnswer().getTaskType());
+        assertTrue(properties.getToolCalling().getOrchestrator().isEnabled());
+        assertTrue(properties.getToolCalling().getOrchestrator().isRecordRuns());
+        assertEquals(120, properties.getToolCalling().getOrchestrator().getMaxRecords());
     }
 
     @Test
@@ -94,6 +100,9 @@ class ToolAdapterPropertiesTest {
         assertEquals(5000, properties.getTools().getRuntime().getTimeoutMs());
         assertTrue(properties.getTools().getRuntime().isRetryEnabled());
         assertEquals(1, properties.getTools().getRuntime().getMaxRetries());
+        assertFalse(properties.getToolCalling().getOrchestrator().isEnabled());
+        assertTrue(properties.getToolCalling().getOrchestrator().isRecordRuns());
+        assertEquals(100, properties.getToolCalling().getOrchestrator().getMaxRecords());
     }
 
     @Test

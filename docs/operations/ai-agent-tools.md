@@ -1940,7 +1940,244 @@ Phase 4.12 可继续推进：
 - 将 runtime 状态纳入更完整的运维监控面板
 - 在保持安全边界的前提下引入更细粒度的租户级 Tool policy
 
-## 23. 当前阶段不做的事情
+## 23. Phase 4.12：单步 Orchestrator Run/Step 记录
+
+### 23.1 目标与边界
+
+Phase 4.12 在 Phase 4.11 的 Tool 候选集过滤、权限治理、审计和 runtime 保护基础上，启动 Orchestrator 的最小落地。本阶段只做单步 Tool Calling 的 run/step 结构化记录，让现有“规划 -> 执行 -> 总结”链路具备后续扩展多轮 Tool Calling 的状态骨架。
+
+本阶段保持 `/api/v1/ai/tool-calling/chat` 顶层返回字段不变，保持 `execution` 顶层字段不变，不删除 `execution.data.rawData`，不改变 requestedTool 优先级，不改变 Spring AI Planner 主路径，也不实现自动多 Tool 编排。
+
+### 23.2 Orchestrator 在本项目中的定位
+
+Orchestrator 不是替代 Planner，也不是本阶段的多 Agent 编排器。它在当前项目中的定位是：
+
+- 记录一次 Tool Calling Chat 的 run 生命周期
+- 记录每个 Tool 执行 step 的状态、耗时和概要结果
+- 复用现有 Planner、ToolInvocationService、display schema、answer summary、audit、permission、runtime protection
+- 为后续多步、多 Tool、跨步骤上下文传递预留统一模型
+
+当前版本只承载单步记录，避免在业务链路稳定前引入复杂自动编排。
+
+### 23.3 Run / Step 模型
+
+`ToolOrchestrationRun` 表示一次 Tool Calling Chat 运行，核心字段包括：
+
+- `runId`
+- `tenantId`
+- `userId`
+- `userMessage`
+- `plannerMode`
+- `answerMode`
+- `requestedTool`
+- `requestedDomain`
+- `requestedCategory`
+- `routeTags`
+- `steps`
+- `finalAnswer`
+- `success`
+- `createdAt`
+- `finishedAt`
+- `latencyMs`
+
+`ToolOrchestrationStep` 表示一次 Tool 执行步骤，核心字段包括：
+
+- `stepId`
+- `stepNo`
+- `toolName`
+- `arguments`
+- `reason`
+- `status`
+- `execution`
+- `startedAt`
+- `finishedAt`
+- `latencyMs`
+
+`ToolOrchestrationStepStatus` 当前包含：
+
+- `PENDING`
+- `RUNNING`
+- `SUCCESS`
+- `FAILED`
+- `SKIPPED`
+
+状态接口中的 `execution` 使用脱敏概要，不返回完整 `rawData`、prompt、模型响应、内部请求头或敏感信息。概要字段包括：
+
+- `success`
+- `toolName`
+- `errorCode`
+- `errorMessage`
+- `latencyMs`
+- `displayTitle`
+- `displaySummary`
+
+### 23.4 Orchestrator 配置
+
+默认保持向后兼容，`orchestrator.enabled=false` 时 chat 主链路保持 Phase 4.11 行为。
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: false
+        record-runs: true
+        max-records: 100
+```
+
+本地联调可开启单步 run/step 记录：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: true
+        record-runs: true
+        max-records: 100
+```
+
+配置说明：
+
+- `enabled`：是否启用 Orchestrator 单步记录。
+- `record-runs`：是否写入 in-memory run store。
+- `max-records`：最多保留的 run 数量，超过后裁剪最早记录。
+
+### 23.5 与候选过滤、权限、审计、runtime 的关系
+
+Phase 4.12 的 Orchestrator 不绕过任何既有治理能力：
+
+- Tool candidate filter 仍参与 Planner schema 裁剪。
+- requestedTool 仍优先于模型规划结果。
+- ToolPermissionService 仍在 ToolInvocationService 主链路执行权限校验。
+- 权限失败时 step 标记为 `FAILED`，真实 Tool 不执行，Tool audit 仍写入。
+- runtime retry 和 circuit breaker 仍在 ToolInvocationService 主链路生效。
+- 熔断打开或运行时失败时 step 标记为 `FAILED`，Tool audit 仍写入。
+- answer summary 和 template fallback 行为保持不变。
+
+### 23.6 gateway 18080 Tool Calling Chat 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查 MAT-001 的库存余额",
+  "runId": "run-tool-chat-phase412-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "inventory",
+  "routeTags": [
+    "inventory",
+    "balance"
+  ]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase412-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "fallbackUsed": false,
+    "selectedTool": "inventory.getBalance",
+    "toolArguments": {},
+    "planningReason": "基于用户问题选择库存余额查询工具",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "errorCode": null,
+      "errorMessage": null,
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "displayFields": [],
+        "displayItems": [],
+        "rawData": {}
+      },
+      "latencyMs": 0
+    },
+    "answer": "模型基于展示 schema 和原始数据生成的中文回答",
+    "latencyMs": 0
+  }
+}
+```
+
+### 23.7 gateway 18080 Orchestration status 验证
+
+查询最近的 Orchestration run：
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/orchestrations?limit=20
+Authorization: Bearer <accessToken>
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "runId": "run-tool-chat-phase412-001",
+      "tenantId": 1,
+      "userId": 10001,
+      "plannerMode": "spring-ai",
+      "answerMode": "spring-ai",
+      "requestedDomain": "inventory",
+      "routeTags": [
+        "inventory",
+        "balance"
+      ],
+      "steps": [
+        {
+          "stepNo": 1,
+          "toolName": "inventory.getBalance",
+          "status": "SUCCESS",
+          "execution": {
+            "success": true,
+            "toolName": "inventory.getBalance",
+            "errorCode": null,
+            "errorMessage": null,
+            "latencyMs": 0,
+            "displayTitle": "库存余额",
+            "displaySummary": "已查询到库存余额"
+          }
+        }
+      ],
+      "finalAnswer": "模型基于展示 schema 和原始数据生成的中文回答",
+      "success": true,
+      "latencyMs": 0
+    }
+  ]
+}
+```
+
+按 runId 查询单个 Orchestration run：
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/orchestrations/run-tool-chat-phase412-001
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段同上，但 `data` 为单个 run 对象。状态接口不会返回完整 `rawData`、完整 prompt、完整模型响应、用户 token 或内部 HTTP header。
+
+### 23.8 后续升级方向
+
+Phase 4.13 可继续推进：
+
+- 引入真正的多步骤 Orchestration plan，但仍保持自动编排低风险开关。
+- 增加步骤间上下文传递和上一步执行结果摘要。
+- 增加 step-level answer / final answer 的更细粒度观测事件。
+- 评估 Orchestration run 从 in-memory 升级到 MySQL 持久化的表结构。
+
+## 24. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1952,10 +2189,11 @@ Phase 4.12 可继续推进：
 - Multi-Agent
 - 长任务编排
 
-## 24. 后续建议
+## 25. 后续建议
 
-Phase 4.12 可以继续往下面推进：
+Phase 4.13 可以继续往下面推进：
 
-- 基于候选过滤能力进入多轮 Tool Calling / Orchestrator 设计
-- 增加 Tool 调用步骤状态、上下文传递和更完整的观测事件
+- 在单步 run/step 记录基础上引入显式多步骤 plan
+- 增加步骤间上下文摘要和结果引用
+- 为 Orchestrator run 设计 MySQL 持久化与分页查询
 
