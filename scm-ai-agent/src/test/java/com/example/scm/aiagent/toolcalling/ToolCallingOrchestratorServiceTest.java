@@ -2,14 +2,21 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.model.ToolDefinition;
+import com.example.scm.aiagent.tool.model.ToolRequest;
+import com.example.scm.aiagent.tool.service.ToolRegistry;
+import com.example.scm.aiagent.tool.spi.ToolExecutor;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanMode;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanValidator;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlannerService;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRunStore;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepRefBuilder;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepStatus;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepSummaryBuilder;
 import org.junit.jupiter.api.Test;
@@ -54,7 +61,8 @@ class ToolCallingOrchestratorServiceTest {
         assertEquals("库存余额为 128", stored.getFinalAnswer());
         assertEquals(ToolOrchestrationPlanMode.SINGLE_STEP, stored.getPlan().getMode());
         assertEquals(1, stored.getPlan().getMaxSteps());
-        assertEquals(1, stored.getSteps().size());
+        assertEquals("step-1", stored.getSteps().get(0).getStepRef());
+        assertEquals("$.steps[0].outputSummary", stored.getSteps().get(0).getOutputRef());
         assertEquals(ToolOrchestrationStepStatus.SUCCESS, stored.getSteps().get(0).getStatus());
         assertEquals("库存余额", stored.getSteps().get(0).getExecution().getDisplayTitle());
         assertTrue(stored.getSteps().get(0).getOutputSummary().contains("displayTitle=库存余额"));
@@ -87,8 +95,27 @@ class ToolCallingOrchestratorServiceTest {
         assertEquals(2, run.getSteps().size());
         assertEquals(ToolOrchestrationStepStatus.SUCCESS, run.getSteps().get(0).getStatus());
         assertEquals(ToolOrchestrationStepStatus.SKIPPED, run.getSteps().get(1).getStatus());
+        assertEquals("step-2", run.getSteps().get(1).getStepRef());
+        assertEquals(List.of("step-1.outputSummary"), run.getSteps().get(1).getInputRefs());
         assertEquals("multi-step dry-run only; real Tool is not executed", run.getSteps().get(1).getSkipReason());
-        assertTrue(run.getSteps().get(1).getInputSummary().contains("previousStep=run-dry-run-step-1"));
+        assertTrue(run.getSteps().get(1).getInputSummary().contains("inputRefs=[step-1.outputSummary]"));
+    }
+
+    @Test
+    void shouldCreateControlledPlanButSkipFollowUpExecution() {
+        AiAgentProperties properties = enabledProperties();
+        properties.getToolCalling().getOrchestrator().setPlanMode(ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED);
+        properties.getToolCalling().getOrchestrator().setMaxSteps(2);
+        properties.getToolCalling().getOrchestrator().setMultiStepEnabled(true);
+        ToolCallingOrchestratorService service = newService(properties);
+
+        ToolOrchestrationRun run = service.startRun(request(), context, "run-controlled", "spring-ai", "spring-ai");
+        service.startStep(run, plan("inventory.getBalance"));
+
+        assertEquals(ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED, run.getPlan().getMode());
+        assertEquals(ToolOrchestrationStepStatus.SKIPPED, run.getSteps().get(1).getStatus());
+        assertEquals("multi-step controlled plan only; follow-up Tool execution is disabled in Phase 4.14",
+                run.getSteps().get(1).getSkipReason());
     }
 
     @Test
@@ -132,8 +159,35 @@ class ToolCallingOrchestratorServiceTest {
     }
 
     private ToolCallingOrchestratorService newService(AiAgentProperties properties) {
+        ToolRegistry registry = new ToolRegistry(List.of(
+                executor("inventory.getBalance", true),
+                executor("mdm.getMaterial", true)
+        ));
+        ToolOrchestrationStepRefBuilder refBuilder = new ToolOrchestrationStepRefBuilder();
+        ToolOrchestrationPlanValidator validator = new ToolOrchestrationPlanValidator(registry);
+        ToolOrchestrationPlannerService planner = new ToolOrchestrationPlannerService(properties, registry, refBuilder, validator);
         return new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
-                new ToolOrchestrationStepSummaryBuilder());
+                new ToolOrchestrationStepSummaryBuilder(), planner);
+    }
+
+    private ToolExecutor executor(String toolName, boolean readOnly) {
+        return new ToolExecutor() {
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.builder()
+                        .name(toolName)
+                        .domain(toolName.substring(0, toolName.indexOf('.')))
+                        .category("query")
+                        .description(toolName)
+                        .readOnly(readOnly)
+                        .build();
+            }
+
+            @Override
+            public Object execute(ToolRequest request) {
+                return Map.of();
+            }
+        };
     }
 
     private AiAgentProperties enabledProperties() {

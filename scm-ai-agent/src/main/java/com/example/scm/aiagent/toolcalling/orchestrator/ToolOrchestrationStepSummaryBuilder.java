@@ -43,7 +43,9 @@ public class ToolOrchestrationStepSummaryBuilder {
         if (previousStep == null || !hasText(previousStep.getOutputSummary())) {
             return "";
         }
-        return "previousStep=" + previousStep.getStepId() + ", outputSummary=" + previousStep.getOutputSummary();
+        String inputRefs = previousStep.getStepRef() == null ? "" : previousStep.getStepRef() + ".outputSummary";
+        return "inputRefs=[" + inputRefs + "], previousStep=" + previousStep.getStepRef()
+                + ", outputSummary=" + previousStep.getOutputSummary();
     }
 
     private boolean hasText(String value) {

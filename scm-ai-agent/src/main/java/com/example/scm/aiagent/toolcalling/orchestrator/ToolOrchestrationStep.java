@@ -19,6 +19,9 @@ public class ToolOrchestrationStep {
     /** 步骤 ID，当前按 runId-stepNo 生成。 */
     private String stepId;
 
+    /** 对外稳定引用名，例如 step-1。 */
+    private String stepRef;
+
     /** 步骤序号。 */
     private int stepNo;
 
@@ -33,6 +36,12 @@ public class ToolOrchestrationStep {
 
     /** 当前步骤依赖的前置 stepId。 */
     private List<String> dependsOnStepIds;
+
+    /** 当前步骤引用的前置安全摘要，例如 step-1.outputSummary。 */
+    private List<String> inputRefs;
+
+    /** 当前步骤输出摘要的引用路径，不指向 rawData。 */
+    private String outputRef;
 
     /** 当前步骤可读取的前置上下文摘要，不包含完整 rawData。 */
     private String inputSummary;

@@ -2,7 +2,11 @@ package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.tool.model.ToolRequest;
+import com.example.scm.aiagent.tool.service.ToolRegistry;
+import com.example.scm.aiagent.tool.spi.ToolExecutor;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecuteResponse;
@@ -16,7 +20,10 @@ import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryServic
 import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanValidator;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlannerService;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRunStore;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepRefBuilder;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepSummaryBuilder;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
@@ -63,10 +70,38 @@ class ToolCallingChatServiceTest {
                 springAiToolCallingService,
                 answerSummaryService,
                 new ToolCallingDisplaySchemaBuilder(),
-                new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
-                        new ToolOrchestrationStepSummaryBuilder())
+                orchestratorService(properties)
         );
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
+    }
+
+    private ToolCallingOrchestratorService orchestratorService(AiAgentProperties properties) {
+        ToolRegistry registry = new ToolRegistry(List.of(executor("inventory.getBalance"), executor("mdm.getMaterial")));
+        ToolOrchestrationStepRefBuilder refBuilder = new ToolOrchestrationStepRefBuilder();
+        ToolOrchestrationPlanValidator validator = new ToolOrchestrationPlanValidator(registry);
+        ToolOrchestrationPlannerService planner = new ToolOrchestrationPlannerService(properties, registry, refBuilder, validator);
+        return new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
+                new ToolOrchestrationStepSummaryBuilder(), planner);
+    }
+
+    private ToolExecutor executor(String toolName) {
+        return new ToolExecutor() {
+            @Override
+            public ToolDefinition definition() {
+                return ToolDefinition.builder()
+                        .name(toolName)
+                        .domain(toolName.substring(0, toolName.indexOf('.')))
+                        .category("query")
+                        .description(toolName)
+                        .readOnly(true)
+                        .build();
+            }
+
+            @Override
+            public Object execute(ToolRequest request) {
+                return Map.of();
+            }
+        };
     }
 
     @Test

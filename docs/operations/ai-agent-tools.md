@@ -2400,7 +2400,164 @@ Phase 4.14 可继续推进：
 - 评估 Orchestration run / plan / step 的 MySQL 持久化。
 - 在只读 Tool 范围内验证真正多步骤执行的权限、审计和 runtime 保护闭环。
 
-## 25. 当前阶段不做的事情
+## 25. Phase 4.14：受控 Orchestrator Planner 与 stepRef 引用
+
+### 25.1 目标与边界
+
+Phase 4.14 在 Phase 4.13 的显式 plan 和 dry-run 多步骤骨架基础上，增加 Orchestrator 层 Planner、stepRef 上下文引用和 Plan 安全校验。本阶段仍不默认执行多个真实 Tool，SpringAiToolPlanner 仍负责当前单步 Tool 选择主路径。
+
+本阶段继续保持 `/api/v1/ai/tool-calling/chat` 顶层返回字段不变，保持 `execution` 顶层字段不变，不删除 `execution.data.rawData`，不改变 requestedTool 优先级。
+
+### 25.2 Orchestrator Planner 职责边界
+
+`ToolOrchestrationPlannerService` 只负责把当前单步 `ToolCallingPlan` 包装成受控的 `ToolOrchestrationPlan`：
+
+- 默认生成 `SINGLE_STEP` plan。
+- `requestedTool` 存在时强制生成 `SINGLE_STEP` plan。
+- `plan-mode=multi-step-dry-run` 且 `multi-step-enabled=true` 且 `dry-run-enabled=true` 时，可生成 dry-run 多步骤 plan。
+- `plan-mode=multi-step-controlled` 且 `multi-step-enabled=true` 时，可生成 controlled plan，但第二个及后续真实 Tool 仍不执行。
+- 候选只读 Tool 不足或校验失败时，安全回退 `SINGLE_STEP`。
+
+SpringAiToolPlanner 的职责不变：它仍只负责根据用户问题和候选 Tool schema 选择当前要执行的一个 Tool。
+
+### 25.3 stepRef / inputRefs / outputRef 设计
+
+Phase 4.14 为 `ToolOrchestrationStep` 增加稳定引用字段：
+
+- `stepRef`：步骤引用名，例如 `step-1`。
+- `inputRefs`：当前步骤引用的前置安全摘要，例如 `["step-1.outputSummary"]`。
+- `outputRef`：当前步骤输出摘要路径，例如 `$.steps[0].outputSummary`。
+
+这些引用只指向 `outputSummary`，不指向完整 `rawData`。状态接口可以展示 stepRef 信息，用于后续多步骤上下文传递和调试。
+
+### 25.4 Plan Validator 安全校验
+
+`ToolOrchestrationPlanValidator` 在 Orchestrator plan 进入 run 前执行安全校验：
+
+- steps 数量不得超过 `maxSteps`。
+- dry-run 后续步骤必须为 `SKIPPED`。
+- controlled 后续步骤在 Phase 4.14 必须为 `SKIPPED`。
+- Tool 必须存在于 ToolRegistry 且 `readOnly=true`，除明确的 `orchestrator.futureStep` dry-run placeholder 外。
+- stepRef/inputRefs 只能引用前置步骤。
+- `inputSummary` / `outputSummary` 不得包含 `rawData`、`prompt`、`token`、`authorization`、`cookie`、`secret` 等敏感关键词。
+
+校验失败时，Planner 会安全回退到 `SINGLE_STEP` plan，不影响当前真实 Tool 执行主链路。
+
+### 25.5 dry-run / controlled 行为
+
+dry-run 模式：
+
+- 第一个步骤仍是真实 Tool Calling Chat 当前选中的 Tool。
+- 第二个及后续步骤仅作为计划占位。
+- 后续步骤状态为 `SKIPPED`。
+- 不执行后续真实 Tool。
+- 不为后续 `SKIPPED` 步骤写伪 Tool audit。
+
+controlled 模式：
+
+- 当前阶段只生成 controlled plan。
+- 后续步骤仍为 `SKIPPED`。
+- 真实第二步执行留到后续阶段在只读 Tool 范围内逐步开启。
+
+### 25.6 gateway 18080 Tool Calling Chat 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查 MAT-001 的库存余额",
+  "runId": "run-tool-chat-phase414-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "inventory",
+  "routeTags": [
+    "inventory",
+    "balance"
+  ]
+}
+```
+
+关键预期返回字段仍保持兼容：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase414-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "rawData": {}
+      }
+    },
+    "answer": "模型基于展示 schema 和原始数据生成的中文回答"
+  }
+}
+```
+
+### 25.7 gateway 18080 Orchestration status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/orchestrations/run-tool-chat-phase414-001
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase414-001",
+    "plan": {
+      "mode": "MULTI_STEP_DRY_RUN",
+      "generatedBy": "orchestration-planner-dry-run",
+      "maxSteps": 2
+    },
+    "steps": [
+      {
+        "stepNo": 1,
+        "stepRef": "step-1",
+        "outputRef": "$.steps[0].outputSummary",
+        "status": "SUCCESS",
+        "outputSummary": "tool=inventory.getBalance, success=true, displayTitle=库存余额..."
+      },
+      {
+        "stepNo": 2,
+        "stepRef": "step-2",
+        "inputRefs": [
+          "step-1.outputSummary"
+        ],
+        "outputRef": "$.steps[1].outputSummary",
+        "status": "SKIPPED",
+        "skipReason": "multi-step dry-run only; real Tool is not executed"
+      }
+    ]
+  }
+}
+```
+
+状态接口不会返回完整 `rawData`、完整 prompt、完整模型响应、用户 token、敏感 header 或内部 HTTP header。
+
+### 25.8 后续升级方向
+
+Phase 4.15 可继续推进：
+
+- 在只读 Tool 范围内开启第二个真实步骤的受控执行。
+- 引入 stepRef resolver，把前置 `outputSummary` 转成后续 Tool 参数候选。
+- 为 Orchestration run / plan / step 设计 MySQL 持久化。
+- 增强审计事件，区分真实执行、权限拒绝、runtime 熔断和 dry-run skipped。
+
+## 26. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -2412,11 +2569,11 @@ Phase 4.14 可继续推进：
 - Multi-Agent
 - 长任务编排
 
-## 26. 后续建议
+## 27. 后续建议
 
-Phase 4.14 可以继续往下面推进：
+Phase 4.15 可以继续往下面推进：
 
-- 引入受控多步骤 planner 与 stepRef 引用
 - 在只读 Tool 范围内执行第二个真实步骤
+- 增加 stepRef resolver 和参数派生策略
 - 为 Orchestrator run 设计 MySQL 持久化与分页查询
 

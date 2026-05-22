@@ -33,15 +33,17 @@ class ToolOrchestrationStepSummaryBuilderTest {
     }
 
     @Test
-    void shouldUsePreviousOutputSummaryAsNextInputSummary() {
+    void shouldUseStepRefOutputSummaryAsNextInputSummary() {
         ToolOrchestrationStep previous = ToolOrchestrationStep.builder()
                 .stepId("run-1-step-1")
+                .stepRef("step-1")
                 .outputSummary("tool=inventory.getBalance, success=true")
                 .build();
 
         String summary = builder.buildInputSummary(previous);
 
-        assertTrue(summary.contains("previousStep=run-1-step-1"));
+        assertTrue(summary.contains("inputRefs=[step-1.outputSummary]"));
+        assertTrue(summary.contains("previousStep=step-1"));
         assertTrue(summary.contains("success=true"));
     }
 }
