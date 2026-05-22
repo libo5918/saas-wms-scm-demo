@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,4 +30,13 @@ public class ToolCallingChatRequest {
 
     /** 显式传入的工具参数。 */
     private Map<String, Object> toolArguments = new HashMap<>();
+
+    /** 可选路由提示：期望的业务域，例如 inventory、mdm、sales、purchase。 */
+    private String requestedDomain;
+
+    /** 可选路由提示：期望的工具类别，例如 query。 */
+    private String requestedCategory;
+
+    /** 可选路由提示：期望匹配的 routeTags。 */
+    private List<String> routeTags;
 }

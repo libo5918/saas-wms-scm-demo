@@ -8,6 +8,9 @@ import com.example.scm.aiagent.model.ModelRoute;
 import com.example.scm.aiagent.model.ModelRouteRequest;
 import com.example.scm.aiagent.service.ChatModelClient;
 import com.example.scm.aiagent.service.ModelRouter;
+import com.example.scm.aiagent.tool.model.ToolCandidateFilterRequest;
+import com.example.scm.aiagent.tool.model.ToolCandidateFilterResult;
+import com.example.scm.aiagent.tool.service.ToolCandidateFilterService;
 import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
@@ -36,6 +39,7 @@ public class SpringAiToolPlanner {
     private final ModelRouter modelRouter;
     private final ChatModelClient chatModelClient;
     private final ToolRegistry toolRegistry;
+    private final ToolCandidateFilterService toolCandidateFilterService;
     private final ToolSchemaConverter toolSchemaConverter;
     private final ToolPlanningPromptBuilder promptBuilder;
     private final ToolPlanParser toolPlanParser;
@@ -44,6 +48,7 @@ public class SpringAiToolPlanner {
                                ModelRouter modelRouter,
                                ChatModelClient chatModelClient,
                                ToolRegistry toolRegistry,
+                               ToolCandidateFilterService toolCandidateFilterService,
                                ToolSchemaConverter toolSchemaConverter,
                                ToolPlanningPromptBuilder promptBuilder,
                                ToolPlanParser toolPlanParser) {
@@ -51,6 +56,7 @@ public class SpringAiToolPlanner {
         this.modelRouter = modelRouter;
         this.chatModelClient = chatModelClient;
         this.toolRegistry = toolRegistry;
+        this.toolCandidateFilterService = toolCandidateFilterService;
         this.toolSchemaConverter = toolSchemaConverter;
         this.promptBuilder = promptBuilder;
         this.toolPlanParser = toolPlanParser;
@@ -70,7 +76,18 @@ public class SpringAiToolPlanner {
         String taskType = StringUtils.hasText(plannerProperties.getTaskType())
                 ? plannerProperties.getTaskType()
                 : "tool_calling";
-        String prompt = promptBuilder.build(request.getMessage(), toolRegistry.listDefinitions().stream()
+        ToolCandidateFilterResult candidateResult = toolCandidateFilterService.filter(
+                toolRegistry.listDefinitions(),
+                ToolCandidateFilterRequest.builder()
+                        .userMessage(request.getMessage())
+                        .requestedDomain(request.getRequestedDomain())
+                        .requestedCategory(request.getRequestedCategory())
+                        .routeTags(request.getRouteTags())
+                        .readOnlyOnly(true)
+                        .build(),
+                context,
+                runId);
+        String prompt = promptBuilder.build(request.getMessage(), candidateResult.getCandidates().stream()
                 .map(toolSchemaConverter::convert)
                 .toList());
         Exception lastError = null;
@@ -88,8 +105,9 @@ public class SpringAiToolPlanner {
                         null,
                         null
                 ));
-                log.info("AI spring planner started, tenantId={}, userId={}, runId={}, attempt={}, modelName={}, provider={}, providerMode={}",
-                        context.tenantId(), context.userId(), runId, attempt, route.modelName(), route.provider(), route.providerMode());
+                log.info("AI spring planner started, tenantId={}, userId={}, runId={}, attempt={}, modelName={}, provider={}, providerMode={}, candidateBeforeCount={}, candidateAfterCount={}, candidateFallbackUsed={}",
+                        context.tenantId(), context.userId(), runId, attempt, route.modelName(), route.provider(), route.providerMode(),
+                        candidateResult.getBeforeCount(), candidateResult.getAfterCount(), candidateResult.isFallbackUsed());
 
                 ChatModelResult result = chatModelClient.chat(new ChatModelInvocation(
                         runId,

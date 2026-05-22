@@ -7,7 +7,9 @@ import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.tool.model.ToolInvocationAuditRecord;
+import com.example.scm.aiagent.tool.model.ToolRuntimeStatus;
 import com.example.scm.aiagent.tool.service.ToolInvocationService;
+import com.example.scm.aiagent.tool.service.ToolRuntimeProtectionService;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
 import com.example.scm.common.web.TenantHeaderInterceptor;
@@ -40,6 +42,9 @@ class AiToolControllerTest {
 
     @MockitoBean
     private ToolInvocationService toolInvocationService;
+
+    @MockitoBean
+    private ToolRuntimeProtectionService runtimeProtectionService;
 
     @Test
     void shouldListToolsWithTenantAndUserContext() throws Exception {
@@ -130,6 +135,54 @@ class AiToolControllerTest {
                 .andExpect(jsonPath("$.data.tenantId").value(1))
                 .andExpect(jsonPath("$.data.count").value(1))
                 .andExpect(jsonPath("$.data.records[0].toolName").value("inventory.getBalance"));
+    }
+
+    @Test
+    void shouldListRuntimeStatuses() throws Exception {
+        when(runtimeProtectionService.listStatuses()).thenReturn(List.of(ToolRuntimeStatus.builder()
+                .toolName("inventory.getBalance")
+                .totalCalls(2)
+                .successCount(1)
+                .failureCount(1)
+                .retryCount(1)
+                .circuitState("CLOSED")
+                .build()));
+
+        mockMvc.perform(get("/api/v1/ai/tools/runtime/status")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].toolName").value("inventory.getBalance"))
+                .andExpect(jsonPath("$.data[0].totalCalls").value(2))
+                .andExpect(jsonPath("$.data[0].retryCount").value(1))
+                .andExpect(jsonPath("$.data[0].circuitState").value("CLOSED"));
+    }
+
+    @Test
+    void shouldGetRuntimeStatusByToolName() throws Exception {
+        when(runtimeProtectionService.getStatus("inventory.getBalance")).thenReturn(ToolRuntimeStatus.builder()
+                .toolName("inventory.getBalance")
+                .totalCalls(3)
+                .successCount(2)
+                .failureCount(1)
+                .lastErrorType("ToolClientException")
+                .circuitState("OPEN")
+                .build());
+
+        mockMvc.perform(get("/api/v1/ai/tools/runtime/status/inventory.getBalance")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin")
+                        .header(GatewayHeaders.USER_ROLES, "ROLE_ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.toolName").value("inventory.getBalance"))
+                .andExpect(jsonPath("$.data.totalCalls").value(3))
+                .andExpect(jsonPath("$.data.lastErrorType").value("ToolClientException"))
+                .andExpect(jsonPath("$.data.circuitState").value("OPEN"));
     }
 
     @Test

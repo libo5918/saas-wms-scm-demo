@@ -1746,7 +1746,201 @@ Phase 4.11 可以在当前治理元数据基础上继续推进：
 - 将轻量熔断配置升级为可观测状态和半开探测
 - 增加更细粒度的 Tool policy 和租户级策略
 
-## 22. 当前阶段不做的事情
+## 22. Phase 4.11：Tool 候选集过滤与 runtime 状态观测
+
+### 22.1 阶段目标
+
+Phase 4.11 在 Phase 4.10 的权限标签、路由标签和 runtime 保护基础上继续向 Orchestrator 过渡：
+
+- 基于 `domain`、`category`、`routeTags`、`readOnly` 缩小 Planner 可见的 Tool schema 候选集
+- 支持 Tool Calling Chat 请求携带可选 route hint，并在缺省时从用户问题做轻量关键词推断
+- 增加 Tool runtime 内存状态统计和只读查询接口
+- 在 `circuit-breaker-enabled=true` 时启用轻量熔断状态机
+
+本阶段不实现完整 Orchestrator，不改变 `/api/v1/ai/tool-calling/chat` 顶层返回字段，不改变 `execution` 顶层字段，不删除 `execution.data.rawData`。
+
+### 22.2 Tool 候选集过滤设计
+
+`ToolCandidateFilterService` 负责候选集过滤，输入只包含安全路由提示：
+
+- `userMessage`
+- `requestedDomain`
+- `requestedCategory`
+- `routeTags`
+- `readOnlyOnly`
+- `maxCandidates`
+
+过滤规则：
+
+- 先按 `readOnlyOnly` 保留只读工具
+- 再按 `requestedDomain` / `requestedCategory` / `routeTags` 过滤
+- 如果过滤结果为空，安全回退到全量只读 Tool，避免 Planner 无工具可选
+- 日志只记录租户、用户、runId、过滤前后数量和是否 fallback，不记录 prompt 全文、token、内部 header 或业务 rawData
+
+### 22.3 route hint 与关键词推断
+
+Tool Calling Chat 请求兼容旧字段，并可选增加：
+
+```json
+{
+  "requestedDomain": "inventory",
+  "requestedCategory": "stock",
+  "routeTags": ["inventory", "balance"]
+}
+```
+
+如果请求未显式传入 route hint，当前按用户问题做轻量关键词推断：
+
+| 关键词 | inferred domain |
+| --- | --- |
+| 库存 / 余额 / 可用 | `inventory` |
+| 物料 / 仓库 / 主数据 | `mdm` |
+| 销售订单 / 销售 | `sales` |
+| 采购订单 / 采购 | `purchase` |
+
+`SpringAiToolPlanner` 构造 prompt 时只把过滤后的 Tool schema 传给模型，但 Planner 输出 JSON 格式保持不变。显式 `requestedTool` 仍按原优先级直接执行，不被候选过滤覆盖。
+
+### 22.4 runtime 状态字段
+
+`ToolRuntimeProtectionService` 维护内存态 `ToolRuntimeStatus`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `toolName` | Tool 名称 |
+| `totalCalls` | 总调用次数，包含被熔断拒绝的调用 |
+| `successCount` | 成功次数 |
+| `failureCount` | 失败次数 |
+| `retryCount` | retry 次数 |
+| `lastFailureAt` | 最近一次失败时间 |
+| `lastErrorType` | 最近一次失败异常类型 |
+| `circuitState` | `CLOSED` / `OPEN` / `HALF_OPEN` |
+| `openedAt` | 最近一次进入 OPEN 的时间 |
+
+runtime 状态接口不返回请求参数原文、业务 rawData、prompt、模型响应、API Key、用户 token 或敏感请求头。
+
+### 22.5 轻量熔断状态机
+
+默认 `circuit-breaker-enabled=false`，不影响本地真实模型和真实 Tool 联调主路径。
+
+开启后状态流转：
+
+- `CLOSED`：正常执行 Tool；失败次数达到 `failure-threshold` 后进入 `OPEN`
+- `OPEN`：不执行真实 Tool，返回稳定失败结构并写入 Tool audit
+- `HALF_OPEN`：`open-duration-ms` 到期后允许下一次调用探测；成功恢复 `CLOSED`，失败回到 `OPEN`
+
+熔断打开时仍保持 ToolResponse / `execution` 顶层字段稳定；当前错误语义为 `Tool circuit is open: <toolName>`，audit 继续记录失败。
+
+### 22.6 gateway 18080 Tool Calling Chat 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查 MAT-001 的库存余额",
+  "runId": "run-tool-chat-phase411-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "inventory",
+  "routeTags": ["inventory", "balance"]
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase411-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "errorCode": null,
+      "errorMessage": null,
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "displayFields": [],
+        "displayItems": [],
+        "rawData": {}
+      },
+      "latencyMs": 0
+    },
+    "answer": "模型基于过滤后的 Tool schema、展示 schema 和原始数据生成的中文回答"
+  }
+}
+```
+
+### 22.7 gateway 18080 runtime status 验证
+
+查询全部 runtime 状态：
+
+```http
+GET http://localhost:18080/api/v1/ai/tools/runtime/status
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "toolName": "inventory.getBalance",
+      "totalCalls": 1,
+      "successCount": 1,
+      "failureCount": 0,
+      "retryCount": 0,
+      "lastFailureAt": null,
+      "lastErrorType": null,
+      "circuitState": "CLOSED",
+      "openedAt": null
+    }
+  ]
+}
+```
+
+查询单个 Tool：
+
+```http
+GET http://localhost:18080/api/v1/ai/tools/runtime/status/inventory.getBalance
+Authorization: Bearer <accessToken>
+```
+
+关键预期字段同上，但 `data` 为单个对象。
+
+### 22.8 runtime 熔断配置示例
+
+```yaml
+ai:
+  agent:
+    tools:
+      runtime:
+        timeout-ms: 5000
+        retry-enabled: true
+        max-retries: 1
+        circuit-breaker-enabled: true
+        failure-threshold: 3
+        open-duration-ms: 30000
+```
+
+### 22.9 后续升级方向
+
+Phase 4.12 可继续推进：
+
+- 将候选过滤结果作为 Orchestrator 的可复用前置能力
+- 增加多轮 Tool Calling 的上下文状态和步骤记录
+- 将 runtime 状态纳入更完整的运维监控面板
+- 在保持安全边界的前提下引入更细粒度的租户级 Tool policy
+
+## 23. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -1758,10 +1952,10 @@ Phase 4.11 可以在当前治理元数据基础上继续推进：
 - Multi-Agent
 - 长任务编排
 
-## 23. 后续建议
+## 24. 后续建议
 
-Phase 4.11 可以继续往下面推进：
+Phase 4.12 可以继续往下面推进：
 
-- 基于 routeTags 做 Orchestrator 工具候选集过滤
-- 增加 Tool runtime 保护的状态查询和熔断半开探测
+- 基于候选过滤能力进入多轮 Tool Calling / Orchestrator 设计
+- 增加 Tool 调用步骤状态、上下文传递和更完整的观测事件
 

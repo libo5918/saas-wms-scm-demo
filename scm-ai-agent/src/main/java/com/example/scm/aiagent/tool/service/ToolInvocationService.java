@@ -121,9 +121,10 @@ public class ToolInvocationService {
                     .build();
             Object data = runtimeProtectionService.execute(toolName, () -> executor.execute(toolRequest));
             long latencyMs = elapsedMs(startedAt);
-            log.info("AI tool invoked, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=true, permissionDecision={}, routeTags={}, timeoutMs={}, latencyMs={}",
+            log.info("AI tool invoked, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=true, permissionDecision={}, routeTags={}, timeoutMs={}, circuitState={}, latencyMs={}",
                     context.tenantId(), context.userId(), runId, toolName, adapterMode, permissionDecision.reason(),
-                    definition.getRouteTags(), aiAgentProperties.getTools().getRuntime().getTimeoutMs(), latencyMs);
+                    definition.getRouteTags(), aiAgentProperties.getTools().getRuntime().getTimeoutMs(),
+                    runtimeProtectionService.getStatus(toolName).getCircuitState(), latencyMs);
             toolInvocationAuditService.record(context, runId, toolName, adapterMode, true, null, latencyMs);
             return ToolResponse.builder()
                     .success(true)
@@ -134,10 +135,11 @@ public class ToolInvocationService {
                     .build();
         } catch (RuntimeException ex) {
             long latencyMs = elapsedMs(startedAt);
-            log.warn("AI tool invoke failed, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=false, errorType={}, permissionDecision={}, routeTags={}, timeoutMs={}, latencyMs={}",
+            log.warn("AI tool invoke failed, tenantId={}, userId={}, runId={}, toolName={}, adapterMode={}, success=false, errorType={}, permissionDecision={}, routeTags={}, timeoutMs={}, circuitState={}, latencyMs={}",
                     context.tenantId(), context.userId(), runId, toolName, adapterMode, ex.getClass().getSimpleName(),
                     permissionDecision.reason(), definition.getRouteTags(),
-                    aiAgentProperties.getTools().getRuntime().getTimeoutMs(), latencyMs);
+                    aiAgentProperties.getTools().getRuntime().getTimeoutMs(),
+                    runtimeProtectionService.getStatus(toolName).getCircuitState(), latencyMs);
             toolInvocationAuditService.record(context, runId, toolName, adapterMode, false,
                     CommonErrorCode.BAD_REQUEST.code(), latencyMs);
             return ToolResponse.builder()

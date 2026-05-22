@@ -5,7 +5,9 @@ import com.example.scm.aiagent.tool.dto.ToolInvocationAuditListResponse;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolListResponse;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.tool.model.ToolRuntimeStatus;
 import com.example.scm.aiagent.tool.service.ToolInvocationService;
+import com.example.scm.aiagent.tool.service.ToolRuntimeProtectionService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.Result;
@@ -15,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -28,7 +31,8 @@ import java.util.List;
 /**
  * AI Tools API 控制器。
  *
- * <p>提供工具列表和工具调用入口，统一复用 gateway 透传的租户和用户上下文。</p>
+ * <p>提供工具列表、工具调用、审计查询和 runtime 状态查询入口，
+ * 统一复用 gateway 透传的租户和用户上下文。</p>
  */
 @Slf4j
 @RestController
@@ -36,9 +40,12 @@ import java.util.List;
 public class AiToolController {
 
     private final ToolInvocationService toolInvocationService;
+    private final ToolRuntimeProtectionService runtimeProtectionService;
 
-    public AiToolController(ToolInvocationService toolInvocationService) {
+    public AiToolController(ToolInvocationService toolInvocationService,
+                            ToolRuntimeProtectionService runtimeProtectionService) {
         this.toolInvocationService = toolInvocationService;
+        this.runtimeProtectionService = runtimeProtectionService;
     }
 
     /**
@@ -65,6 +72,33 @@ public class AiToolController {
                                                                    @RequestParam(value = "limit", required = false) Integer limit) {
         AgentRequestContext context = buildContext(userId, username, roles);
         return Result.success(toolInvocationService.listInvocations(context, toolName, runId, limit));
+    }
+
+    /**
+     * 查询全部 Tool runtime 保护状态。
+     */
+    @GetMapping("/runtime/status")
+    public Result<List<ToolRuntimeStatus>> listRuntimeStatuses(@RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                               @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                               @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("AI tool runtime status list request received, tenantId={}, userId={}",
+                context.tenantId(), context.userId());
+        return Result.success(runtimeProtectionService.listStatuses());
+    }
+
+    /**
+     * 查询单个 Tool runtime 保护状态。
+     */
+    @GetMapping("/runtime/status/{toolName}")
+    public Result<ToolRuntimeStatus> getRuntimeStatus(@PathVariable("toolName") String toolName,
+                                                      @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                      @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                      @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("AI tool runtime status detail request received, tenantId={}, userId={}, toolName={}",
+                context.tenantId(), context.userId(), toolName);
+        return Result.success(runtimeProtectionService.getStatus(toolName));
     }
 
     /**
