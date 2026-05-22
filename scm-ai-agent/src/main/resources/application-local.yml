@@ -108,3 +108,7 @@ ai:
         enabled: true
         record-runs: true
         max-records: 100
+        plan-mode: MULTI_STEP_DRY_RUN
+        max-steps: 2
+        multi-step-enabled: true
+        dry-run-enabled: true

@@ -157,6 +157,10 @@ ai:
         enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_ENABLED:false}
         record-runs: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_RECORD_RUNS:true}
         max-records: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MAX_RECORDS:100}
+        plan-mode: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_PLAN_MODE:single-step}
+        max-steps: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MAX_STEPS:1}
+        multi-step-enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MULTI_STEP_ENABLED:false}
+        dry-run-enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_DRY_RUN_ENABLED:false}
     providers:
       - name: mock
         type: mock

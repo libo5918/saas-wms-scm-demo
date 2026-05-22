@@ -14,6 +14,8 @@ import com.example.scm.aiagent.toolcalling.model.SpringAiToolInputSchema;
 import com.example.scm.aiagent.toolcalling.model.SpringAiToolParameterSchema;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationExecutionSummary;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlan;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanMode;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStep;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepStatus;
@@ -202,6 +204,7 @@ class AiToolCallingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].runId").value("run-orch-1"))
+                .andExpect(jsonPath("$.data[0].plan.mode").value("SINGLE_STEP"))
                 .andExpect(jsonPath("$.data[0].steps[0].status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data[0].steps[0].execution.displayTitle").value("库存余额"))
                 .andExpect(jsonPath("$.data[0].steps[0].execution.rawData").doesNotExist());
@@ -219,6 +222,7 @@ class AiToolCallingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.runId").value("run-orch-1"))
+                .andExpect(jsonPath("$.data.plan.generatedBy").value("service-single-step"))
                 .andExpect(jsonPath("$.data.steps[0].execution.toolName").value("inventory.getBalance"));
     }
 
@@ -230,6 +234,16 @@ class AiToolCallingControllerTest {
                 .plannerMode("spring-ai")
                 .answerMode("spring-ai")
                 .routeTags(List.of("inventory"))
+                .plan(ToolOrchestrationPlan.builder()
+                        .planId("run-orch-1-plan-1")
+                        .runId("run-orch-1")
+                        .mode(ToolOrchestrationPlanMode.SINGLE_STEP)
+                        .objective("查询库存余额")
+                        .steps(List.of())
+                        .maxSteps(1)
+                        .generatedBy("service-single-step")
+                        .createdAt(Instant.parse("2026-05-23T01:00:00Z"))
+                        .build())
                 .steps(List.of(ToolOrchestrationStep.builder()
                         .stepId("run-orch-1-step-1")
                         .stepNo(1)

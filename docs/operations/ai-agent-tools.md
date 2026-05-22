@@ -2177,7 +2177,230 @@ Phase 4.13 可继续推进：
 - 增加 step-level answer / final answer 的更细粒度观测事件。
 - 评估 Orchestration run 从 in-memory 升级到 MySQL 持久化的表结构。
 
-## 24. 当前阶段不做的事情
+## 24. Phase 4.13：显式 Orchestration Plan 与 dry-run 多步骤骨架
+
+### 24.1 目标与边界
+
+Phase 4.13 在 Phase 4.12 的单步 Orchestrator run/step 记录基础上，增加显式 `ToolOrchestrationPlan` 模型、步骤间安全摘要和受控 dry-run 多步骤表达。默认主路径仍是单步 Tool Calling，不自动执行第二个及后续真实 Tool。
+
+本阶段继续保持 `/api/v1/ai/tool-calling/chat` 顶层返回字段不变，保持 `execution` 顶层字段不变，不删除 `execution.data.rawData`，不改变 requestedTool 优先级，不改变 Spring AI Planner 主路径。
+
+### 24.2 Plan 模型设计
+
+`ToolOrchestrationPlan` 用于表达一次 run 的执行计划，核心字段包括：
+
+- `planId`
+- `runId`
+- `mode`
+- `objective`
+- `steps`
+- `maxSteps`
+- `generatedBy`
+- `createdAt`
+
+Plan mode 当前包含：
+
+- `SINGLE_STEP`：默认模式，只构造并执行当前选中的一个 Tool。
+- `MULTI_STEP_DRY_RUN`：受控 dry-run 模式，可表达后续计划步骤，但第二个及后续步骤标记为 `SKIPPED`，不会执行真实 Tool。
+- `MULTI_STEP_CONTROLLED`：预留模式，本阶段不作为默认主路径。
+
+### 24.3 Step 上下文摘要
+
+`ToolOrchestrationStep` 在 Phase 4.13 增加：
+
+- `dependsOnStepIds`
+- `inputSummary`
+- `outputSummary`
+- `skipReason`
+
+`outputSummary` 由 `ToolOrchestrationStepSummaryBuilder` 基于脱敏 execution 概要生成，只包含：
+
+- `success`
+- `toolName`
+- `errorCode`
+- `errorMessage`
+- `displayTitle`
+- `displaySummary`
+- `latencyMs`
+
+摘要不会读取或返回完整 `rawData`、完整 prompt、完整模型响应、用户 token、敏感请求头或内部 HTTP header。后续步骤的 `inputSummary` 可以引用前置步骤的 `outputSummary`，为后续真正多轮 Tool Calling 做上下文传递准备。
+
+### 24.4 Orchestrator plan 配置
+
+默认配置仍保持单步：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: true
+        record-runs: true
+        max-records: 100
+        plan-mode: single-step
+        max-steps: 1
+        multi-step-enabled: false
+        dry-run-enabled: false
+```
+
+受控 dry-run 示例：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: true
+        record-runs: true
+        max-records: 100
+        plan-mode: multi-step-dry-run
+        max-steps: 2
+        multi-step-enabled: true
+        dry-run-enabled: true
+```
+
+配置行为：
+
+- `multi-step-enabled=false` 时只允许单步计划。
+- `dry-run-enabled=true` 且 `plan-mode=multi-step-dry-run` 时，可以构造后续计划步骤。
+- dry-run 后续步骤只记录为 `SKIPPED`，不会调用真实 Tool。
+- 用户显式传入 `requestedTool` 时，仍强制构造 `SINGLE_STEP` plan。
+
+### 24.5 失败与审计规则
+
+- 第一个真实执行步骤成功时，后续 dry-run 步骤仍保持 `SKIPPED`，`skipReason=multi-step dry-run only; real Tool is not executed`。
+- 第一个真实执行步骤失败、权限拒绝、参数校验失败或 runtime circuit open 时，当前步骤进入 `FAILED`。
+- 当前步骤失败后，后续计划步骤进入或保持 `SKIPPED`，`skipReason=previous step failed; real Tool is not executed`。
+- Tool audit 仍只记录真实执行过的 Tool 调用，或在主链路中被权限/runtime 保护拒绝的 Tool 调用。
+- 纯 dry-run 的 `SKIPPED` 步骤不会伪造真实 Tool audit。
+
+### 24.6 gateway 18080 Tool Calling Chat 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "message": "帮我查 MAT-001 的库存余额",
+  "runId": "run-tool-chat-phase413-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "inventory",
+  "routeTags": [
+    "inventory",
+    "balance"
+  ]
+}
+```
+
+关键预期返回字段仍保持 Phase 4.12 兼容：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase413-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "fallbackUsed": false,
+    "selectedTool": "inventory.getBalance",
+    "execution": {
+      "success": true,
+      "toolName": "inventory.getBalance",
+      "data": {
+        "displayTitle": "库存余额",
+        "displaySummary": "已查询到库存余额",
+        "displayFields": [],
+        "displayItems": [],
+        "rawData": {}
+      },
+      "latencyMs": 0
+    },
+    "answer": "模型基于展示 schema 和原始数据生成的中文回答"
+  }
+}
+```
+
+### 24.7 gateway 18080 Orchestration status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/orchestrations/run-tool-chat-phase413-001
+Authorization: Bearer <accessToken>
+```
+
+单步模式关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase413-001",
+    "plan": {
+      "planId": "run-tool-chat-phase413-001-plan-1",
+      "mode": "SINGLE_STEP",
+      "objective": "帮我查 MAT-001 的库存余额",
+      "maxSteps": 1,
+      "generatedBy": "service-single-step"
+    },
+    "steps": [
+      {
+        "stepNo": 1,
+        "toolName": "inventory.getBalance",
+        "status": "SUCCESS",
+        "outputSummary": "tool=inventory.getBalance, success=true, displayTitle=库存余额, displaySummary=已查询到库存余额, latencyMs=0",
+        "execution": {
+          "success": true,
+          "toolName": "inventory.getBalance",
+          "displayTitle": "库存余额",
+          "displaySummary": "已查询到库存余额"
+        }
+      }
+    ]
+  }
+}
+```
+
+dry-run 模式下可看到后续跳过步骤：
+
+```json
+{
+  "data": {
+    "plan": {
+      "mode": "MULTI_STEP_DRY_RUN",
+      "maxSteps": 2,
+      "generatedBy": "service-dry-run"
+    },
+    "steps": [
+      {
+        "stepNo": 1,
+        "status": "SUCCESS"
+      },
+      {
+        "stepNo": 2,
+        "toolName": "orchestrator.futureStep",
+        "status": "SKIPPED",
+        "inputSummary": "previousStep=run-tool-chat-phase413-001-step-1, outputSummary=...",
+        "skipReason": "multi-step dry-run only; real Tool is not executed"
+      }
+    ]
+  }
+}
+```
+
+状态接口不会返回完整 `rawData`、完整 prompt、完整模型响应、用户 token 或内部 HTTP header。
+
+### 24.8 后续升级方向
+
+Phase 4.14 可继续推进：
+
+- 引入受控多步骤 planner，但默认仍可关闭。
+- 为步骤间上下文增加更稳定的引用格式，例如 `stepRef`。
+- 评估 Orchestration run / plan / step 的 MySQL 持久化。
+- 在只读 Tool 范围内验证真正多步骤执行的权限、审计和 runtime 保护闭环。
+
+## 25. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -2189,11 +2412,11 @@ Phase 4.13 可继续推进：
 - Multi-Agent
 - 长任务编排
 
-## 25. 后续建议
+## 26. 后续建议
 
-Phase 4.13 可以继续往下面推进：
+Phase 4.14 可以继续往下面推进：
 
-- 在单步 run/step 记录基础上引入显式多步骤 plan
-- 增加步骤间上下文摘要和结果引用
+- 引入受控多步骤 planner 与 stepRef 引用
+- 在只读 Tool 范围内执行第二个真实步骤
 - 为 Orchestrator run 设计 MySQL 持久化与分页查询
 

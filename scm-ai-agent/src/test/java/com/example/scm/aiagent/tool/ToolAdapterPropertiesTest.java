@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.tool;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -47,7 +48,11 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tool-calling.spring-ai-answer.task-type", "tool_calling_answer")
                 .withProperty("ai.agent.tool-calling.orchestrator.enabled", "true")
                 .withProperty("ai.agent.tool-calling.orchestrator.record-runs", "true")
-                .withProperty("ai.agent.tool-calling.orchestrator.max-records", "120");
+                .withProperty("ai.agent.tool-calling.orchestrator.max-records", "120")
+                .withProperty("ai.agent.tool-calling.orchestrator.plan-mode", "multi-step-dry-run")
+                .withProperty("ai.agent.tool-calling.orchestrator.max-steps", "3")
+                .withProperty("ai.agent.tool-calling.orchestrator.multi-step-enabled", "true")
+                .withProperty("ai.agent.tool-calling.orchestrator.dry-run-enabled", "true");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -84,6 +89,10 @@ class ToolAdapterPropertiesTest {
         assertTrue(properties.getToolCalling().getOrchestrator().isEnabled());
         assertTrue(properties.getToolCalling().getOrchestrator().isRecordRuns());
         assertEquals(120, properties.getToolCalling().getOrchestrator().getMaxRecords());
+        assertEquals(ToolOrchestrationPlanMode.MULTI_STEP_DRY_RUN, properties.getToolCalling().getOrchestrator().getPlanMode());
+        assertEquals(3, properties.getToolCalling().getOrchestrator().getMaxSteps());
+        assertTrue(properties.getToolCalling().getOrchestrator().isMultiStepEnabled());
+        assertTrue(properties.getToolCalling().getOrchestrator().isDryRunEnabled());
     }
 
     @Test
@@ -103,6 +112,10 @@ class ToolAdapterPropertiesTest {
         assertFalse(properties.getToolCalling().getOrchestrator().isEnabled());
         assertTrue(properties.getToolCalling().getOrchestrator().isRecordRuns());
         assertEquals(100, properties.getToolCalling().getOrchestrator().getMaxRecords());
+        assertEquals(ToolOrchestrationPlanMode.SINGLE_STEP, properties.getToolCalling().getOrchestrator().getPlanMode());
+        assertEquals(1, properties.getToolCalling().getOrchestrator().getMaxSteps());
+        assertFalse(properties.getToolCalling().getOrchestrator().isMultiStepEnabled());
+        assertFalse(properties.getToolCalling().getOrchestrator().isDryRunEnabled());
     }
 
     @Test

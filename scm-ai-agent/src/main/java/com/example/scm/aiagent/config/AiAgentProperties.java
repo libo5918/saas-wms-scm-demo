@@ -1,5 +1,6 @@
 package com.example.scm.aiagent.config;
 
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanMode;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -446,5 +447,17 @@ public class AiAgentProperties {
 
         /** in-memory run store 最多保留的记录数。 */
         private int maxRecords = 100;
+
+        /** Orchestration plan 模式，默认只构造单步计划。 */
+        private ToolOrchestrationPlanMode planMode = ToolOrchestrationPlanMode.SINGLE_STEP;
+
+        /** 单次 run 允许表达的最大步骤数，默认 1。 */
+        private int maxSteps = 1;
+
+        /** 是否允许受控多步骤计划；默认关闭，不执行多 Tool 编排。 */
+        private boolean multiStepEnabled = false;
+
+        /** 是否允许 dry-run 多步骤计划；开启后后续步骤只记录为 SKIPPED。 */
+        private boolean dryRunEnabled = false;
     }
 }

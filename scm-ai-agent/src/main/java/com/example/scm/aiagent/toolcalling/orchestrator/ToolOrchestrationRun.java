@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Tool Calling Orchestration 运行记录。
  *
- * <p>Phase 4.12 仅记录当前单步 Tool Calling 闭环，为后续多步编排保留结构。</p>
+ * <p>Run 用来承载一次 Tool Calling Chat 的计划、步骤状态和最终回答，不改变 chat 对外返回结构。</p>
  */
 @Getter
 @Setter
@@ -47,7 +47,10 @@ public class ToolOrchestrationRun {
     /** route hint 标签。 */
     private List<String> routeTags;
 
-    /** 当前运行包含的步骤，Phase 4.12 只会有一个步骤。 */
+    /** 当前 run 对应的显式 Orchestration plan。 */
+    private ToolOrchestrationPlan plan;
+
+    /** 当前运行包含的步骤。 */
     private List<ToolOrchestrationStep> steps;
 
     /** 最终返回给用户的答案。 */

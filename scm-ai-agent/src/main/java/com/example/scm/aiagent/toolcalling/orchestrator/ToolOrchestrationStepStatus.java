@@ -1,7 +1,7 @@
 package com.example.scm.aiagent.toolcalling.orchestrator;
 
 /**
- * Tool Orchestration 单步状态。
+ * Tool Orchestration 步骤状态。
  */
 public enum ToolOrchestrationStepStatus {
     /** 已创建但尚未执行。 */
@@ -12,6 +12,6 @@ public enum ToolOrchestrationStepStatus {
     SUCCESS,
     /** Tool 执行失败。 */
     FAILED,
-    /** 当前步骤被跳过，预留给后续多步编排。 */
+    /** 当前步骤被跳过，通常用于 dry-run 或前置步骤失败。 */
     SKIPPED
 }

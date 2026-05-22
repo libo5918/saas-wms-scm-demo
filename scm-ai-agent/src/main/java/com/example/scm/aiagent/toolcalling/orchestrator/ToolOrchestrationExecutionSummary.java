@@ -6,7 +6,7 @@ import lombok.Getter;
 /**
  * Orchestration 状态接口使用的执行摘要。
  *
- * <p>只暴露成功标记、错误语义、耗时和展示摘要，不包含完整 rawData。</p>
+ * <p>这里只暴露成功标记、错误语义、耗时和展示摘要，不包含完整 rawData。</p>
  */
 @Getter
 @Builder
@@ -27,9 +27,9 @@ public class ToolOrchestrationExecutionSummary {
     /** 执行耗时，单位毫秒。 */
     private long latencyMs;
 
-    /** 展示 schema 标题。 */
+    /** display schema 标题。 */
     private String displayTitle;
 
-    /** 展示 schema 摘要。 */
+    /** display schema 摘要。 */
     private String displaySummary;
 }
