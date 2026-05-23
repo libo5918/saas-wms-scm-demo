@@ -3052,3 +3052,143 @@ X-User-Roles: ROLE_ADMIN
 
 日志中可观察 `contextSectionCount`、`includedSectionCount`、`truncatedSectionCount`，但不会打印完整模型输入、完整模型响应或大段业务数据。
 
+## 31. Phase 6.1 Workflow 最小闭环
+
+### 31.1 目标与边界
+
+Phase 6.1 在 RAG + Tool + Prompt Context 的基础上，新增一个固定只读 Workflow 示例，用于展示企业级 Agent 如何表达业务流程编排。
+
+本阶段不实现 MCP、Multi-Agent、复杂长任务编排、通用工作流引擎或写操作 Tool，不改变 `/api/v1/ai/chat`、`/api/v1/ai/tool-calling/chat`、`/api/v1/ai/agent/chat` 的返回结构。
+
+### 31.2 Workflow 与 Orchestrator 的区别
+
+- Orchestrator：偏 Agent Tool 执行轨迹，关注 planner、stepRef、runtime 保护、权限校验和审计。
+- Workflow：偏业务流程定义，关注业务步骤、输入映射、条件、状态和最终业务结论。
+
+Phase 6.1 的 Workflow 复用 `ToolInvocationService`，因此 Tool 权限、audit 和 runtime protection 仍然生效。
+
+### 31.3 固定只读 Workflow
+
+当前内置流程：
+
+- `workflowCode`: `scm_stock_replenishment_advice`
+- `workflowName`: 库存补货建议草案
+
+步骤：
+
+1. `query_material`：调用 `mdm.getMaterial` 查询物料。
+2. `query_inventory_balance`：从第一步返回的 `id` 派生 `materialId`，并结合用户问题或 parameters 中的 `warehouseId`、`locationId` 调用 `inventory.getBalance`。
+3. `generate_advice`：基于只读查询结果调用模型生成中文补货建议草案。
+
+该流程只生成建议草案，不创建采购单、调拨单、补货单或其他写操作。
+
+### 31.4 Gateway 18080 Workflow List 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/workflows
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "workflowCode": "scm_stock_replenishment_advice",
+      "workflowName": "库存补货建议草案",
+      "enabled": true,
+      "steps": [
+        { "stepCode": "query_material", "stepType": "TOOL", "toolName": "mdm.getMaterial" },
+        { "stepCode": "query_inventory_balance", "stepType": "TOOL", "toolName": "inventory.getBalance" },
+        { "stepCode": "generate_advice", "stepType": "SUMMARY" }
+      ]
+    }
+  ]
+}
+```
+
+### 31.5 Gateway 18080 Workflow Run 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/workflows/scm_stock_replenishment_advice/run
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-workflow-phase61-001",
+  "message": "帮我生成物料 MAT-001 在仓库ID 1、库位ID 2 的补货建议草案",
+  "parameters": {
+    "warehouseId": 1,
+    "locationId": 2
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-workflow-phase61-001",
+    "workflowCode": "scm_stock_replenishment_advice",
+    "workflowName": "库存补货建议草案",
+    "status": "SUCCESS",
+    "steps": [
+      {
+        "stepCode": "query_material",
+        "status": "SUCCESS",
+        "toolName": "mdm.getMaterial",
+        "safeFields": {
+          "materialId": 1001
+        }
+      },
+      {
+        "stepCode": "query_inventory_balance",
+        "status": "SUCCESS",
+        "toolName": "inventory.getBalance",
+        "safeFields": {
+          "availableQty": 12
+        }
+      },
+      {
+        "stepCode": "generate_advice",
+        "status": "SUCCESS",
+        "stepType": "SUMMARY"
+      }
+    ],
+    "finalAnswer": "模型生成的中文补货建议草案",
+    "latencyMs": 120
+  }
+}
+```
+
+### 31.6 Gateway 18080 Workflow Status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/workflows/runs/run-workflow-phase61-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+预期：返回 run、steps、finalAnswer 和 latencyMs，但不返回完整 `rawData`、完整 prompt、完整模型响应、用户凭证或敏感 header。
+
+### 31.7 参数不足场景
+
+如果用户问题或 `parameters` 中缺少 `warehouseId` / `locationId`，`query_inventory_balance` 会进入 `SKIPPED`，`generate_advice` 也会跳过，`finalAnswer` 会说明缺少库存查询参数。
+

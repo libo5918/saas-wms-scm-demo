@@ -42,7 +42,7 @@ public class RagToolAnswerPromptBuilder {
                                               AgentRagView rag,
                                               AgentToolView tool,
                                               ToolOrchestrationRun orchestrationRun) {
-        AgentPromptContext assemble = contextAssembler.assemble(AgentPromptBuildRequest.builder()
+        AgentPromptContext context = contextAssembler.assemble(AgentPromptBuildRequest.builder()
                 .runId(runId)
                 .userMessage(userMessage)
                 .intentType(intentType)
@@ -50,7 +50,6 @@ public class RagToolAnswerPromptBuilder {
                 .tool(tool)
                 .orchestrationRun(orchestrationRun)
                 .build());
-        AgentPromptContext context = assemble;
         return new AgentPromptBuildResult(
                 contextRenderer.render(context),
                 context,
