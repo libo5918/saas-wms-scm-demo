@@ -48,13 +48,11 @@
 
 目标：实现一个可配置的企业流程编排示例。
 
-当前实现重点：
+建议能力：
 
-- 新增 `/api/v1/ai/workflows`、`/api/v1/ai/workflows/{workflowCode}/run`、`/api/v1/ai/workflows/runs/{runId}`。
 - 固定只读 Workflow 示例：查询物料 -> 查询库存 -> 生成补货建议草案。
-- Workflow 复用 ToolInvocationService，保留权限、audit、runtime protection。
-- Workflow status 只返回脱敏步骤概要，不返回完整 rawData、完整 prompt 或完整模型响应。
-- 暂不实现通用工作流引擎、复杂异步长任务或写操作。
+- 区分 Workflow step 与 Orchestrator step：Workflow 偏业务流程，Orchestrator 偏 Agent 工具执行。
+- 暂不实现复杂异步长任务。
 
 ### Phase 7.1：MCP Server 最小演示
 

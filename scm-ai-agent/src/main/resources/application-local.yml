@@ -68,7 +68,7 @@ ai:
         enabled: true
         root-path: docs
         knowledge-base-id: kb-project-docs
-        include-directories: architecture,business,operations,database,examples,interview
+        include-directories: architecture,business,operations,database
         supported-extensions: .md
         max-files: 100
       retrieval:

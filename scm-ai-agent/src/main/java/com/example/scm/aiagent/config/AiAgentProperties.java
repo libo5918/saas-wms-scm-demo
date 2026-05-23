@@ -245,7 +245,7 @@ public class AiAgentProperties {
 
         /** 默认扫描的子目录。 */
         private List<String> includeDirectories = new ArrayList<>(
-                List.of("architecture", "business", "operations", "database","examples","interview"));
+                List.of("architecture", "business", "operations", "database"));
 
         /** 支持导入的文件后缀。 */
         private List<String> supportedExtensions = new ArrayList<>(List.of(".md"));

@@ -125,7 +125,7 @@ ai:
         enabled: ${AI_AGENT_RAG_DOCS_IMPORT_ENABLED:true}
         root-path: ${AI_AGENT_RAG_DOCS_ROOT:docs}
         knowledge-base-id: ${AI_AGENT_RAG_DOCS_KNOWLEDGE_BASE_ID:kb-project-docs}
-        include-directories: ${AI_AGENT_RAG_DOCS_INCLUDE_DIRECTORIES:architecture,business,operations,database,c}
+        include-directories: ${AI_AGENT_RAG_DOCS_INCLUDE_DIRECTORIES:architecture,business,operations,database}
         supported-extensions: ${AI_AGENT_RAG_DOCS_SUPPORTED_EXTENSIONS:.md}
         max-files: ${AI_AGENT_RAG_DOCS_MAX_FILES:100}
     tools:
