@@ -22,6 +22,8 @@
 
 ### Phase 5.1：RAG + Tool 组合问答
 
+状态：已进入实现阶段。
+
 目标：让用户一个问题同时用到项目知识库和业务 Tool。
 
 建议能力：
@@ -30,6 +32,14 @@
 - 先检索 RAG 上下文，再规划 Tool，再由模型基于 RAG context + Tool execution 生成答案。
 - 保持外部网络、真实模型、业务服务在单测中全部 mock/stub。
 - 给出可演示问题：先解释库存查询规则，再查询指定物料库存。
+
+当前实现重点：
+
+- 新增 `/api/v1/ai/agent/chat` 组合入口。
+- RAG 负责规则、口径、字段含义和流程背景。
+- Tool 负责实时物料、仓库、库存、订单等业务数据。
+- Orchestrator 提供 run / plan / step / status 的脱敏过程记录。
+- “只查物料” 不触发库存第二步；只有明确表达库存意图时才允许 `inventory.getBalance` follow-up。
 
 ### Phase 5.2：RAG Advisor / Prompt Context 工程化
 

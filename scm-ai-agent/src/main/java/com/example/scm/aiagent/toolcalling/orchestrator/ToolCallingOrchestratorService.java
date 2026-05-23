@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.toolcalling.orchestrator;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.agent.service.RagToolIntentRouter;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -45,6 +46,7 @@ public class ToolCallingOrchestratorService {
     private final ToolInvocationService toolInvocationService;
     private final ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
     private final ToolRegistry toolRegistry;
+    private final RagToolIntentRouter intentRouter;
 
     public ToolCallingOrchestratorService(AiAgentProperties properties,
                                           ToolOrchestrationRunStore runStore,
@@ -53,7 +55,8 @@ public class ToolCallingOrchestratorService {
                                           ToolOrchestrationParameterResolver parameterResolver,
                                           ToolInvocationService toolInvocationService,
                                           ToolCallingDisplaySchemaBuilder displaySchemaBuilder,
-                                          ToolRegistry toolRegistry) {
+                                          ToolRegistry toolRegistry,
+                                          RagToolIntentRouter intentRouter) {
         this.properties = properties;
         this.runStore = runStore;
         this.summaryBuilder = summaryBuilder;
@@ -62,6 +65,7 @@ public class ToolCallingOrchestratorService {
         this.toolInvocationService = toolInvocationService;
         this.displaySchemaBuilder = displaySchemaBuilder;
         this.toolRegistry = toolRegistry;
+        this.intentRouter = intentRouter;
     }
 
     /**
@@ -160,6 +164,13 @@ public class ToolCallingOrchestratorService {
         ToolOrchestrationStep secondStep = run.getSteps().get(1);
         if (firstStep.getStatus() != ToolOrchestrationStepStatus.SUCCESS) {
             markSkipped(secondStep, "previous step failed; controlled follow-up is not executed", false, false);
+            runStore.save(run);
+            return;
+        }
+        if (!intentRouter.hasInventoryFollowUpIntent(run.getUserMessage())) {
+            markSkipped(secondStep, "用户问题未表达库存查询意图，受控第二步库存 Tool 不执行", false, false);
+            secondStep.setInputResolved(false);
+            secondStep.setInputResolveError("inventory follow-up intent is missing");
             runStore.save(run);
             return;
         }

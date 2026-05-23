@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.agent.service.RagToolIntentRouter;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -166,6 +167,23 @@ class ToolCallingOrchestratorServiceTest {
     }
 
     @Test
+    void shouldSkipInventoryFollowUpWhenUserOnlyAsksMaterial() {
+        AiAgentProperties properties = controlledExecutionProperties();
+        ToolInvocationService invocationService = mock(ToolInvocationService.class);
+        ToolCallingOrchestratorService service = newService(properties, invocationService, true);
+
+        ToolOrchestrationRun run = service.startRun(materialOnlyRequest(), context, "run-material-only", "spring-ai", "spring-ai");
+        service.startStep(run, plan("mdm.getMaterial"));
+        service.finishStep(run, materialExecution());
+        service.executeControlledFollowUp(run, context);
+
+        assertEquals(ToolOrchestrationStepStatus.SKIPPED, run.getSteps().get(1).getStatus());
+        assertFalse(run.getSteps().get(1).getExecuted());
+        assertEquals("inventory follow-up intent is missing", run.getSteps().get(1).getInputResolveError());
+        verify(invocationService, never()).invoke(any(ToolInvokeRequest.class), any());
+    }
+
+    @Test
     void shouldMapMdmReturnedIdToInventoryMaterialId() {
         AiAgentProperties properties = controlledExecutionProperties();
         ToolInvocationService invocationService = mock(ToolInvocationService.class);
@@ -322,7 +340,7 @@ class ToolCallingOrchestratorServiceTest {
         ToolOrchestrationPlannerService planner = new ToolOrchestrationPlannerService(properties, registry, refBuilder, validator);
         return new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
                 new ToolOrchestrationStepSummaryBuilder(), planner, new ToolOrchestrationParameterResolver(),
-                invocationService, new ToolCallingDisplaySchemaBuilder(), registry);
+                invocationService, new ToolCallingDisplaySchemaBuilder(), registry, new RagToolIntentRouter());
     }
 
     private ToolExecutor executor(String toolName, boolean readOnly) {
@@ -391,6 +409,14 @@ class ToolCallingOrchestratorServiceTest {
     private ToolCallingChatRequest noCodeMaterialRequest() {
         ToolCallingChatRequest request = new ToolCallingChatRequest();
         request.setMessage("帮我查这个物料，并看看库存");
+        request.setRequestedDomain("mdm");
+        request.setRouteTags(List.of("mdm", "material"));
+        return request;
+    }
+
+    private ToolCallingChatRequest materialOnlyRequest() {
+        ToolCallingChatRequest request = new ToolCallingChatRequest();
+        request.setMessage("帮我查物料 MAT-001");
         request.setRequestedDomain("mdm");
         request.setRouteTags(List.of("mdm", "material"));
         return request;

@@ -2795,9 +2795,168 @@ Phase 4 到 4.15 已经具备面试可讲的 Tools 企业级能力：
 
 ## 28. 后续建议
 
-Phase 4.15 可以继续往下面推进：
+Phase 4.15 之后，Tools 主线收敛，后续优先进入 RAG + Tool 组合问答。
 
-- 在只读 Tool 范围内执行第二个真实步骤
-- 增加 stepRef resolver 和参数派生策略
-- 为 Orchestrator run 设计 MySQL 持久化与分页查询
+## 29. Phase 5.1：RAG + Tool 组合问答
+
+### 29.1 目标与边界
+
+Phase 5.1 开始进入“知识库检索 + 实时业务 Tool 查询 + 模型总结”的企业级 Agent 闭环：
+
+- 新增 `POST /api/v1/ai/agent/chat` 作为面试展示入口。
+- 不替换已有 `/api/v1/ai/rag/**` 和 `/api/v1/ai/tool-calling/**` 接口。
+- 不改变 `/api/v1/ai/tool-calling/chat` 顶层字段和 `execution` 顶层字段。
+- 不实现 MCP、Workflow、Multi-Agent、长任务编排或复杂多轮自动规划。
+- 新接口只返回 RAG、Tool、Orchestration 的脱敏概要，不返回完整 prompt、模型响应、token、敏感 header 或完整业务 `rawData`。
+
+### 29.2 RAG 与 Tool 职责边界
+
+RAG 负责回答规则、口径、字段含义和流程背景，例如：
+
+- 库存可用数量口径。
+- 物料状态含义。
+- 仓库和库位字段解释。
+
+Tool 负责查询实时业务数据，例如：
+
+- `mdm.getMaterial` 查询物料主数据。
+- `inventory.getBalance` 查询库存余额。
+- `sales.getOrder` / `purchase.getOrder` 查询订单。
+
+组合回答时，实时事实优先使用 Tool 数据；规则解释优先使用 RAG 片段。RAG 未召回时不编造知识库内容，Tool 失败时保留真实失败语义。
+
+### 29.3 简单意图路由
+
+Phase 5.1 使用关键词规则实现最小意图路由：
+
+- `RAG_ONLY`：规则、口径、含义、流程说明类问题。
+- `TOOL_ONLY`：物料、仓库、库存、销售订单、采购订单等实时查询问题。
+- `RAG_TOOL`：同时包含知识解释和实时查询的问题。
+
+受控二步库存查询增加意图门禁：
+
+- “帮我查物料 MAT-001” 只执行 `mdm.getMaterial`，第二步 `inventory.getBalance` 保持 `SKIPPED`。
+- “帮我查物料 MAT-001，并看看仓库ID 1、库位ID 2 的库存” 才允许执行 `inventory.getBalance`。
+
+### 29.4 组合 Prompt 设计
+
+`/api/v1/ai/agent/chat` 最终总结 prompt 包含：
+
+- 用户原始问题。
+- RAG 检索 chunk 的短摘要。
+- Tool execution 的 display schema。
+- Orchestrator steps 的安全摘要。
+- Tool 失败原因。
+
+Prompt 不包含完整 `rawData`、完整 prompt、完整模型响应、API Key、用户 token、敏感 header 或内部 HTTP header。
+
+### 29.5 Gateway 18080 RAG + Tool 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-agent-phase51-001",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 1、库位ID 2 的库存",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-agent-phase51-001",
+    "intentType": "RAG_TOOL",
+    "answer": "模型基于知识库口径、物料信息和库存信息生成的中文回答",
+    "rag": {
+      "knowledgeBaseId": "kb-scm-demo",
+      "retrievedCount": 1,
+      "chunks": [
+        {
+          "title": "库存可用数量口径",
+          "contentSnippet": "库存可用数量通常等于现存数量减去锁定数量..."
+        }
+      ]
+    },
+    "tool": {
+      "selectedTool": "mdm.getMaterial",
+      "execution": {
+        "success": true,
+        "toolName": "mdm.getMaterial",
+        "displayTitle": "物料信息"
+      }
+    },
+    "orchestration": {
+      "enabled": true,
+      "runId": "run-agent-phase51-001",
+      "planMode": "MULTI_STEP_CONTROLLED",
+      "stepCount": 2
+    }
+  }
+}
+```
+
+### 29.6 Tool Calling Chat 回归验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+只查物料：
+
+```json
+{
+  "message": "帮我查物料 MAT-001",
+  "runId": "run-tool-chat-phase51-material-only",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+预期：`/chat` 返回物料信息；Orchestration status 中第二步为 `SKIPPED`，`skipReason` 表示用户未表达库存查询意图。
+
+查物料并查库存：
+
+```json
+{
+  "message": "帮我查物料 MAT-001，并看看仓库ID 1、库位ID 2 的库存",
+  "runId": "run-tool-chat-phase51-material-inventory",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+预期：第一步 `mdm.getMaterial` 成功，受控第二步 `inventory.getBalance` 成功，最终 answer 同时总结物料和库存信息。
+
+### 29.7 面试讲解话术
+
+企业 Agent 不能只靠 RAG，也不能只靠 Tool：
+
+- RAG 解决企业知识、制度、字段口径和流程解释。
+- Tool 解决实时业务数据查询和系统动作。
+- Orchestrator 负责把 Tool 执行过程结构化记录下来，支持审计、观测和后续扩展。
+- Phase 5.1 的 `/api/v1/ai/agent/chat` 把三者串成一个可演示闭环，适合 Java AI Agent 面试展示。
 

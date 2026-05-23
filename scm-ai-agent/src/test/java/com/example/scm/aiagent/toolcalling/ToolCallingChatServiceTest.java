@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.toolcalling;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.agent.service.RagToolIntentRouter;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -84,7 +85,8 @@ class ToolCallingChatServiceTest {
         ToolOrchestrationPlannerService planner = new ToolOrchestrationPlannerService(properties, registry, refBuilder, validator);
         return new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
                 new ToolOrchestrationStepSummaryBuilder(), planner, new ToolOrchestrationParameterResolver(),
-                mock(ToolInvocationService.class), new ToolCallingDisplaySchemaBuilder(), registry);
+                mock(ToolInvocationService.class), new ToolCallingDisplaySchemaBuilder(), registry,
+                new RagToolIntentRouter());
     }
 
     private ToolExecutor executor(String toolName) {
