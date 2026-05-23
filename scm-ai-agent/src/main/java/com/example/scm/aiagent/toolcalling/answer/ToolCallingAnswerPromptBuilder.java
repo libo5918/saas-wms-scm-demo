@@ -3,11 +3,15 @@ package com.example.scm.aiagent.toolcalling.answer;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.answer.strategy.ToolCallingAnswerPromptStrategyRegistry;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationExecutionSummary;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStep;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,6 +39,20 @@ public class ToolCallingAnswerPromptBuilder {
                         String selectedTool,
                         Map<String, Object> toolArguments,
                         ToolCallingExecutionView execution) {
+        return build(userMessage, selectedTool, toolArguments, execution, null);
+    }
+
+    /**
+     * 构造用于模型总结答案的提示词。
+     *
+     * <p>受控二步执行开启时，最终 answer 必须看到第二步库存查询的脱敏摘要，
+     * 否则模型只会基于第一步物料 execution 生成回答。</p>
+     */
+    public String build(String userMessage,
+                        String selectedTool,
+                        Map<String, Object> toolArguments,
+                        ToolCallingExecutionView execution,
+                        ToolOrchestrationRun orchestrationRun) {
         Map<String, Object> summaryContext = new LinkedHashMap<>();
         Map<String, Object> executionContext = new LinkedHashMap<>();
         String toolSpecificInstructions = promptStrategyRegistry.resolve(selectedTool).instructions();
@@ -48,6 +66,7 @@ public class ToolCallingAnswerPromptBuilder {
         summaryContext.put("toolArguments", toolArguments == null ? Map.of() : toolArguments);
         summaryContext.put("display", buildDisplayContext(execution.getData()));
         summaryContext.put("execution", executionContext);
+        summaryContext.put("orchestrationSteps", buildOrchestrationSteps(orchestrationRun));
 
         return """
                 你是 SCM/WMS 项目的 AI 助手。
@@ -94,5 +113,45 @@ public class ToolCallingAnswerPromptBuilder {
             return data;
         }
         return null;
+    }
+
+    private List<Map<String, Object>> buildOrchestrationSteps(ToolOrchestrationRun run) {
+        if (run == null || run.getSteps() == null || run.getSteps().isEmpty()) {
+            return List.of();
+        }
+        return run.getSteps().stream()
+                .map(this::buildStepContext)
+                .toList();
+    }
+
+    private Map<String, Object> buildStepContext(ToolOrchestrationStep step) {
+        Map<String, Object> stepContext = new LinkedHashMap<>();
+        stepContext.put("stepNo", step.getStepNo());
+        stepContext.put("stepRef", step.getStepRef());
+        stepContext.put("toolName", step.getToolName());
+        stepContext.put("status", step.getStatus());
+        stepContext.put("executed", step.getExecuted());
+        stepContext.put("inputResolved", step.getInputResolved());
+        stepContext.put("skipReason", step.getSkipReason());
+        stepContext.put("inputSummary", step.getInputSummary());
+        stepContext.put("outputSummary", step.getOutputSummary());
+        stepContext.put("execution", buildExecutionSummaryContext(step.getExecution()));
+        return stepContext;
+    }
+
+    private Map<String, Object> buildExecutionSummaryContext(ToolOrchestrationExecutionSummary execution) {
+        if (execution == null) {
+            return Map.of();
+        }
+        Map<String, Object> executionContext = new LinkedHashMap<>();
+        executionContext.put("success", execution.isSuccess());
+        executionContext.put("toolName", execution.getToolName());
+        executionContext.put("errorCode", execution.getErrorCode());
+        executionContext.put("errorMessage", execution.getErrorMessage());
+        executionContext.put("displayTitle", execution.getDisplayTitle());
+        executionContext.put("displaySummary", execution.getDisplaySummary());
+        executionContext.put("safeFields", execution.getSafeFields() == null ? Map.of() : execution.getSafeFields());
+        executionContext.put("latencyMs", execution.getLatencyMs());
+        return executionContext;
     }
 }

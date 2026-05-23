@@ -52,7 +52,10 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tool-calling.orchestrator.plan-mode", "multi-step-dry-run")
                 .withProperty("ai.agent.tool-calling.orchestrator.max-steps", "3")
                 .withProperty("ai.agent.tool-calling.orchestrator.multi-step-enabled", "true")
-                .withProperty("ai.agent.tool-calling.orchestrator.dry-run-enabled", "true");
+                .withProperty("ai.agent.tool-calling.orchestrator.dry-run-enabled", "true")
+                .withProperty("ai.agent.tool-calling.orchestrator.controlled-execution-enabled", "true")
+                .withProperty("ai.agent.tool-calling.orchestrator.max-executable-steps", "2")
+                .withProperty("ai.agent.tool-calling.orchestrator.allow-second-step-read-only", "false");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -93,6 +96,9 @@ class ToolAdapterPropertiesTest {
         assertEquals(3, properties.getToolCalling().getOrchestrator().getMaxSteps());
         assertTrue(properties.getToolCalling().getOrchestrator().isMultiStepEnabled());
         assertTrue(properties.getToolCalling().getOrchestrator().isDryRunEnabled());
+        assertTrue(properties.getToolCalling().getOrchestrator().isControlledExecutionEnabled());
+        assertEquals(2, properties.getToolCalling().getOrchestrator().getMaxExecutableSteps());
+        assertFalse(properties.getToolCalling().getOrchestrator().isAllowSecondStepReadOnly());
     }
 
     @Test
@@ -116,6 +122,9 @@ class ToolAdapterPropertiesTest {
         assertEquals(1, properties.getToolCalling().getOrchestrator().getMaxSteps());
         assertFalse(properties.getToolCalling().getOrchestrator().isMultiStepEnabled());
         assertFalse(properties.getToolCalling().getOrchestrator().isDryRunEnabled());
+        assertFalse(properties.getToolCalling().getOrchestrator().isControlledExecutionEnabled());
+        assertEquals(1, properties.getToolCalling().getOrchestrator().getMaxExecutableSteps());
+        assertTrue(properties.getToolCalling().getOrchestrator().isAllowSecondStepReadOnly());
     }
 
     @Test

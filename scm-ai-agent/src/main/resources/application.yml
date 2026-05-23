@@ -161,6 +161,9 @@ ai:
         max-steps: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MAX_STEPS:1}
         multi-step-enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MULTI_STEP_ENABLED:false}
         dry-run-enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_DRY_RUN_ENABLED:false}
+        controlled-execution-enabled: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_CONTROLLED_EXECUTION_ENABLED:false}
+        max-executable-steps: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_MAX_EXECUTABLE_STEPS:1}
+        allow-second-step-read-only: ${AI_AGENT_TOOL_CALLING_ORCHESTRATOR_ALLOW_SECOND_STEP_READ_ONLY:true}
     providers:
       - name: mock
         type: mock

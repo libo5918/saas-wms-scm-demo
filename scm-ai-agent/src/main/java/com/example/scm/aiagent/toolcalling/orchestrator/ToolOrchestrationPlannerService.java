@@ -21,6 +21,8 @@ import java.util.Map;
 public class ToolOrchestrationPlannerService {
 
     private static final String PLACEHOLDER_TOOL = "orchestrator.futureStep";
+    private static final String MATERIAL_TOOL = "mdm.getMaterial";
+    private static final String INVENTORY_BALANCE_TOOL = "inventory.getBalance";
 
     private final AiAgentProperties properties;
     private final ToolRegistry toolRegistry;
@@ -67,7 +69,7 @@ public class ToolOrchestrationPlannerService {
         ToolOrchestrationStep firstStep = firstStep(run, toolPlan);
         steps.add(firstStep);
         if (mode != ToolOrchestrationPlanMode.SINGLE_STEP && maxSteps > 1) {
-            steps.add(followUpSkippedStep(run, firstStep, mode));
+            steps.add(followUpSkippedStep(run, firstStep, mode, toolPlan));
         }
         return ToolOrchestrationPlan.builder()
                 .planId(run.getRunId() + "-plan-1")
@@ -93,6 +95,9 @@ public class ToolOrchestrationPlannerService {
                 .inputRefs(List.of())
                 .outputRef(stepRefBuilder.outputRef(0))
                 .inputSummary("")
+                .executable(true)
+                .executed(false)
+                .inputResolved(true)
                 .status(ToolOrchestrationStepStatus.RUNNING)
                 .startedAt(Instant.now())
                 .build();
@@ -100,25 +105,46 @@ public class ToolOrchestrationPlannerService {
 
     private ToolOrchestrationStep followUpSkippedStep(ToolOrchestrationRun run,
                                                       ToolOrchestrationStep firstStep,
-                                                      ToolOrchestrationPlanMode mode) {
+                                                      ToolOrchestrationPlanMode mode,
+                                                      ToolCallingPlan toolPlan) {
         String skipReason = mode == ToolOrchestrationPlanMode.MULTI_STEP_DRY_RUN
                 ? "multi-step dry-run only; real Tool is not executed"
-                : "multi-step controlled plan only; follow-up Tool execution is disabled in Phase 4.14";
+                : "multi-step controlled plan created; follow-up Tool waits for explicit controlled execution";
+        String toolName = resolveFollowUpTool(mode, toolPlan);
         return ToolOrchestrationStep.builder()
                 .stepId(stepId(run.getRunId(), 2))
                 .stepRef(stepRefBuilder.stepRef(2))
                 .stepNo(2)
-                .toolName(PLACEHOLDER_TOOL)
+                .toolName(toolName)
                 .arguments(Map.of())
-                .reason("Phase 4.14 planned follow-up placeholder")
+                .reason(followUpReason(toolName))
                 .dependsOnStepIds(List.of(firstStep.getStepId()))
                 .inputRefs(List.of(stepRefBuilder.outputSummaryInputRef(1)))
                 .outputRef(stepRefBuilder.outputRef(1))
                 .inputSummary("inputRefs=[" + stepRefBuilder.outputSummaryInputRef(1) + "]")
+                .executable(false)
+                .executed(false)
+                .inputResolved(false)
                 .status(ToolOrchestrationStepStatus.SKIPPED)
                 .skipReason(skipReason)
                 .finishedAt(Instant.now())
                 .build();
+    }
+
+    private String resolveFollowUpTool(ToolOrchestrationPlanMode mode, ToolCallingPlan toolPlan) {
+        if (mode == ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED
+                && MATERIAL_TOOL.equals(toolPlan.selectedTool())
+                && toolRegistry.findDefinition(INVENTORY_BALANCE_TOOL).map(definition -> definition.isReadOnly()).orElse(false)) {
+            return INVENTORY_BALANCE_TOOL;
+        }
+        return PLACEHOLDER_TOOL;
+    }
+
+    private String followUpReason(String toolName) {
+        if (INVENTORY_BALANCE_TOOL.equals(toolName)) {
+            return "Phase 4.15 controlled read-only follow-up: query inventory balance by materialCode";
+        }
+        return "Phase 4.15 planned follow-up placeholder";
     }
 
     private ToolOrchestrationPlanMode resolvePlanMode(ToolOrchestrationRun run,

@@ -459,5 +459,14 @@ public class AiAgentProperties {
 
         /** 是否允许 dry-run 多步骤计划；开启后后续步骤只记录为 SKIPPED。 */
         private boolean dryRunEnabled = false;
+
+        /** 是否允许 controlled 模式真实执行受控后续步骤；默认关闭，保持单步主路径。 */
+        private boolean controlledExecutionEnabled = false;
+
+        /** 单次 run 最多允许真实执行的步骤数；默认 1，Phase 4.15 显式配置下最大建议 2。 */
+        private int maxExecutableSteps = 1;
+
+        /** 是否允许第二步执行只读 Tool；默认允许，但仍受 controlledExecutionEnabled 和 maxExecutableSteps 约束。 */
+        private boolean allowSecondStepReadOnly = true;
     }
 }

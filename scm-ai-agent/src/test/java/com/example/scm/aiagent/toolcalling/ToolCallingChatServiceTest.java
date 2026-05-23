@@ -5,6 +5,7 @@ import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.tool.model.ToolDefinition;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.tool.model.ToolRequest;
+import com.example.scm.aiagent.tool.service.ToolInvocationService;
 import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.tool.spi.ToolExecutor;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
@@ -20,6 +21,7 @@ import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryServic
 import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolCallingOrchestratorService;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationParameterResolver;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlanValidator;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationPlannerService;
 import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRunStore;
@@ -81,7 +83,8 @@ class ToolCallingChatServiceTest {
         ToolOrchestrationPlanValidator validator = new ToolOrchestrationPlanValidator(registry);
         ToolOrchestrationPlannerService planner = new ToolOrchestrationPlannerService(properties, registry, refBuilder, validator);
         return new ToolCallingOrchestratorService(properties, new ToolOrchestrationRunStore(properties),
-                new ToolOrchestrationStepSummaryBuilder(), planner);
+                new ToolOrchestrationStepSummaryBuilder(), planner, new ToolOrchestrationParameterResolver(),
+                mock(ToolInvocationService.class), new ToolCallingDisplaySchemaBuilder(), registry);
     }
 
     private ToolExecutor executor(String toolName) {
@@ -119,7 +122,7 @@ class ToolCallingChatServiceTest {
                         .build())
                 .latencyMs(8)
                 .build());
-        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-1")))
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-1"), any()))
                 .thenReturn(ToolCallingAnswerSummaryResult.builder()
                         .answer("已查询到物料 MAT-001。")
                         .answerMode("spring-ai")
@@ -147,7 +150,7 @@ class ToolCallingChatServiceTest {
         assertEquals("MAT-001", ((Map<?, ?>) displayData.rawData()).get("materialCode"));
         assertEquals("已查询到物料 MAT-001。", response.getAnswer());
         verify(springAiToolCallingService).execute(any(), eq(context));
-        verify(answerSummaryService).summarize(any(), eq(context), any(), any(), eq("run-chat-1"));
+        verify(answerSummaryService).summarize(any(), eq(context), any(), any(), eq("run-chat-1"), any());
         verifyNoInteractions(springAiToolPlanner);
     }
 
@@ -174,7 +177,7 @@ class ToolCallingChatServiceTest {
                         .build())
                 .latencyMs(7)
                 .build());
-        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-2")))
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-2"), any()))
                 .thenReturn(ToolCallingAnswerSummaryResult.builder()
                         .answer("销售订单 SO-20260520-001 当前状态为 ALLOCATED。")
                         .answerMode("spring-ai")
@@ -217,7 +220,7 @@ class ToolCallingChatServiceTest {
                         .build())
                 .latencyMs(6)
                 .build());
-        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-3")))
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-3"), any()))
                 .thenReturn(ToolCallingAnswerSummaryResult.builder()
                         .answer("库存可用数量为 128。")
                         .answerMode("template")
@@ -256,7 +259,7 @@ class ToolCallingChatServiceTest {
                         .build())
                 .latencyMs(10)
                 .build());
-        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-4")))
+        when(answerSummaryService.summarize(any(), eq(context), any(), any(), eq("run-chat-4"), any()))
                 .thenReturn(ToolCallingAnswerSummaryResult.builder()
                         .answer("未查询到物料，原因是 MDM service failed: Material not found。")
                         .answerMode("spring-ai")

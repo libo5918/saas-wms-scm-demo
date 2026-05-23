@@ -85,8 +85,9 @@ public class ToolCallingChatService {
         ToolCallingExecuteResponse executeResponse = springAiToolCallingService.execute(executeRequest, context);
         ToolCallingExecutionView execution = toExecutionView(executeResponse);
         orchestratorService.finishStep(orchestrationRun, execution);
+        orchestratorService.executeControlledFollowUp(orchestrationRun, context);
         ToolCallingAnswerSummaryResult answerSummary = answerSummaryService.summarize(
-                request, context, plan, execution, runId);
+                request, context, plan, execution, runId, orchestrationRun);
 
         long latencyMs = elapsedMs(startedAt);
         boolean fallbackUsed = plan.fallbackUsed() || answerSummary.fallbackUsed();

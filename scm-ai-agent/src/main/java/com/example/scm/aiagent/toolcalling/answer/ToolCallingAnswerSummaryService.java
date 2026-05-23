@@ -12,6 +12,7 @@ import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingAnswerSummaryResult;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +59,18 @@ public class ToolCallingAnswerSummaryService {
                                                     ToolCallingPlan plan,
                                                     ToolCallingExecutionView execution,
                                                     String runId) {
+        return summarize(request, context, plan, execution, runId, null);
+    }
+
+    /**
+     * 根据当前配置生成最终返回给用户的答案，可额外接收 Orchestration run 中的后续步骤摘要。
+     */
+    public ToolCallingAnswerSummaryResult summarize(ToolCallingChatRequest request,
+                                                    AgentRequestContext context,
+                                                    ToolCallingPlan plan,
+                                                    ToolCallingExecutionView execution,
+                                                    String runId,
+                                                    ToolOrchestrationRun orchestrationRun) {
         String answerMode = resolveAnswerMode();
         if (!"spring-ai".equalsIgnoreCase(answerMode)) {
             return templateResult(plan, execution, "template", false);
@@ -74,7 +87,8 @@ public class ToolCallingAnswerSummaryService {
         String taskType = StringUtils.hasText(answerProperties.getTaskType())
                 ? answerProperties.getTaskType()
                 : "tool_calling_answer";
-        String prompt = promptBuilder.build(request.getMessage(), plan.selectedTool(), plan.toolArguments(), execution);
+        String prompt = promptBuilder.build(request.getMessage(), plan.selectedTool(), plan.toolArguments(),
+                execution, orchestrationRun);
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {

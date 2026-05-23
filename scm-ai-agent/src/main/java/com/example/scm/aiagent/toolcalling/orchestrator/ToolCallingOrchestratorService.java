@@ -2,9 +2,15 @@ package com.example.scm.aiagent.toolcalling.orchestrator;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
+import com.example.scm.aiagent.tool.dto.ToolResponse;
+import com.example.scm.aiagent.tool.service.ToolInvocationService;
+import com.example.scm.aiagent.tool.service.ToolRegistry;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatRequest;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
+import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayData;
+import com.example.scm.aiagent.toolcalling.model.ToolCallingDisplayField;
 import com.example.scm.aiagent.toolcalling.model.ToolCallingPlan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,7 +18,10 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Tool Calling Orchestrator 最小服务。
@@ -23,19 +32,36 @@ import java.util.List;
 @Service
 public class ToolCallingOrchestratorService {
 
+    private static final String PLACEHOLDER_TOOL = "orchestrator.futureStep";
+    private static final Set<String> SAFE_EXECUTION_FIELD_KEYS = Set.of(
+            "id", "materialId", "materialCode", "warehouseId", "warehouseCode", "locationId", "locationCode",
+            "availableQty", "lockedQty", "unit");
+
     private final AiAgentProperties properties;
     private final ToolOrchestrationRunStore runStore;
     private final ToolOrchestrationStepSummaryBuilder summaryBuilder;
     private final ToolOrchestrationPlannerService plannerService;
+    private final ToolOrchestrationParameterResolver parameterResolver;
+    private final ToolInvocationService toolInvocationService;
+    private final ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
+    private final ToolRegistry toolRegistry;
 
     public ToolCallingOrchestratorService(AiAgentProperties properties,
                                           ToolOrchestrationRunStore runStore,
                                           ToolOrchestrationStepSummaryBuilder summaryBuilder,
-                                          ToolOrchestrationPlannerService plannerService) {
+                                          ToolOrchestrationPlannerService plannerService,
+                                          ToolOrchestrationParameterResolver parameterResolver,
+                                          ToolInvocationService toolInvocationService,
+                                          ToolCallingDisplaySchemaBuilder displaySchemaBuilder,
+                                          ToolRegistry toolRegistry) {
         this.properties = properties;
         this.runStore = runStore;
         this.summaryBuilder = summaryBuilder;
         this.plannerService = plannerService;
+        this.parameterResolver = parameterResolver;
+        this.toolInvocationService = toolInvocationService;
+        this.displaySchemaBuilder = displaySchemaBuilder;
+        this.toolRegistry = toolRegistry;
     }
 
     /**
@@ -108,6 +134,7 @@ public class ToolCallingOrchestratorService {
         step.setExecution(executionSummary);
         step.setOutputSummary(summaryBuilder.buildOutputSummary(executionSummary));
         step.setStatus(execution.isSuccess() ? ToolOrchestrationStepStatus.SUCCESS : ToolOrchestrationStepStatus.FAILED);
+        step.setExecuted(true);
         step.setFinishedAt(finishedAt);
         step.setLatencyMs(step.getStartedAt() == null ? execution.getLatencyMs() :
                 Duration.between(step.getStartedAt(), finishedAt).toMillis());
@@ -117,6 +144,71 @@ public class ToolCallingOrchestratorService {
                 run.getTenantId(), run.getUserId(), run.getRunId(), planId(run), planMode(run), generatedBy(run),
                 step.getToolName(), step.getStepNo(), step.getStepRef(), step.getStatus(), execution.isSuccess(),
                 execution.getErrorCode(), step.getLatencyMs(), step.getSkipReason());
+    }
+
+    /**
+     * 在显式 controlled 配置开启时执行第二个只读 Tool。
+     *
+     * <p>Phase 4.15 只允许第二步真实执行，且必须走 ToolInvocationService，
+     * 从而复用权限、runtime 保护和 audit 链路。</p>
+     */
+    public void executeControlledFollowUp(ToolOrchestrationRun run, AgentRequestContext context) {
+        if (!canAttemptControlledFollowUp(run)) {
+            return;
+        }
+        ToolOrchestrationStep firstStep = run.getSteps().get(0);
+        ToolOrchestrationStep secondStep = run.getSteps().get(1);
+        if (firstStep.getStatus() != ToolOrchestrationStepStatus.SUCCESS) {
+            markSkipped(secondStep, "previous step failed; controlled follow-up is not executed", false, false);
+            runStore.save(run);
+            return;
+        }
+        if (!isExecutableReadOnlyTool(secondStep)) {
+            markSkipped(secondStep, "follow-up tool is not registered readOnly", false, false);
+            runStore.save(run);
+            return;
+        }
+        ToolOrchestrationParameterResolveResult resolveResult =
+                parameterResolver.resolve(run, firstStep, secondStep);
+        secondStep.setInputResolved(resolveResult.resolved());
+        secondStep.setInputResolveError(resolveResult.error());
+        if (!resolveResult.resolved()) {
+            markSkipped(secondStep, resolveResult.error(), false, false);
+            runStore.save(run);
+            return;
+        }
+
+        secondStep.setArguments(resolveResult.arguments());
+        secondStep.setExecutable(true);
+        secondStep.setExecuted(false);
+        secondStep.setStatus(ToolOrchestrationStepStatus.RUNNING);
+        secondStep.setSkipReason(null);
+        secondStep.setStartedAt(Instant.now());
+        secondStep.setFinishedAt(null);
+        runStore.save(run);
+
+        ToolInvokeRequest request = new ToolInvokeRequest();
+        request.setRunId(run.getRunId());
+        request.setToolName(secondStep.getToolName());
+        request.setParameters(resolveResult.arguments());
+        ToolResponse response = toolInvocationService.invoke(request, context);
+        ToolCallingExecutionView execution = toExecutionView(response);
+
+        Instant finishedAt = Instant.now();
+        ToolOrchestrationExecutionSummary executionSummary = toSummary(execution);
+        secondStep.setExecution(executionSummary);
+        secondStep.setOutputSummary(summaryBuilder.buildOutputSummary(executionSummary));
+        secondStep.setStatus(response.isSuccess() ? ToolOrchestrationStepStatus.SUCCESS : ToolOrchestrationStepStatus.FAILED);
+        secondStep.setExecuted(true);
+        secondStep.setFinishedAt(finishedAt);
+        secondStep.setLatencyMs(secondStep.getStartedAt() == null ? execution.getLatencyMs() :
+                Duration.between(secondStep.getStartedAt(), finishedAt).toMillis());
+        runStore.save(run);
+        log.info("AI tool orchestration controlled follow-up finished, tenantId={}, userId={}, runId={}, planId={}, planMode={}, generatedBy={}, stepNo={}, stepRef={}, toolName={}, stepStatus={}, executable={}, executed={}, inputResolved={}, success={}, errorCode={}, latencyMs={}",
+                run.getTenantId(), run.getUserId(), run.getRunId(), planId(run), planMode(run), generatedBy(run),
+                secondStep.getStepNo(), secondStep.getStepRef(), secondStep.getToolName(), secondStep.getStatus(),
+                secondStep.getExecutable(), secondStep.getExecuted(), secondStep.getInputResolved(),
+                response.isSuccess(), response.getErrorCode(), secondStep.getLatencyMs());
     }
 
     /**
@@ -155,10 +247,62 @@ public class ToolCallingOrchestratorService {
             if (!success) {
                 step.setSkipReason("previous step failed; real Tool is not executed");
             }
+            step.setExecutable(false);
+            step.setExecuted(false);
             if (step.getFinishedAt() == null) {
                 step.setFinishedAt(Instant.now());
             }
         }
+    }
+
+    private boolean canAttemptControlledFollowUp(ToolOrchestrationRun run) {
+        if (run == null || run.getPlan() == null || run.getSteps() == null || run.getSteps().size() < 2) {
+            return false;
+        }
+        AiAgentProperties.OrchestratorProperties orchestrator = orchestratorProperties();
+        return orchestrator.isControlledExecutionEnabled()
+                && orchestrator.isMultiStepEnabled()
+                && orchestrator.getPlanMode() == ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED
+                && run.getPlan().getMode() == ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED
+                && Math.max(1, orchestrator.getMaxExecutableSteps()) >= 2;
+    }
+
+    private boolean isExecutableReadOnlyTool(ToolOrchestrationStep step) {
+        if (step == null || PLACEHOLDER_TOOL.equals(step.getToolName())) {
+            return false;
+        }
+        AiAgentProperties.OrchestratorProperties orchestrator = orchestratorProperties();
+        if (step.getStepNo() > Math.max(1, orchestrator.getMaxExecutableSteps())
+                || step.getStepNo() > 2
+                || !orchestrator.isAllowSecondStepReadOnly()) {
+            return false;
+        }
+        return toolRegistry.findDefinition(step.getToolName())
+                .map(definition -> definition.isReadOnly())
+                .orElse(false);
+    }
+
+    private void markSkipped(ToolOrchestrationStep step, String reason, boolean executable, boolean executed) {
+        if (step == null) {
+            return;
+        }
+        step.setStatus(ToolOrchestrationStepStatus.SKIPPED);
+        step.setSkipReason(reason);
+        step.setExecutable(executable);
+        step.setExecuted(executed);
+        step.setFinishedAt(Instant.now());
+    }
+
+    private ToolCallingExecutionView toExecutionView(ToolResponse response) {
+        Object rawData = response.getData();
+        return ToolCallingExecutionView.builder()
+                .success(response.isSuccess())
+                .toolName(response.getToolName())
+                .errorCode(response.getErrorCode())
+                .errorMessage(response.getErrorMessage())
+                .data(response.isSuccess() ? displaySchemaBuilder.build(response.getToolName(), rawData) : rawData)
+                .latencyMs(response.getLatencyMs())
+                .build();
     }
 
     private ToolOrchestrationStep findRunningStep(ToolOrchestrationRun run) {
@@ -171,9 +315,11 @@ public class ToolCallingOrchestratorService {
     private ToolOrchestrationExecutionSummary toSummary(ToolCallingExecutionView execution) {
         String displayTitle = null;
         String displaySummary = null;
+        Map<String, Object> safeFields = Map.of();
         if (execution.getData() instanceof ToolCallingDisplayData displayData) {
             displayTitle = displayData.displayTitle();
             displaySummary = displayData.displaySummary();
+            safeFields = extractSafeFields(execution.getToolName(), displayData);
         }
         return ToolOrchestrationExecutionSummary.builder()
                 .success(execution.isSuccess())
@@ -183,7 +329,35 @@ public class ToolCallingOrchestratorService {
                 .latencyMs(execution.getLatencyMs())
                 .displayTitle(displayTitle)
                 .displaySummary(displaySummary)
+                .safeFields(safeFields)
                 .build();
+    }
+
+    private Map<String, Object> extractSafeFields(String toolName, ToolCallingDisplayData displayData) {
+        Map<String, Object> safeFields = new LinkedHashMap<>();
+        if (displayData.displayFields() != null) {
+            for (ToolCallingDisplayField field : displayData.displayFields()) {
+                if (field != null && SAFE_EXECUTION_FIELD_KEYS.contains(field.key()) && field.value() != null) {
+                    safeFields.put(normalizeSafeFieldKey(toolName, field.key()), field.value());
+                }
+            }
+        }
+        if (displayData.rawData() instanceof Map<?, ?> rawMap) {
+            rawMap.forEach((key, value) -> {
+                String textKey = String.valueOf(key);
+                if (SAFE_EXECUTION_FIELD_KEYS.contains(textKey) && value != null) {
+                    safeFields.putIfAbsent(normalizeSafeFieldKey(toolName, textKey), value);
+                }
+            });
+        }
+        return safeFields.isEmpty() ? Map.of() : Map.copyOf(safeFields);
+    }
+
+    private String normalizeSafeFieldKey(String toolName, String key) {
+        if ("id".equals(key) && "mdm.getMaterial".equals(toolName)) {
+            return "materialId";
+        }
+        return key;
     }
 
     private boolean shouldRecord() {

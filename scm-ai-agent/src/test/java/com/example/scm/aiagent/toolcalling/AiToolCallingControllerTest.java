@@ -206,6 +206,9 @@ class AiToolCallingControllerTest {
                 .andExpect(jsonPath("$.data[0].runId").value("run-orch-1"))
                 .andExpect(jsonPath("$.data[0].plan.mode").value("SINGLE_STEP"))
                 .andExpect(jsonPath("$.data[0].steps[0].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data[0].steps[0].executable").value(true))
+                .andExpect(jsonPath("$.data[0].steps[0].executed").value(true))
+                .andExpect(jsonPath("$.data[0].steps[0].inputResolved").value(true))
                 .andExpect(jsonPath("$.data[0].steps[0].execution.displayTitle").value("库存余额"))
                 .andExpect(jsonPath("$.data[0].steps[0].execution.rawData").doesNotExist());
     }
@@ -253,6 +256,9 @@ class AiToolCallingControllerTest {
                         .toolName("inventory.getBalance")
                         .inputRefs(List.of())
                         .outputRef("$.steps[0].outputSummary")
+                        .executable(true)
+                        .executed(true)
+                        .inputResolved(true)
                         .status(ToolOrchestrationStepStatus.SUCCESS)
                         .startedAt(Instant.parse("2026-05-23T01:00:00Z"))
                         .finishedAt(Instant.parse("2026-05-23T01:00:01Z"))

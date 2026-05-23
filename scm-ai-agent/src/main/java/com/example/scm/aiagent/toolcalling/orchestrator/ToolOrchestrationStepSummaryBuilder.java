@@ -32,6 +32,9 @@ public class ToolOrchestrationStepSummaryBuilder {
         if (hasText(execution.getDisplaySummary())) {
             summary.append(", displaySummary=").append(execution.getDisplaySummary());
         }
+        if (execution.getSafeFields() != null && !execution.getSafeFields().isEmpty()) {
+            summary.append(", safeFields=").append(execution.getSafeFields());
+        }
         summary.append(", latencyMs=").append(execution.getLatencyMs());
         return summary.toString();
     }

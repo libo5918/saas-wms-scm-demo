@@ -17,6 +17,10 @@ import com.example.scm.aiagent.toolcalling.answer.strategy.ToolCallingAnswerProm
 import com.example.scm.aiagent.toolcalling.answer.strategy.ToolCallingAnswerPromptStrategyRegistry;
 import com.example.scm.aiagent.toolcalling.answer.ToolCallingAnswerSummaryService;
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationExecutionSummary;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationRun;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStep;
+import com.example.scm.aiagent.toolcalling.orchestrator.ToolOrchestrationStepStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
@@ -142,6 +146,80 @@ class ToolCallingAnswerSummaryServiceTest {
         assertEquals("template", result.answerMode());
         assertTrue(result.fallbackUsed());
         assertTrue(result.answer().contains("Material not found"));
+    }
+
+    @Test
+    void shouldIncludeControlledFollowUpSummaryInSpringAiPrompt() {
+        properties.getToolCalling().setAnswerMode("spring-ai");
+        properties.getToolCalling().getSpringAiAnswer().setEnabled(true);
+        when(modelRouter.route(any())).thenReturn(new ModelRoute(
+                "qwen-plus",
+                "qwen-plus",
+                "dashscope",
+                "dashscope",
+                "spring-ai",
+                "task_type:tool_calling_answer",
+                List.of("CHAT"),
+                List.of("qwen-turbo")
+        ));
+        when(chatModelClient.chat(any())).thenReturn(new ChatModelResult("物料 MAT-001 的可用库存为 128，锁定库存为 12。"));
+
+        ToolCallingExecutionView execution = ToolCallingExecutionView.builder()
+                .success(true)
+                .toolName("mdm.getMaterial")
+                .data(displaySchemaBuilder.build("mdm.getMaterial",
+                        Map.of("id", 1001L, "materialCode", "MAT-001", "materialName", "螺丝")))
+                .latencyMs(8)
+                .build();
+        ToolOrchestrationRun run = ToolOrchestrationRun.builder()
+                .runId("run-answer-5")
+                .steps(List.of(
+                        ToolOrchestrationStep.builder()
+                                .stepNo(1)
+                                .stepRef("step-1")
+                                .toolName("mdm.getMaterial")
+                                .status(ToolOrchestrationStepStatus.SUCCESS)
+                                .executed(true)
+                                .outputSummary("material queried")
+                                .execution(ToolOrchestrationExecutionSummary.builder()
+                                        .success(true)
+                                        .toolName("mdm.getMaterial")
+                                        .displayTitle("物料信息")
+                                        .displaySummary("已查询到物料 MAT-001")
+                                        .safeFields(Map.of("materialId", 1001L, "materialCode", "MAT-001"))
+                                        .latencyMs(8)
+                                        .build())
+                                .build(),
+                        ToolOrchestrationStep.builder()
+                                .stepNo(2)
+                                .stepRef("step-2")
+                                .toolName("inventory.getBalance")
+                                .status(ToolOrchestrationStepStatus.SUCCESS)
+                                .executed(true)
+                                .inputResolved(true)
+                                .outputSummary("inventory queried")
+                                .execution(ToolOrchestrationExecutionSummary.builder()
+                                        .success(true)
+                                        .toolName("inventory.getBalance")
+                                        .displayTitle("库存余额")
+                                        .displaySummary("已查询到库存余额，物料 1001 可用 128")
+                                        .safeFields(Map.of("materialId", 1001L, "warehouseId", 2001L,
+                                                "locationId", 3001L, "availableQty", 128, "lockedQty", 12))
+                                        .latencyMs(10)
+                                        .build())
+                                .build()))
+                .build();
+
+        ToolCallingAnswerSummaryResult result = service.summarize(request, context, plan, execution, "run-answer-5", run);
+
+        assertEquals("spring-ai", result.answerMode());
+        ArgumentCaptor<ChatModelInvocation> invocationCaptor = ArgumentCaptor.forClass(ChatModelInvocation.class);
+        verify(chatModelClient).chat(invocationCaptor.capture());
+        String prompt = invocationCaptor.getValue().message();
+        assertTrue(prompt.contains("\"orchestrationSteps\""));
+        assertTrue(prompt.contains("inventory.getBalance"));
+        assertTrue(prompt.contains("availableQty"));
+        assertTrue(prompt.contains("128"));
     }
 
     @Test

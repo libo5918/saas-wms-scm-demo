@@ -49,8 +49,20 @@ public class ToolOrchestrationStep {
     /** 当前步骤执行完成后的安全输出摘要，不包含完整 rawData。 */
     private String outputSummary;
 
-    /** dry-run 或失败中止时的跳过原因。 */
+    /** dry-run、参数不足或失败中止时的跳过原因。 */
     private String skipReason;
+
+    /** 当前步骤是否具备真实执行资格；dry-run 或参数不足时为 false。 */
+    private Boolean executable;
+
+    /** 当前步骤是否已经通过 ToolInvocationService 发起过真实执行。 */
+    private Boolean executed;
+
+    /** 当前步骤输入参数是否已经完成安全解析。 */
+    private Boolean inputResolved;
+
+    /** 输入参数解析失败时的脱敏错误说明，不包含 rawData 或敏感字段。 */
+    private String inputResolveError;
 
     /** 步骤状态。 */
     private ToolOrchestrationStepStatus status;

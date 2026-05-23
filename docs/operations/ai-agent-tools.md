@@ -2557,7 +2557,231 @@ Phase 4.15 可继续推进：
 - 为 Orchestration run / plan / step 设计 MySQL 持久化。
 - 增强审计事件，区分真实执行、权限拒绝、runtime 熔断和 dry-run skipped。
 
-## 26. 当前阶段不做的事情
+## 26. Phase 4.15：受控二步只读 Tool 执行与 Phase 4 收敛
+
+### 26.1 目标与边界
+
+Phase 4.15 开始切换为“Java AI Agent 企业级面试展示优先”推进策略，目标是把 Phase 4 Tools 主线收敛成可运行、可讲解、可演示的企业级闭环：
+
+- 默认行为仍保持单步 Tool Calling，不自动执行多个真实 Tool。
+- 仅当显式开启 controlled 配置时，允许执行第二个只读 Tool。
+- 最多执行两个真实步骤，不允许第三步真实执行。
+- 不新增写操作 Tool，不改变 `/api/v1/ai/tool-calling/chat` 顶层字段，不改变 `execution` 顶层字段。
+- 第二步执行必须复用 `ToolInvocationService`，因此权限校验、runtime retry/circuit breaker 和 Tool audit 继续生效。
+
+### 26.2 controlled 二步执行配置
+
+默认配置保持保守：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: true
+        record-runs: true
+        plan-mode: single-step
+        max-steps: 1
+        multi-step-enabled: false
+        dry-run-enabled: false
+        controlled-execution-enabled: false
+        max-executable-steps: 1
+        allow-second-step-read-only: true
+```
+
+显式验证受控二步只读执行时可使用：
+
+```yaml
+ai:
+  agent:
+    tool-calling:
+      orchestrator:
+        enabled: true
+        record-runs: true
+        plan-mode: multi-step-controlled
+        max-steps: 2
+        multi-step-enabled: true
+        dry-run-enabled: false
+        controlled-execution-enabled: true
+        max-executable-steps: 2
+        allow-second-step-read-only: true
+```
+
+### 26.3 固定二步组合
+
+Phase 4.15 只实现一个低风险固定组合：
+
+```text
+mdm.getMaterial -> inventory.getBalance
+```
+
+当第一步为 `mdm.getMaterial`，且 `inventory.getBalance` 是已注册只读 Tool 时，Orchestrator controlled plan 可以生成第二步 `inventory.getBalance`。第二步只有在 controlled 配置显式开启后才真实执行。
+
+参数派生规则：
+
+1. `materialId` 优先从第一步 `mdm.getMaterial` 的 Tool 返回结果中提取。服务端只把 `materialId/materialCode/warehouseId/warehouseCode/locationId/locationCode` 等白名单字段写入 `safeFields` 和 `outputSummary`，不会把完整 `rawData` 透传给后续步骤。
+2. `warehouseId` 优先从第一步 arguments、用户原始 `message` 或安全摘要中解析，例如 `仓库ID 1`、`warehouseId=1`。
+3. `locationId` 同样支持从第一步 arguments、用户原始 `message` 或安全摘要解析，例如 `库位ID 2`、`locationId=2`；当前作为可选参数传递。
+
+如果无法解析 `materialId` 或 `warehouseId`，第二步保持 `SKIPPED`，`skipReason/inputResolveError` 说明参数不足，不调用真实 Tool，也不写伪 audit。
+
+### 26.4 stepRef resolver 与状态字段
+
+Phase 4.15 新增后续步骤参数解析器，只允许读取：
+
+- `userMessage`
+- `previousStep.arguments.materialId/warehouseId/locationId`
+- `previousStep.execution.safeFields`
+- `previousStep.outputSummary`
+
+不允许读取或输出：
+
+- `rawData`
+- prompt
+- 模型响应全文
+- token / authorization / cookie
+- 内部 HTTP header
+
+Orchestration status 中 step 增加执行观测字段：
+
+```json
+{
+  "stepNo": 2,
+  "toolName": "inventory.getBalance",
+  "executable": true,
+  "executed": true,
+  "inputResolved": true,
+  "inputResolveError": null,
+  "skipReason": null,
+  "arguments": {
+    "materialId": 1001,
+    "warehouseId": 1,
+    "locationId": 2
+  }
+}
+```
+
+状态含义：
+
+- `SUCCESS`：第二步参数解析成功、权限/runtime 通过、Tool 执行成功。
+- `SKIPPED`：controlled 未开启、参数不足、非只读 Tool、placeholder 或前置步骤失败。
+- `FAILED`：第二步真实执行已发起，但权限、runtime、业务调用等返回失败。
+
+### 26.5 Gateway 18080 Chat 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/tool-calling/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "message": "帮我查物料 MAT-001，并看看仓库ID 1、库位ID 2 的库存",
+  "runId": "run-tool-chat-phase415-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase415-001",
+    "plannerMode": "spring-ai",
+    "planningSource": "spring-ai",
+    "selectedTool": "mdm.getMaterial",
+    "execution": {
+      "success": true,
+      "toolName": "mdm.getMaterial",
+      "data": {
+        "displayTitle": "物料信息",
+        "displaySummary": "已查询到物料 MAT-001",
+        "rawData": {
+          "materialId": 1001,
+          "materialCode": "MAT-001"
+        }
+      }
+    },
+    "answer": "模型基于物料 Tool 结果总结的中文回答"
+  }
+}
+```
+
+`/chat` 仍只返回第一步主链路 execution，第二步受控执行结果通过 Orchestration status 查看，避免破坏既有接口契约。
+
+### 26.6 Gateway 18080 Orchestration status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/tool-calling/orchestrations/run-tool-chat-phase415-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-tool-chat-phase415-001",
+    "plan": {
+      "mode": "MULTI_STEP_CONTROLLED",
+      "maxSteps": 2
+    },
+    "steps": [
+      {
+        "stepNo": 1,
+        "toolName": "mdm.getMaterial",
+        "status": "SUCCESS",
+        "executed": true,
+        "outputSummary": "tool=mdm.getMaterial, success=true, safeFields={materialId=1001, materialCode=MAT-001}..."
+      },
+      {
+        "stepNo": 2,
+        "toolName": "inventory.getBalance",
+        "status": "SUCCESS",
+        "executable": true,
+        "executed": true,
+        "inputResolved": true,
+        "arguments": {
+          "materialId": 1001,
+          "warehouseId": 1,
+          "locationId": 2
+        },
+        "inputRefs": ["step-1.outputSummary"]
+      }
+    ]
+  }
+}
+```
+
+状态接口仍不返回完整 `rawData`、完整 prompt、完整模型响应、用户 token、敏感 header 或内部 HTTP header。
+
+### 26.7 Phase 4 Tools 主线收敛结论
+
+Phase 4 到 4.15 已经具备面试可讲的 Tools 企业级能力：
+
+- Tool schema 暴露与真实模型规划。
+- Tool 执行、权限、runtime retry/circuit breaker、audit。
+- Tool 结果 display schema 与模型总结 answer。
+- Orchestrator run / plan / step / status。
+- 受控二步只读 Tool 执行，且不破坏主接口契约。
+
+后续不再继续深挖低收益 Tool 细节，优先进入 RAG + Tool 组合问答，让项目更快形成“知识库检索 + 业务工具执行 + Orchestrator 状态”的完整面试演示链路。
+
+## 27. 当前阶段不做的事情
 
 本阶段不实现：
 
@@ -2569,7 +2793,7 @@ Phase 4.15 可继续推进：
 - Multi-Agent
 - 长任务编排
 
-## 27. 后续建议
+## 28. 后续建议
 
 Phase 4.15 可以继续往下面推进：
 

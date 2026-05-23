@@ -38,6 +38,9 @@ class ToolOrchestrationPlannerServiceTest {
         assertEquals(1, plan.getSteps().size());
         assertEquals("step-1", plan.getSteps().get(0).getStepRef());
         assertEquals("$.steps[0].outputSummary", plan.getSteps().get(0).getOutputRef());
+        assertTrue(plan.getSteps().get(0).getExecutable());
+        assertFalse(plan.getSteps().get(0).getExecuted());
+        assertTrue(plan.getSteps().get(0).getInputResolved());
     }
 
     @Test
@@ -76,6 +79,24 @@ class ToolOrchestrationPlannerServiceTest {
 
         assertEquals(ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED, plan.getMode());
         assertEquals(ToolOrchestrationStepStatus.SKIPPED, plan.getSteps().get(1).getStatus());
+    }
+
+    @Test
+    void shouldBuildControlledMaterialToInventoryPlan() {
+        AiAgentProperties properties = new AiAgentProperties();
+        properties.getToolCalling().getOrchestrator().setPlanMode(ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED);
+        properties.getToolCalling().getOrchestrator().setMaxSteps(2);
+        properties.getToolCalling().getOrchestrator().setMultiStepEnabled(true);
+        ToolOrchestrationPlannerService planner = planner(properties, readOnlyRegistry());
+
+        ToolOrchestrationPlan plan = planner.buildPlan(run(null), toolPlan("mdm.getMaterial"));
+
+        assertEquals(ToolOrchestrationPlanMode.MULTI_STEP_CONTROLLED, plan.getMode());
+        assertEquals("inventory.getBalance", plan.getSteps().get(1).getToolName());
+        assertEquals(ToolOrchestrationStepStatus.SKIPPED, plan.getSteps().get(1).getStatus());
+        assertFalse(plan.getSteps().get(1).getExecutable());
+        assertFalse(plan.getSteps().get(1).getExecuted());
+        assertFalse(plan.getSteps().get(1).getInputResolved());
     }
 
     @Test
