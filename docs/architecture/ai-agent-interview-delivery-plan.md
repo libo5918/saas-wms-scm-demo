@@ -56,6 +56,24 @@
 - Workflow status 只返回脱敏步骤概要，不返回完整 rawData、完整 prompt 或完整模型响应。
 - 暂不实现通用工作流引擎、复杂异步长任务或写操作。
 
+### Phase 6.2：Workflow + RAG 组合增强
+
+目标：让固定只读 Workflow 的补货建议草案同时利用企业知识库规则和实时业务数据。
+
+当前实现重点：
+
+- Workflow run 请求支持可选 `knowledgeBaseId`、`topK`、`scoreThreshold`、`filters`。
+- 不传 `knowledgeBaseId` 时保持 Phase 6.1 行为，不检索 RAG。
+- 传入 `knowledgeBaseId` 时，`generate_advice` Summary 阶段先做 RAG retrieve，再结合物料 safeFields、库存 safeFields 生成建议。
+- RAG 用于解释库存可用数量口径、锁定数量含义、物料状态含义、补货规则和人工确认边界。
+- Tool 数据仍是实时事实来源，RAG 不覆盖 Tool 查询结果。
+- RAG 概要放入 `generate_advice.safeFields.rag`，只返回脱敏 chunk 摘要，不返回完整文档原文、完整 prompt 或完整模型响应。
+- 暂不实现通用 Workflow Engine；Phase 6.3 再抽象 StepExecutor、参数解析和条件步骤。
+
+面试讲解话术：
+
+“`/api/v1/ai/agent/chat` 更像自由问答 Agent，会根据问题动态组合 RAG 和 Tool；Workflow 则是明确业务步骤的流程编排，比如补货建议必须先查物料、再查库存、最后生成建议。Phase 6.2 把 RAG 放在 Summary 阶段，用知识库解释业务口径，用 Tool 保证实时数据准确，这就是企业 Agent 常见的‘流程 + 知识 + 实时数据’闭环。”
+
 ### Phase 7.1：MCP Server 最小演示
 
 目标：面试中能说明项目可以把内部 Tool 暴露给标准 MCP 客户端。
@@ -75,7 +93,8 @@
 3. 再讲 Tool Calling：Tool schema、模型规划、权限、审计、runtime 保护、结果 display schema。
 4. 再讲 Orchestrator：run / plan / step、stepRef、安全摘要、受控二步只读执行。
 5. 再讲 Prompt Context：RAG、Tool、Orchestrator 通过 Advisor 风格 Provider 统一注入模型上下文。
-6. 最后讲扩展：Workflow、MCP、Multi-Agent 是后续扩展方向，项目已预留治理边界。
+6. 再讲 Workflow：固定业务流程如何复用 Tool 权限、审计、runtime 保护，并在 Summary 阶段接入 RAG。
+7. 最后讲扩展：Workflow Engine、MCP、Multi-Agent 是后续扩展方向，项目已预留治理边界。
 
 ## 5. 推进原则
 

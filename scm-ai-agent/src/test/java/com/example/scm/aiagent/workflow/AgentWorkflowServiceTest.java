@@ -2,6 +2,9 @@ package com.example.scm.aiagent.workflow;
 
 import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
+import com.example.scm.aiagent.rag.dto.RagRetrievedChunk;
+import com.example.scm.aiagent.rag.service.RagService;
 import com.example.scm.aiagent.service.AgentChatService;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
 import com.example.scm.aiagent.tool.service.ToolInvocationService;
@@ -27,12 +30,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AgentWorkflowServiceTest {
 
     private ToolInvocationService toolInvocationService;
     private AgentChatService agentChatService;
+    private RagService ragService;
     private AgentWorkflowService workflowService;
     private AgentRequestContext context;
 
@@ -40,6 +45,7 @@ class AgentWorkflowServiceTest {
     void setUp() {
         toolInvocationService = mock(ToolInvocationService.class);
         agentChatService = mock(AgentChatService.class);
+        ragService = mock(RagService.class);
         workflowService = new AgentWorkflowService(
                 new AgentWorkflowDefinitionRegistry(),
                 new AgentWorkflowRunStore(),
@@ -47,7 +53,8 @@ class AgentWorkflowServiceTest {
                 new AgentWorkflowViewMapper(),
                 toolInvocationService,
                 new ToolCallingDisplaySchemaBuilder(),
-                agentChatService);
+                agentChatService,
+                ragService);
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         ChatResponse chatResponse = new ChatResponse();
         chatResponse.setAnswer("补货建议草案：当前库存可用数量为 12，请人工确认是否补货。");
@@ -89,6 +96,53 @@ class AgentWorkflowServiceTest {
         assertEquals(1001L, captor.getAllValues().get(1).getParameters().get("materialId"));
         assertEquals(1L, captor.getAllValues().get(1).getParameters().get("warehouseId"));
         assertEquals(2L, captor.getAllValues().get(1).getParameters().get("locationId"));
+        verifyNoInteractions(ragService);
+    }
+
+    @Test
+    void shouldRetrieveRagWhenKnowledgeBaseConfigured() {
+        when(toolInvocationService.invoke(any(), any()))
+                .thenReturn(materialResponse())
+                .thenReturn(inventoryResponse());
+        when(ragService.retrieve(any(), any())).thenReturn(ragResponse(1));
+        AgentWorkflowRunRequest request = request();
+        request.setKnowledgeBaseId("kb-scm-demo");
+        request.setTopK(3);
+        request.setScoreThreshold(0.1);
+        request.setFilters(Map.of("source", "rules"));
+
+        AgentWorkflowRunResponse response = workflowService.run("scm_stock_replenishment_advice", request, context);
+
+        assertEquals("SUCCESS", response.getStatus());
+        Map<String, Object> summarySafeFields = response.getSteps().get(2).getSafeFields();
+        assertTrue(summarySafeFields.containsKey("rag"));
+        Map<?, ?> rag = (Map<?, ?>) summarySafeFields.get("rag");
+        assertEquals("kb-scm-demo", rag.get("knowledgeBaseId"));
+        assertEquals(1, rag.get("retrievedCount"));
+
+        ArgumentCaptor<com.example.scm.aiagent.rag.dto.RagRetrieveRequest> captor =
+                ArgumentCaptor.forClass(com.example.scm.aiagent.rag.dto.RagRetrieveRequest.class);
+        verify(ragService).retrieve(captor.capture(), any());
+        assertEquals("kb-scm-demo", captor.getValue().getKnowledgeBaseId());
+        assertEquals(3, captor.getValue().getTopK());
+        assertTrue(captor.getValue().getQuery().contains("MAT-001"));
+        assertTrue(captor.getValue().getQuery().contains("库存"));
+    }
+
+    @Test
+    void shouldKeepRagSummaryWhenNoChunksRetrieved() {
+        when(toolInvocationService.invoke(any(), any()))
+                .thenReturn(materialResponse())
+                .thenReturn(inventoryResponse());
+        when(ragService.retrieve(any(), any())).thenReturn(ragResponse(0));
+        AgentWorkflowRunRequest request = request();
+        request.setKnowledgeBaseId("kb-empty");
+
+        AgentWorkflowRunResponse response = workflowService.run("scm_stock_replenishment_advice", request, context);
+
+        Map<?, ?> rag = (Map<?, ?>) response.getSteps().get(2).getSafeFields().get("rag");
+        assertEquals("kb-empty", rag.get("knowledgeBaseId"));
+        assertEquals(0, rag.get("retrievedCount"));
     }
 
     @Test
@@ -160,5 +214,22 @@ class AgentWorkflowServiceTest {
                         "lockedQty", 3,
                         "unit", "PCS"))
                 .build();
+    }
+
+    private RagRetrieveResponse ragResponse(int retrievedCount) {
+        RagRetrieveResponse response = new RagRetrieveResponse();
+        response.setKnowledgeBaseId(retrievedCount == 0 ? "kb-empty" : "kb-scm-demo");
+        response.setRetrievedCount(retrievedCount);
+        if (retrievedCount > 0) {
+            response.setChunks(List.of(RagRetrievedChunk.builder()
+                    .documentId("doc-rule")
+                    .chunkId("chunk-1")
+                    .title("库存规则")
+                    .source("docs/examples/scm-wms-rules.md")
+                    .content("库存可用数量通常等于现存数量减去锁定数量。".repeat(20))
+                    .score(0.91)
+                    .build()));
+        }
+        return response;
     }
 }

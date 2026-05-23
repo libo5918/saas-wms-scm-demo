@@ -3,6 +3,10 @@ package com.example.scm.aiagent.workflow.service;
 import com.example.scm.aiagent.dto.ChatRequest;
 import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
+import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
+import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
+import com.example.scm.aiagent.rag.dto.RagRetrievedChunk;
+import com.example.scm.aiagent.rag.service.RagService;
 import com.example.scm.aiagent.service.AgentChatService;
 import com.example.scm.aiagent.tool.dto.ToolInvokeRequest;
 import com.example.scm.aiagent.tool.dto.ToolResponse;
@@ -49,6 +53,7 @@ public class AgentWorkflowService {
     private final ToolInvocationService toolInvocationService;
     private final ToolCallingDisplaySchemaBuilder displaySchemaBuilder;
     private final AgentChatService agentChatService;
+    private final RagService ragService;
 
     public AgentWorkflowService(AgentWorkflowDefinitionRegistry definitionRegistry,
                                 AgentWorkflowRunStore runStore,
@@ -56,7 +61,8 @@ public class AgentWorkflowService {
                                 AgentWorkflowViewMapper viewMapper,
                                 ToolInvocationService toolInvocationService,
                                 ToolCallingDisplaySchemaBuilder displaySchemaBuilder,
-                                AgentChatService agentChatService) {
+                                AgentChatService agentChatService,
+                                RagService ragService) {
         this.definitionRegistry = definitionRegistry;
         this.runStore = runStore;
         this.parameterResolver = parameterResolver;
@@ -64,6 +70,7 @@ public class AgentWorkflowService {
         this.toolInvocationService = toolInvocationService;
         this.displaySchemaBuilder = displaySchemaBuilder;
         this.agentChatService = agentChatService;
+        this.ragService = ragService;
     }
 
     public List<AgentWorkflowDefinitionView> listDefinitions() {
@@ -215,15 +222,21 @@ public class AgentWorkflowService {
         ChatRequest chatRequest = new ChatRequest();
         chatRequest.setTaskType("workflow_stock_replenishment_advice");
         chatRequest.setRequiredCapabilities(List.of("CHAT"));
+        Map<String, Object> ragSummary = retrieveRagSummary(run, step, request, context, internalContext);
+        internalContext.ragSummary = ragSummary;
         chatRequest.setMessage(buildSummaryPrompt(request.getMessage(), internalContext));
         ChatResponse response = agentChatService.chat(chatRequest, context);
         step.setStatus(AgentWorkflowStepStatus.SUCCESS);
         step.setInputResolved(true);
         step.setDisplayTitle("补货建议草案");
         step.setDisplaySummary("已基于只读查询结果生成补货建议草案");
-        step.setSafeFields(Map.of(
-                "material", internalContext.materialSafeFields == null ? Map.of() : internalContext.materialSafeFields,
-                "inventory", internalContext.inventorySafeFields == null ? Map.of() : internalContext.inventorySafeFields));
+        Map<String, Object> summarySafeFields = new LinkedHashMap<>();
+        summarySafeFields.put("material", internalContext.materialSafeFields == null ? Map.of() : internalContext.materialSafeFields);
+        summarySafeFields.put("inventory", internalContext.inventorySafeFields == null ? Map.of() : internalContext.inventorySafeFields);
+        if (!ragSummary.isEmpty()) {
+            summarySafeFields.put("rag", ragSummary);
+        }
+        step.setSafeFields(summarySafeFields);
         step.setFinishedAt(Instant.now());
         step.setLatencyMs(elapsedMs(startedAt));
         run.setFinalAnswer(response.getAnswer());
@@ -236,6 +249,62 @@ public class AgentWorkflowService {
         request.setToolName(toolName);
         request.setParameters(parameters);
         return toolInvocationService.invoke(request, context);
+    }
+
+    private Map<String, Object> retrieveRagSummary(AgentWorkflowRun run,
+                                                   AgentWorkflowStep step,
+                                                   AgentWorkflowRunRequest request,
+                                                   AgentRequestContext context,
+                                                   WorkflowInternalContext internalContext) {
+        if (!StringUtils.hasText(request.getKnowledgeBaseId())) {
+            return Map.of();
+        }
+        RagRetrieveRequest retrieveRequest = new RagRetrieveRequest();
+        retrieveRequest.setKnowledgeBaseId(request.getKnowledgeBaseId());
+        retrieveRequest.setQuery(buildRagQuery(run, request, internalContext));
+        retrieveRequest.setTopK(request.getTopK());
+        retrieveRequest.setScoreThreshold(request.getScoreThreshold());
+        retrieveRequest.setFilters(request.getFilters() == null ? Map.of() : request.getFilters());
+        RagRetrieveResponse response = ragService.retrieve(retrieveRequest, context);
+        log.info("AI workflow rag retrieve finished, tenantId={}, userId={}, runId={}, workflowCode={}, workflowName={}, stepCode={}, ragKnowledgeBaseId={}, ragRetrievedCount={}, latencyMs={}",
+                context.tenantId(), context.userId(), run.getRunId(), run.getWorkflowCode(), run.getWorkflowName(),
+                step.getStepCode(), response.getKnowledgeBaseId(), response.getRetrievedCount(), response.getLatencyMs());
+        return toRagSummary(response);
+    }
+
+    private String buildRagQuery(AgentWorkflowRun run,
+                                 AgentWorkflowRunRequest request,
+                                 WorkflowInternalContext context) {
+        return """
+                %s
+                workflow=%s
+                material=%s
+                inventory=%s
+                rules=库存可用数量口径,锁定数量含义,物料状态含义,补货建议规则,审批人工确认边界
+                """.formatted(request.getMessage(), run.getWorkflowName(),
+                context.materialSafeFields == null ? Map.of() : context.materialSafeFields,
+                context.inventorySafeFields == null ? Map.of() : context.inventorySafeFields);
+    }
+
+    private Map<String, Object> toRagSummary(RagRetrieveResponse response) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("knowledgeBaseId", response.getKnowledgeBaseId());
+        summary.put("retrievedCount", response.getRetrievedCount());
+        summary.put("chunks", response.getChunks() == null ? List.of() : response.getChunks().stream()
+                .map(this::toRagChunkSummary)
+                .toList());
+        return summary;
+    }
+
+    private Map<String, Object> toRagChunkSummary(RagRetrievedChunk chunk) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("documentId", chunk.getDocumentId());
+        summary.put("chunkId", chunk.getChunkId());
+        summary.put("title", chunk.getTitle());
+        summary.put("source", chunk.getSource());
+        summary.put("contentSnippet", snippet(chunk.getContent(), 300));
+        summary.put("score", chunk.getScore());
+        return summary;
     }
 
     private AgentWorkflowStep newStep(AgentWorkflowStepDefinition definition) {
@@ -307,7 +376,17 @@ public class AgentWorkflowService {
 
                 库存安全摘要：
                 %s
-                """.formatted(userMessage, context.materialSafeFields, context.inventorySafeFields);
+                知识库规则摘要：
+                %s
+                """.formatted(userMessage, context.materialSafeFields, context.inventorySafeFields,
+                context.ragSummary == null || context.ragSummary.isEmpty() ? "未检索到知识库规则摘要，请不要编造知识库内容。" : context.ragSummary);
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (!StringUtils.hasText(value) || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 
     private Map<String, Object> safeFields(ToolCallingDisplayData displayData) {
@@ -348,5 +427,6 @@ public class AgentWorkflowService {
         private Object materialId;
         private Map<String, Object> materialSafeFields;
         private Map<String, Object> inventorySafeFields;
+        private Map<String, Object> ragSummary = Map.of();
     }
 }

@@ -45,7 +45,33 @@ Workflow status 只返回脱敏概要：
 
 接口不返回完整 `rawData`、完整 prompt、完整模型响应、用户凭证、敏感 header 或内部 HTTP header。
 
-## 5. 后续演进
+## 5. Phase 6.2：Workflow Summary 接入 RAG
+
+Phase 6.2 在固定只读流程 `scm_stock_replenishment_advice` 的 Summary 阶段引入 RAG 检索，但不重构 Workflow 主体。
+
+执行顺序：
+
+1. `query_material` 调用 `mdm.getMaterial`，得到物料安全摘要。
+2. `query_inventory_balance` 调用 `inventory.getBalance`，得到库存安全摘要。
+3. `generate_advice` 在请求传入 `knowledgeBaseId` 时调用 RAG retrieve，检索库存口径、物料状态、补货规则和人工确认边界。
+4. Summary prompt 基于用户问题、Tool safeFields 和 RAG chunk 摘要生成最终中文建议草案。
+
+实时业务事实以 Tool 返回为准；RAG 只负责解释规则、口径和字段含义。如果没有召回知识库内容，Summary 不编造规则。
+
+RAG 结果只放入 `generate_advice.safeFields.rag` 的脱敏概要中：
+
+- knowledgeBaseId
+- retrievedCount
+- chunks[].documentId
+- chunks[].chunkId
+- chunks[].title
+- chunks[].source
+- chunks[].contentSnippet
+- chunks[].score
+
+`contentSnippet` 需要限制长度。Workflow status 不返回完整文档原文、完整 `rawData`、完整 prompt、完整模型响应、用户凭证、敏感 header 或内部 HTTP header。
+
+## 6. 后续演进
 
 Phase 6.1 不实现通用工作流引擎。后续可以逐步增加：
 
@@ -54,3 +80,5 @@ Phase 6.1 不实现通用工作流引擎。后续可以逐步增加：
 - 人工确认节点。
 - 长任务和异步状态。
 - 与 MCP / 外部编排平台的集成。
+
+Phase 6.3 优先做 Workflow Engine 最小抽象，例如 StepExecutor 注册表、参数解析器、条件跳过和统一步骤执行上下文，避免后续每新增一个业务流程就复制一个 `WorkflowService2`。

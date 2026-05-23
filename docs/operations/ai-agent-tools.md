@@ -3192,3 +3192,143 @@ X-User-Roles: ROLE_ADMIN
 
 如果用户问题或 `parameters` 中缺少 `warehouseId` / `locationId`，`query_inventory_balance` 会进入 `SKIPPED`，`generate_advice` 也会跳过，`finalAnswer` 会说明缺少库存查询参数。
 
+## 32. Phase 6.2 Workflow + RAG 组合增强
+
+### 32.1 目标与边界
+
+Phase 6.2 在固定只读 Workflow `scm_stock_replenishment_advice` 的 Summary 阶段接入 RAG 检索，让补货建议草案同时参考企业知识库规则和实时 Tool 查询结果。
+
+本阶段仍不实现 MCP、Multi-Agent、复杂长任务编排、通用工作流引擎或写操作 Tool；Workflow Engine 抽象放到 Phase 6.3。Phase 6.2 不改变 `/api/v1/ai/chat`、`/api/v1/ai/tool-calling/chat`、`/api/v1/ai/agent/chat` 的返回结构。
+
+### 32.2 Workflow + RAG + Tool 执行顺序
+
+执行顺序保持固定且可讲解：
+
+1. `query_material`：调用 `mdm.getMaterial`，得到物料安全摘要。
+2. `query_inventory_balance`：从物料返回的 `id` 派生 `materialId`，结合 `warehouseId`、`locationId` 调用 `inventory.getBalance`。
+3. `generate_advice`：如果请求传入 `knowledgeBaseId`，先检索 RAG；再把用户问题、物料 safeFields、库存 safeFields 和 RAG chunk 摘要交给模型生成中文补货建议草案。
+
+Tool 结果仍是实时事实的最高优先级；RAG 只解释库存可用数量口径、锁定数量含义、物料状态、补货规则和人工确认边界。如果 RAG 未召回，模型不得编造知识库规则。
+
+### 32.3 请求参数
+
+Workflow run 请求支持可选 RAG 参数：
+
+- `knowledgeBaseId`：知识库 ID；不传则不检索 RAG，保持 Phase 6.1 行为。
+- `topK`：召回数量。
+- `scoreThreshold`：相似度阈值。
+- `filters`：检索过滤条件，透传给 RAG retrieve。
+
+### 32.4 RAG 安全视图
+
+RAG 结果不放在 Workflow 顶层字段中，而是放在 `generate_advice` 步骤的 `safeFields.rag` 中，避免破坏既有返回结构。
+
+`safeFields.rag` 只返回脱敏概要：
+
+- `knowledgeBaseId`
+- `retrievedCount`
+- `chunks[].documentId`
+- `chunks[].chunkId`
+- `chunks[].title`
+- `chunks[].source`
+- `chunks[].contentSnippet`
+- `chunks[].score`
+
+`contentSnippet` 会限制长度，不返回完整文档原文、完整 prompt、完整模型响应、用户 token、敏感 header 或完整业务 rawData。
+
+### 32.5 Gateway 18080 Workflow + RAG Run 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/workflows/scm_stock_replenishment_advice/run
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-workflow-phase62-001",
+  "message": "帮我生成物料 MAT-001 在仓库ID 2001、库位ID 3001 的补货建议草案，并说明库存可用数量口径",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "scoreThreshold": 0.1,
+  "parameters": {
+    "warehouseId": 2001,
+    "locationId": 3001
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-workflow-phase62-001",
+    "workflowCode": "scm_stock_replenishment_advice",
+    "status": "SUCCESS",
+    "steps": [
+      {
+        "stepCode": "query_material",
+        "status": "SUCCESS",
+        "safeFields": {
+          "materialCode": "MAT-001",
+          "materialId": 1
+        }
+      },
+      {
+        "stepCode": "query_inventory_balance",
+        "status": "SUCCESS",
+        "safeFields": {
+          "warehouseId": "2001",
+          "locationId": "3001",
+          "availableQty": "20.0",
+          "lockedQty": "0.0"
+        }
+      },
+      {
+        "stepCode": "generate_advice",
+        "status": "SUCCESS",
+        "safeFields": {
+          "rag": {
+            "knowledgeBaseId": "kb-scm-demo",
+            "retrievedCount": 1,
+            "chunks": [
+              {
+                "title": "SCM/WMS 规则示例知识库",
+                "contentSnippet": "库存可用数量通常等于现存数量减去锁定数量..."
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "finalAnswer": "模型基于知识库规则和实时库存数据生成的中文补货建议草案"
+  }
+}
+```
+
+### 32.6 Gateway 18080 Workflow Status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/workflows/runs/run-workflow-phase62-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+预期：返回 Workflow run、steps、`generate_advice.safeFields.rag` 和 finalAnswer，但不返回完整 `rawData`、完整 prompt、完整模型响应、用户凭证或敏感 header。
+
+### 32.7 与 /api/v1/ai/agent/chat 的区别
+
+- `/api/v1/ai/agent/chat`：面向自由问答，先做意图路由，再组合 RAG、Tool 和 Orchestrator 上下文生成回答。
+- `/api/v1/ai/workflows/{workflowCode}/run`：面向固定业务流程，步骤顺序明确，Summary 阶段可选接入 RAG 解释规则和口径。
+
+Phase 6.2 的价值是把“业务流程 + 企业知识 + 实时业务数据”放到一个可演示闭环里，便于面试中说明 Workflow 和 Agent Chat 的职责边界。
+
