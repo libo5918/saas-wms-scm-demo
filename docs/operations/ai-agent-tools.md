@@ -2960,3 +2960,95 @@ X-User-Roles: ROLE_ADMIN
 - Orchestrator 负责把 Tool 执行过程结构化记录下来，支持审计、观测和后续扩展。
 - Phase 5.1 的 `/api/v1/ai/agent/chat` 把三者串成一个可演示闭环，适合 Java AI Agent 面试展示。
 
+## 30. Phase 5.2 Prompt Context / Advisor 风格上下文治理
+
+### 30.1 目标与边界
+
+Phase 5.2 在 `/api/v1/ai/agent/chat` 的 RAG + Tool 组合问答基础上，新增统一 Prompt Context 层，将用户问题、RAG 片段、Tool display schema、Orchestrator step summary 和安全约束先结构化，再统一裁剪、脱敏、排序和渲染。
+
+本阶段不改变 `/api/v1/ai/chat`、`/api/v1/ai/tool-calling/chat`、`/api/v1/ai/agent/chat` 的返回结构，不实现 MCP、Workflow、Multi-Agent、长任务编排或复杂多轮自动规划。
+
+### 30.2 Context Provider 职责
+
+当前 Provider 采用 Advisor 风格扩展点：
+
+- `RagPromptContextProvider`：把 RAG retrieve 结果转换为 `rag_context` section。
+- `ToolPromptContextProvider`：把 Tool execution 的 display schema 转换为 `tool_execution` section。
+- `OrchestrationPromptContextProvider`：把 Orchestrator steps 的脱敏摘要转换为 `orchestration_steps` section。
+- `UserMessagePromptContextProvider`：注入用户原始问题。
+- `SystemInstructionsPromptContextProvider` / `SafetyPromptContextProvider`：注入回答策略和安全边界。
+
+Provider 不直接调用模型，不输出完整原始业务对象、完整模型回包、敏感凭证或内部请求头。
+
+### 30.3 Assembler / Renderer 职责
+
+`AgentPromptContextAssembler` 负责收集所有 Provider 输出的 `AgentPromptSection`，按 `priority` 排序，按 `maxLength` 做字符级裁剪，并过滤 `sensitive=true` 或命中敏感关键词的 section。
+
+`AgentPromptContextRenderer` 负责把治理后的 `AgentPromptContext` 渲染为最终模型输入，分区包含用户问题、知识库片段、工具执行结果、编排步骤摘要和安全约束。
+
+### 30.4 与 Spring AI Advisor 的关系
+
+当前实现没有强制切换到 Spring AI Advisor API，而是先沉淀 Advisor 风格的上下文链路：
+
+- `RagPromptContextProvider` 类似 `QuestionAnswerAdvisor` 的知识上下文注入。
+- `ToolPromptContextProvider` 类似工具结果上下文注入 Advisor。
+- `OrchestrationPromptContextProvider` 类似步骤轨迹 Advisor。
+- `AgentPromptContextAssembler` 类似统一 advisor chain 的上下文聚合器。
+
+后续如果切换 Spring AI Advisor，可将各 Provider 包装为 Advisor，在调用 `ChatClient` 前统一注入 context，而不影响 RAG、Tool、Orchestrator 主流程。
+
+### 30.5 Gateway 18080 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-agent-phase52-001",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 1、库位ID 2 的库存",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-agent-phase52-001",
+    "intentType": "RAG_TOOL",
+    "answer": "模型基于 Prompt Context 中的知识库片段、工具结果和编排步骤生成的中文回答",
+    "rag": {
+      "retrievedCount": 1,
+      "chunks": []
+    },
+    "tool": {
+      "selectedTool": "mdm.getMaterial",
+      "execution": {
+        "success": true,
+        "displayTitle": "物料信息"
+      }
+    },
+    "orchestration": {
+      "enabled": true,
+      "planMode": "MULTI_STEP_CONTROLLED",
+      "stepCount": 2
+    }
+  }
+}
+```
+
+日志中可观察 `contextSectionCount`、`includedSectionCount`、`truncatedSectionCount`，但不会打印完整模型输入、完整模型响应或大段业务数据。
+

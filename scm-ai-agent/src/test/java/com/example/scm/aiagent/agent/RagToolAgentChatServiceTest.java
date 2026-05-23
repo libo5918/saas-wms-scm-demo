@@ -2,6 +2,15 @@ package com.example.scm.aiagent.agent;
 
 import com.example.scm.aiagent.agent.dto.AgentChatRequest;
 import com.example.scm.aiagent.agent.dto.AgentChatResponse;
+import com.example.scm.aiagent.agent.prompt.AgentPromptContextAssembler;
+import com.example.scm.aiagent.agent.prompt.AgentPromptContextRenderer;
+import com.example.scm.aiagent.agent.prompt.AgentPromptSanitizer;
+import com.example.scm.aiagent.agent.prompt.OrchestrationPromptContextProvider;
+import com.example.scm.aiagent.agent.prompt.RagPromptContextProvider;
+import com.example.scm.aiagent.agent.prompt.SafetyPromptContextProvider;
+import com.example.scm.aiagent.agent.prompt.SystemInstructionsPromptContextProvider;
+import com.example.scm.aiagent.agent.prompt.ToolPromptContextProvider;
+import com.example.scm.aiagent.agent.prompt.UserMessagePromptContextProvider;
 import com.example.scm.aiagent.agent.service.RagToolAgentChatService;
 import com.example.scm.aiagent.agent.service.RagToolAnswerPromptBuilder;
 import com.example.scm.aiagent.agent.service.RagToolIntentRouter;
@@ -56,7 +65,7 @@ class RagToolAgentChatServiceTest {
         orchestratorService = mock(ToolCallingOrchestratorService.class);
         agentChatService = mock(AgentChatService.class);
         service = new RagToolAgentChatService(new RagToolIntentRouter(), ragService, toolCallingChatService,
-                orchestratorService, new RagToolAnswerPromptBuilder(new ObjectMapper()), agentChatService);
+                orchestratorService, promptBuilder(), agentChatService);
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         ChatResponse chatResponse = new ChatResponse();
         chatResponse.setAnswer("组合回答");
@@ -91,6 +100,9 @@ class RagToolAgentChatServiceTest {
         assertTrue(prompt.contains("库存可用数量=现存数量-锁定数量"));
         assertTrue(prompt.contains("inventory.getBalance"));
         assertTrue(prompt.contains("availableQty"));
+        assertTrue(prompt.contains("知识库片段"));
+        assertTrue(prompt.contains("工具执行结果"));
+        assertTrue(prompt.contains("编排步骤摘要"));
     }
 
     @Test
@@ -199,5 +211,19 @@ class RagToolAgentChatServiceTest {
                                         .build())
                                 .build()))
                 .build();
+    }
+
+    private RagToolAnswerPromptBuilder promptBuilder() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AgentPromptSanitizer sanitizer = new AgentPromptSanitizer();
+        AgentPromptContextAssembler assembler = new AgentPromptContextAssembler(List.of(
+                new SystemInstructionsPromptContextProvider(),
+                new SafetyPromptContextProvider(),
+                new UserMessagePromptContextProvider(),
+                new RagPromptContextProvider(),
+                new ToolPromptContextProvider(),
+                new OrchestrationPromptContextProvider()
+        ), sanitizer);
+        return new RagToolAnswerPromptBuilder(assembler, new AgentPromptContextRenderer(objectMapper));
     }
 }

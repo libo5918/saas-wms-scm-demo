@@ -8,6 +8,7 @@ import com.example.scm.aiagent.agent.dto.AgentRagChunkView;
 import com.example.scm.aiagent.agent.dto.AgentRagView;
 import com.example.scm.aiagent.agent.dto.AgentToolExecutionView;
 import com.example.scm.aiagent.agent.dto.AgentToolView;
+import com.example.scm.aiagent.agent.prompt.AgentPromptBuildResult;
 import com.example.scm.aiagent.dto.ChatRequest;
 import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
@@ -87,12 +88,14 @@ public class RagToolAgentChatService {
         AgentToolView toolView = toToolView(toolResponse);
         AgentOrchestrationView orchestrationView = toOrchestrationView(orchestrationRun);
 
-        String prompt = promptBuilder.build(request.getMessage(), intentType, ragView, toolView, orchestrationRun);
-        ChatResponse chatResponse = agentChatService.chat(toChatRequest(prompt), context);
+        AgentPromptBuildResult promptResult = promptBuilder.buildResult(runId, request.getMessage(), intentType,
+                ragView, toolView, orchestrationRun);
+        ChatResponse chatResponse = agentChatService.chat(toChatRequest(promptResult.prompt()), context);
         long latencyMs = elapsedMs(startedAt);
 
-        log.info("AI agent rag-tool chat finished, tenantId={}, userId={}, runId={}, knowledgeBaseId={}, intentType={}, ragRetrievedCount={}, selectedTool={}, orchestrationEnabled={}, planMode={}, stepCount={}, success={}, fallbackUsed={}, latencyMs={}",
+        log.info("AI agent rag-tool chat finished, tenantId={}, userId={}, runId={}, knowledgeBaseId={}, intentType={}, contextSectionCount={}, includedSectionCount={}, truncatedSectionCount={}, ragRetrievedCount={}, selectedTool={}, orchestrationEnabled={}, planMode={}, stepCount={}, success={}, fallbackUsed={}, latencyMs={}",
                 context.tenantId(), context.userId(), runId, request.getKnowledgeBaseId(), intentType,
+                promptResult.sectionCount(), promptResult.includedSectionCount(), promptResult.truncatedSectionCount(),
                 ragView == null ? 0 : ragView.getRetrievedCount(),
                 toolView == null ? null : toolView.getSelectedTool(),
                 orchestrationView != null && orchestrationView.isEnabled(),
