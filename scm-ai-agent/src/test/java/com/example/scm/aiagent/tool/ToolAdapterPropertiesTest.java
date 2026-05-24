@@ -55,7 +55,11 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.tool-calling.orchestrator.dry-run-enabled", "true")
                 .withProperty("ai.agent.tool-calling.orchestrator.controlled-execution-enabled", "true")
                 .withProperty("ai.agent.tool-calling.orchestrator.max-executable-steps", "2")
-                .withProperty("ai.agent.tool-calling.orchestrator.allow-second-step-read-only", "false");
+                .withProperty("ai.agent.tool-calling.orchestrator.allow-second-step-read-only", "false")
+                .withProperty("ai.agent.mcp.server.enabled", "true")
+                .withProperty("ai.agent.mcp.server.transport", "http")
+                .withProperty("ai.agent.mcp.server.endpoint", "/api/v1/ai/mcp/server")
+                .withProperty("ai.agent.mcp.server.expose-tools", "true");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -99,6 +103,10 @@ class ToolAdapterPropertiesTest {
         assertTrue(properties.getToolCalling().getOrchestrator().isControlledExecutionEnabled());
         assertEquals(2, properties.getToolCalling().getOrchestrator().getMaxExecutableSteps());
         assertFalse(properties.getToolCalling().getOrchestrator().isAllowSecondStepReadOnly());
+        assertTrue(properties.getMcp().getServer().isEnabled());
+        assertEquals("http", properties.getMcp().getServer().getTransport());
+        assertEquals("/api/v1/ai/mcp/server", properties.getMcp().getServer().getEndpoint());
+        assertTrue(properties.getMcp().getServer().isExposeTools());
     }
 
     @Test
@@ -125,6 +133,10 @@ class ToolAdapterPropertiesTest {
         assertFalse(properties.getToolCalling().getOrchestrator().isControlledExecutionEnabled());
         assertEquals(1, properties.getToolCalling().getOrchestrator().getMaxExecutableSteps());
         assertTrue(properties.getToolCalling().getOrchestrator().isAllowSecondStepReadOnly());
+        assertFalse(properties.getMcp().getServer().isEnabled());
+        assertEquals("http", properties.getMcp().getServer().getTransport());
+        assertEquals("/api/v1/ai/mcp/server", properties.getMcp().getServer().getEndpoint());
+        assertTrue(properties.getMcp().getServer().isExposeTools());
     }
 
     @Test

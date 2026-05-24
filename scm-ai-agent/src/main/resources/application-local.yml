@@ -115,3 +115,10 @@ ai:
         controlled-execution-enabled: true
         max-executable-steps: 2
         allow-second-step-read-only: true
+    mcp:
+      server:
+        # local profile 开启最小 JSON-RPC MCP Server transport，便于面试联调。
+        enabled: true
+        transport: http
+        endpoint: /api/v1/ai/mcp/server
+        expose-tools: true

@@ -622,3 +622,112 @@ Phase 9.1 如果继续开发，建议进入标准 MCP Server 或 Multi-Agent 二
 - Multi-Agent：适合展示多角色协作，但实现成本和解释成本更高。
 
 从面试性价比看，建议先做 Phase 8.2 演示材料，再考虑标准 MCP Server。
+## 10. Phase 9.1 标准 MCP Server 演示补充
+
+Phase 8.1 的完整演示顺序中已经包含 Phase 7.1 HTTP MCP-style Adapter。进入 Phase 9.1 后，可以在 MCP-style Adapter 之后追加标准 MCP Server transport 演示，用来说明项目已经具备从 REST 风格暴露层演进到 MCP JSON-RPC transport 的能力。
+
+### 10.1 MCP Server tools/list
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/server
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "demo-mcp-tools-list-1",
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "demo-mcp-tools-list-1",
+  "result": {
+    "tools": [
+      {
+        "name": "mdm.getMaterial",
+        "inputSchema": {},
+        "annotations": {
+          "readOnly": true,
+          "domain": "mdm"
+        }
+      },
+      {
+        "name": "inventory.getBalance",
+        "annotations": {
+          "readOnly": true,
+          "domain": "inventory"
+        }
+      }
+    ]
+  }
+}
+```
+
+### 10.2 MCP Server tools/call
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/server
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "demo-mcp-call-material-1",
+  "method": "tools/call",
+  "params": {
+    "name": "mdm.getMaterial",
+    "runId": "run-demo-mcp-server-material-001",
+    "arguments": {
+      "materialCode": "MAT-001"
+    }
+  }
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "demo-mcp-call-material-1",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "已查询到物料 MAT-001（螺丝）"
+      }
+    ],
+    "structuredContent": {
+      "toolName": "mdm.getMaterial",
+      "success": true,
+      "displayTitle": "物料信息",
+      "displaySummary": "已查询到物料 MAT-001（螺丝）"
+    },
+    "isError": false
+  }
+}
+```
+
+### 10.3 面试讲解补充
+
+可以这样讲：
+
+“Phase 7.1 做的是 HTTP MCP-style Adapter，便于用 REST 方式演示内部 Tool 的发现和调用。Phase 9.1 则进一步提供 JSON-RPC 风格的 MCP Server transport，支持 `tools/list` 和 `tools/call`。但无论是哪种入口，内部都不绕过 `ToolInvocationService`，所以权限、审计、runtime protection 和 display schema 仍然统一生效。这个设计的重点是协议层可替换，企业治理链路不重复建设。”

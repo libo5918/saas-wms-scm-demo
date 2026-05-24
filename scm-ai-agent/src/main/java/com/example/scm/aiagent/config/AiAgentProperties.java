@@ -40,6 +40,9 @@ public class AiAgentProperties {
     /** Tool Calling Chat 相关配置。 */
     private ToolCallingProperties toolCalling = new ToolCallingProperties();
 
+    /** MCP 暴露配置。 */
+    private McpProperties mcp = new McpProperties();
+
     /** 单个模型提供方配置。 */
     @Getter
     @Setter
@@ -468,5 +471,32 @@ public class AiAgentProperties {
 
         /** 是否允许第二步执行只读 Tool；默认允许，但仍受 controlledExecutionEnabled 和 maxExecutableSteps 约束。 */
         private boolean allowSecondStepReadOnly = true;
+    }
+
+    /** MCP 相关配置。 */
+    @Getter
+    @Setter
+    public static class McpProperties {
+
+        /** MCP Server transport 配置。 */
+        private McpServerProperties server = new McpServerProperties();
+    }
+
+    /** 标准 MCP Server transport 最小配置。 */
+    @Getter
+    @Setter
+    public static class McpServerProperties {
+
+        /** 是否启用 MCP Server JSON-RPC transport；默认关闭，不影响 HTTP MCP-style Adapter。 */
+        private boolean enabled = false;
+
+        /** transport 类型，当前 Phase 9.1 使用 HTTP JSON-RPC 最小实现。 */
+        private String transport = "http";
+
+        /** MCP Server JSON-RPC 端点。 */
+        private String endpoint = "/api/v1/ai/mcp/server";
+
+        /** 是否向 MCP Server 暴露治理后的只读 Tool。 */
+        private boolean exposeTools = true;
     }
 }

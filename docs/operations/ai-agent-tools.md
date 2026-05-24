@@ -3727,3 +3727,242 @@ Phase 8.1 不继续新增复杂业务功能，而是把当前 Tools + RAG + Orch
 
 Phase 8.2 建议继续做演示材料增强，而不是继续堆低收益功能。
 
+## 36. Phase 9.1 标准 MCP Server transport 最小演示
+
+### 36.1 目标与边界
+
+Phase 9.1 在 Phase 7.1 HTTP MCP-style Adapter 的基础上，新增一个标准 MCP Server transport 的最小可演示实现。当前实现采用 JSON-RPC HTTP endpoint，支持 MCP 核心语义中的 `tools/list` 和 `tools/call`，用于面试中说明企业内部只读 Tool 如何通过 MCP 协议风格暴露给外部 Agent / IDE / MCP Client。
+
+本阶段不实现复杂 MCP Client / IDE 集成，不新增写操作 Tool，不改变已有 HTTP MCP-style Adapter，也不重写 Tool 执行体系。
+
+### 36.2 配置项
+
+默认配置：
+
+```yaml
+ai:
+  agent:
+    mcp:
+      server:
+        enabled: false
+        transport: http
+        endpoint: /api/v1/ai/mcp/server
+        expose-tools: true
+```
+
+`local` profile 建议用于面试演示时开启：
+
+```yaml
+ai:
+  agent:
+    mcp:
+      server:
+        enabled: true
+        transport: http
+        endpoint: /api/v1/ai/mcp/server
+        expose-tools: true
+```
+
+HTTP MCP-style Adapter `/api/v1/ai/mcp/tools` 和 `/api/v1/ai/mcp/tools/{toolName}/invoke` 不受该开关影响，保持可用。
+
+### 36.3 MCP Server tools/list
+
+接口：
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/server
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+请求体：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tools-list-1",
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tools-list-1",
+  "result": {
+    "tools": [
+      {
+        "name": "mdm.getMaterial",
+        "description": "查询物料主数据",
+        "inputSchema": {
+          "type": "object"
+        },
+        "annotations": {
+          "domain": "mdm",
+          "category": "material",
+          "routeTags": ["mdm", "material", "read"],
+          "readOnly": true,
+          "requiredPermissions": ["ai.tool.read", "ai.tool.mdm.read"]
+        }
+      },
+      {
+        "name": "inventory.getBalance",
+        "annotations": {
+          "domain": "inventory",
+          "readOnly": true
+        }
+      }
+    ]
+  }
+}
+```
+
+返回内容不包含内部 HTTP URL、API Key、token、敏感 header、adapter 内部实现细节或完整 `rawData`。
+
+### 36.4 MCP Server tools/call：查询物料
+
+接口：
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/server
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+请求体：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tool-call-material-1",
+  "method": "tools/call",
+  "params": {
+    "name": "mdm.getMaterial",
+    "runId": "run-mcp-server-phase91-material-001",
+    "arguments": {
+      "materialCode": "MAT-001"
+    }
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tool-call-material-1",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "已查询到物料 MAT-001（螺丝）"
+      }
+    ],
+    "structuredContent": {
+      "runId": "run-mcp-server-phase91-material-001",
+      "toolName": "mdm.getMaterial",
+      "success": true,
+      "errorCode": null,
+      "errorMessage": null,
+      "displayTitle": "物料信息",
+      "displaySummary": "已查询到物料 MAT-001（螺丝）",
+      "displayFields": [],
+      "displayItems": [],
+      "latencyMs": 20
+    },
+    "isError": false
+  }
+}
+```
+
+### 36.5 MCP Server tools/call：查询库存
+
+请求体：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tool-call-inventory-1",
+  "method": "tools/call",
+  "params": {
+    "name": "inventory.getBalance",
+    "runId": "run-mcp-server-phase91-inventory-001",
+    "arguments": {
+      "materialId": 1,
+      "warehouseId": 2001,
+      "locationId": 3001
+    }
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tool-call-inventory-1",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "已查询到库存余额，物料 1 可用 20.0"
+      }
+    ],
+    "structuredContent": {
+      "toolName": "inventory.getBalance",
+      "success": true,
+      "displayTitle": "库存余额",
+      "displaySummary": "已查询到库存余额，物料 1 可用 20.0"
+    },
+    "isError": false
+  }
+}
+```
+
+### 36.6 错误语义
+
+Tool 不存在、未暴露、非只读、权限失败、参数错误、runtime 熔断等场景会返回 JSON-RPC error，例如：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "tool-call-unknown-1",
+  "error": {
+    "code": -32010,
+    "message": "Tool not exposed to MCP",
+    "data": {
+      "toolName": "unknown.tool",
+      "success": false,
+      "errorCode": "404"
+    }
+  }
+}
+```
+
+错误响应保留项目内部真实失败语义，但不返回完整 `rawData`、完整 arguments、prompt、模型响应、token 或敏感 header。
+
+### 36.7 复用现有 Tool 治理链路
+
+标准 MCP Server transport 调用链路：
+
+1. `McpServerController` 接收 JSON-RPC 请求并构造 `AgentRequestContext`。
+2. `McpServerTransportService` 解析 `tools/list` 或 `tools/call`。
+3. `tools/list` 复用 `McpToolExposureService.listTools(...)`。
+4. `tools/call` 复用 `McpToolExposureService.invoke(...)`。
+5. `McpToolExposureService` 继续调用 `ToolInvocationService`。
+6. `ToolPermissionService`、Tool audit、runtime timeout / retry / circuit breaker、display schema 继续生效。
+
+因此 MCP Server 只是协议 transport 层，不是新的 Tool 执行体系。

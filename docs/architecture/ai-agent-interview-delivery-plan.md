@@ -143,3 +143,20 @@
 - 单测不依赖真实模型、真实业务服务、MySQL、Milvus、Embedding API 或外部网络。
 - 新增能力优先选择最小闭环，能讲清楚企业级设计即可。
 - 不为面试展示牺牲安全边界：不泄露 API Key、用户凭证、敏感 header、完整模型输入、完整模型响应。
+### Phase 9.1：标准 MCP Server transport 最小演示
+
+目标：在 Phase 7.1 HTTP MCP-style Adapter 基础上，增加 JSON-RPC 风格的标准 MCP Server transport，支持 `tools/list` 和 `tools/call`，让项目在面试中可以讲清楚“内部 Java Tool 如何通过 MCP 协议暴露给外部 Agent / IDE / MCP Client”。
+
+当前实现重点：
+
+- 新增 `POST /api/v1/ai/mcp/server`。
+- 支持 `tools/list`，返回可暴露的只读 Tool 定义。
+- 支持 `tools/call`，调用 `mdm.getMaterial`、`inventory.getBalance` 等安全只读 Tool。
+- 复用 `McpToolExposureService` 和 `ToolInvocationService`。
+- 权限、audit、runtime timeout / retry / circuit breaker、display schema 不重复实现。
+- 不返回完整 rawData、API Key、token、敏感 header、完整 prompt 或完整模型响应。
+- 不引入复杂外部 MCP Client / IDE 集成，不实现 Multi-Agent。
+
+面试讲解话术：
+
+“MCP 的价值是让外部 Agent 或 IDE 用标准协议发现和调用工具。这个项目先在 Phase 7.1 做 HTTP MCP-style Adapter，便于通过 gateway 演示；Phase 9.1 再补一个 JSON-RPC 风格的 MCP Server transport，支持 MCP 里的 `tools/list` 和 `tools/call` 核心语义。重点不是重新写一套 Tool 系统，而是复用项目已有的 `ToolRegistry`、`McpToolExposureService` 和 `ToolInvocationService`。所以外部看起来是 MCP 协议，内部仍然走租户上下文、权限校验、审计、runtime 保护和 display schema。后续如果换成 Spring AI MCP Server Starter 或接真实 IDE，只需要替换 transport 和会话层，企业治理链路不用重写。”
