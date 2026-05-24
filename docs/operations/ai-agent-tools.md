@@ -3966,3 +3966,142 @@ Tool 不存在、未暴露、非只读、权限失败、参数错误、runtime �
 6. `ToolPermissionService`、Tool audit、runtime timeout / retry / circuit breaker、display schema 继续生效。
 
 因此 MCP Server 只是协议 transport 层，不是新的 Tool 执行体系。
+
+## 37. Phase 10.1 Multi-Agent 基础模型与 Coordinator 骨架
+
+### 37.1 目标与边界
+
+Phase 10.1 开始进入 Multi-Agent，但只做企业级可控多 Agent 协作的基础模型和最小骨架。本阶段不引入 AutoGen、CrewAI、LangGraph，不实现复杂多轮自治，不让多个 Agent 无约束互相聊天。
+
+当前阶段新增：
+
+- `MultiAgentRun`
+- `MultiAgentStep`
+- `MultiAgentMessage`
+- Coordinator / Planner / Knowledge / Tool / Reviewer 角色定义
+- `POST /api/v1/ai/multi-agent/chat`
+- `GET /api/v1/ai/multi-agent/runs/{runId}`
+- `GET /api/v1/ai/multi-agent/runs?limit=20`
+
+Phase 10.1 不执行真实 RAG、Tool、Workflow 或 MCP 调用，只记录受控单轮协作骨架。
+
+### 37.2 配置
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      enabled: false
+      max-rounds: 3
+      max-agents: 5
+      max-tool-calls: 3
+      record-messages: true
+      max-records: 100
+```
+
+local profile 可开启：
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      enabled: true
+      max-rounds: 3
+      max-agents: 5
+      max-tool-calls: 3
+      record-messages: true
+      max-records: 100
+```
+
+`max-rounds`、`max-agents`、`max-tool-calls` 在 Phase 10.1 主要用于配置绑定、日志记录和后续扩展预留。
+
+### 37.3 Multi-Agent Chat
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+请求体：
+
+```json
+{
+  "runId": "run-multi-agent-phase101-001",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 的库存",
+  "mode": "controlled-demo"
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-multi-agent-phase101-001",
+    "status": "SUCCESS",
+    "answer": "已创建 Multi-Agent 协作运行骨架...",
+    "agents": [
+      {
+        "agentName": "CoordinatorAgent",
+        "role": "COORDINATOR",
+        "status": "SUCCESS"
+      },
+      {
+        "agentName": "PlannerAgent",
+        "role": "PLANNER",
+        "status": "SUCCESS"
+      }
+    ],
+    "steps": [
+      {
+        "stepNo": 1,
+        "agentName": "CoordinatorAgent",
+        "actionType": "NOOP",
+        "status": "SUCCESS",
+        "outputSummary": "已接收用户任务，Phase 10.1 仅记录受控协作骨架"
+      },
+      {
+        "stepNo": 2,
+        "agentName": "PlannerAgent",
+        "actionType": "PLAN",
+        "status": "SUCCESS"
+      }
+    ],
+    "latencyMs": 20
+  }
+}
+```
+
+### 37.4 Multi-Agent Run Status
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-multi-agent-phase101-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-multi-agent-phase101-001",
+    "status": "SUCCESS",
+    "agents": [],
+    "steps": [],
+    "messages": []
+  }
+}
+```
+
+状态接口不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie 或敏感 header。

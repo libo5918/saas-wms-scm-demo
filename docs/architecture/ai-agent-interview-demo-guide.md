@@ -731,3 +731,96 @@ X-User-Roles: ROLE_ADMIN
 可以这样讲：
 
 “Phase 7.1 做的是 HTTP MCP-style Adapter，便于用 REST 方式演示内部 Tool 的发现和调用。Phase 9.1 则进一步提供 JSON-RPC 风格的 MCP Server transport，支持 `tools/list` 和 `tools/call`。但无论是哪种入口，内部都不绕过 `ToolInvocationService`，所以权限、审计、runtime protection 和 display schema 仍然统一生效。这个设计的重点是协议层可替换，企业治理链路不重复建设。”
+
+## 11. Phase 10.1 Multi-Agent 演示补充
+
+### 11.1 Multi-Agent Chat
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-demo-multi-agent-001",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 的库存",
+  "mode": "controlled-demo"
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-demo-multi-agent-001",
+    "status": "SUCCESS",
+    "answer": "已创建 Multi-Agent 协作运行骨架...",
+    "agents": [
+      {
+        "agentName": "CoordinatorAgent",
+        "role": "COORDINATOR",
+        "status": "SUCCESS"
+      },
+      {
+        "agentName": "PlannerAgent",
+        "role": "PLANNER",
+        "status": "SUCCESS"
+      }
+    ],
+    "steps": [
+      {
+        "stepNo": 1,
+        "agentName": "CoordinatorAgent",
+        "actionType": "NOOP",
+        "status": "SUCCESS"
+      },
+      {
+        "stepNo": 2,
+        "agentName": "PlannerAgent",
+        "actionType": "PLAN",
+        "status": "SUCCESS"
+      }
+    ]
+  }
+}
+```
+
+### 11.2 Multi-Agent Run Status
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-demo-multi-agent-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-demo-multi-agent-001",
+    "status": "SUCCESS",
+    "agents": [],
+    "steps": [],
+    "messages": []
+  }
+}
+```
+
+### 11.3 面试讲解补充
+
+可以这样讲：
+
+“Phase 10.1 做的是 Multi-Agent 的工程骨架，而不是复杂自治。它先把 Coordinator、Planner、Knowledge、Tool、Reviewer 的角色边界定义清楚，并记录 run、step、message 的脱敏状态。这样后续把 RAG、Tool、Workflow、MCP 接进来时，每个 Agent 都有明确职责，也能统一受权限、审计、runtime protection 和上下文脱敏约束。”

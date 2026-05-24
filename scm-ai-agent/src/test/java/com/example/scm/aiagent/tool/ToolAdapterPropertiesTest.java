@@ -59,7 +59,13 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.mcp.server.enabled", "true")
                 .withProperty("ai.agent.mcp.server.transport", "http")
                 .withProperty("ai.agent.mcp.server.endpoint", "/api/v1/ai/mcp/server")
-                .withProperty("ai.agent.mcp.server.expose-tools", "true");
+                .withProperty("ai.agent.mcp.server.expose-tools", "true")
+                .withProperty("ai.agent.multi-agent.enabled", "true")
+                .withProperty("ai.agent.multi-agent.max-rounds", "4")
+                .withProperty("ai.agent.multi-agent.max-agents", "6")
+                .withProperty("ai.agent.multi-agent.max-tool-calls", "2")
+                .withProperty("ai.agent.multi-agent.record-messages", "false")
+                .withProperty("ai.agent.multi-agent.max-records", "80");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -107,6 +113,12 @@ class ToolAdapterPropertiesTest {
         assertEquals("http", properties.getMcp().getServer().getTransport());
         assertEquals("/api/v1/ai/mcp/server", properties.getMcp().getServer().getEndpoint());
         assertTrue(properties.getMcp().getServer().isExposeTools());
+        assertTrue(properties.getMultiAgent().isEnabled());
+        assertEquals(4, properties.getMultiAgent().getMaxRounds());
+        assertEquals(6, properties.getMultiAgent().getMaxAgents());
+        assertEquals(2, properties.getMultiAgent().getMaxToolCalls());
+        assertFalse(properties.getMultiAgent().isRecordMessages());
+        assertEquals(80, properties.getMultiAgent().getMaxRecords());
     }
 
     @Test
@@ -137,6 +149,12 @@ class ToolAdapterPropertiesTest {
         assertEquals("http", properties.getMcp().getServer().getTransport());
         assertEquals("/api/v1/ai/mcp/server", properties.getMcp().getServer().getEndpoint());
         assertTrue(properties.getMcp().getServer().isExposeTools());
+        assertFalse(properties.getMultiAgent().isEnabled());
+        assertEquals(3, properties.getMultiAgent().getMaxRounds());
+        assertEquals(5, properties.getMultiAgent().getMaxAgents());
+        assertEquals(3, properties.getMultiAgent().getMaxToolCalls());
+        assertTrue(properties.getMultiAgent().isRecordMessages());
+        assertEquals(100, properties.getMultiAgent().getMaxRecords());
     }
 
     @Test

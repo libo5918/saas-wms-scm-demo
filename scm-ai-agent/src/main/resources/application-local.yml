@@ -122,3 +122,10 @@ ai:
         transport: http
         endpoint: /api/v1/ai/mcp/server
         expose-tools: true
+    multi-agent:
+      enabled: true
+      max-rounds: 3
+      max-agents: 5
+      max-tool-calls: 3
+      record-messages: true
+      max-records: 100

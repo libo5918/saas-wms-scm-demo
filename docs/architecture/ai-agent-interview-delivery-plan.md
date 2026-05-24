@@ -160,3 +160,20 @@
 面试讲解话术：
 
 “MCP 的价值是让外部 Agent 或 IDE 用标准协议发现和调用工具。这个项目先在 Phase 7.1 做 HTTP MCP-style Adapter，便于通过 gateway 演示；Phase 9.1 再补一个 JSON-RPC 风格的 MCP Server transport，支持 MCP 里的 `tools/list` 和 `tools/call` 核心语义。重点不是重新写一套 Tool 系统，而是复用项目已有的 `ToolRegistry`、`McpToolExposureService` 和 `ToolInvocationService`。所以外部看起来是 MCP 协议，内部仍然走租户上下文、权限校验、审计、runtime 保护和 display schema。后续如果换成 Spring AI MCP Server Starter 或接真实 IDE，只需要替换 transport 和会话层，企业治理链路不用重写。”
+
+### Phase 10.1：Multi-Agent 基础模型与 Coordinator 骨架
+
+目标：进入 Multi-Agent，但先做角色边界、状态模型和 Coordinator 最小骨架，不引入外部 Multi-Agent 框架，不做无约束多轮自治。
+
+当前实现重点：
+
+- 新增 `POST /api/v1/ai/multi-agent/chat`。
+- 新增 `GET /api/v1/ai/multi-agent/runs/{runId}`。
+- 新增 `MultiAgentRun`、`MultiAgentStep`、`MultiAgentMessage`。
+- 定义 CoordinatorAgent、PlannerAgent、KnowledgeAgent、ToolAgent、ReviewerAgent。
+- Phase 10.1 只真实执行 Coordinator 和 Planner 的安全骨架步骤。
+- 状态接口只返回脱敏摘要，不返回完整 prompt、模型响应、rawData 或敏感 header。
+
+面试讲解话术：
+
+“我没有一上来引入 AutoGen 或 CrewAI，因为企业级 Multi-Agent 的第一步不是让多个 Agent 自由聊天，而是先把角色边界、运行状态、终止约束和安全摘要设计清楚。Phase 10.1 里 CoordinatorAgent 负责调度和状态记录，PlannerAgent 负责生成计划摘要，KnowledgeAgent、ToolAgent、ReviewerAgent 先作为角色定义保留扩展点。后续 Phase 10.2 再逐步把 RAG、ToolInvocationService 和 Reviewer 校验接进来。这样做的好处是，多 Agent 协作不会绕过现有权限、审计、runtime protection 和 Prompt Context 治理。”

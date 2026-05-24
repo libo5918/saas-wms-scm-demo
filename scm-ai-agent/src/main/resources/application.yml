@@ -170,6 +170,13 @@ ai:
         transport: ${AI_AGENT_MCP_SERVER_TRANSPORT:http}
         endpoint: ${AI_AGENT_MCP_SERVER_ENDPOINT:/api/v1/ai/mcp/server}
         expose-tools: ${AI_AGENT_MCP_SERVER_EXPOSE_TOOLS:true}
+    multi-agent:
+      enabled: ${AI_AGENT_MULTI_AGENT_ENABLED:false}
+      max-rounds: ${AI_AGENT_MULTI_AGENT_MAX_ROUNDS:3}
+      max-agents: ${AI_AGENT_MULTI_AGENT_MAX_AGENTS:5}
+      max-tool-calls: ${AI_AGENT_MULTI_AGENT_MAX_TOOL_CALLS:3}
+      record-messages: ${AI_AGENT_MULTI_AGENT_RECORD_MESSAGES:true}
+      max-records: ${AI_AGENT_MULTI_AGENT_MAX_RECORDS:100}
     providers:
       - name: mock
         type: mock

@@ -43,6 +43,9 @@ public class AiAgentProperties {
     /** MCP 暴露配置。 */
     private McpProperties mcp = new McpProperties();
 
+    /** Multi-Agent 协作配置。 */
+    private MultiAgentProperties multiAgent = new MultiAgentProperties();
+
     /** 单个模型提供方配置。 */
     @Getter
     @Setter
@@ -498,5 +501,28 @@ public class AiAgentProperties {
 
         /** 是否向 MCP Server 暴露治理后的只读 Tool。 */
         private boolean exposeTools = true;
+    }
+    /** Multi-Agent 最小协作运行配置。 */
+    @Getter
+    @Setter
+    public static class MultiAgentProperties {
+
+        /** 是否启用 Multi-Agent 演示入口；默认关闭，不影响已有主链路。 */
+        private boolean enabled = false;
+
+        /** 单次协作允许的最大轮次，本阶段仅做配置绑定和日志记录。 */
+        private int maxRounds = 3;
+
+        /** 单次协作允许参与的最大 Agent 数。 */
+        private int maxAgents = 5;
+
+        /** 单次协作允许的最大 Tool 调用次数，Phase 10.1 暂不真实调用 Tool。 */
+        private int maxToolCalls = 3;
+
+        /** 是否记录 Agent 间安全摘要消息。 */
+        private boolean recordMessages = true;
+
+        /** in-memory run store 最大保留记录数。 */
+        private int maxRecords = 100;
     }
 }

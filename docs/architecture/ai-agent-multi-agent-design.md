@@ -1,0 +1,116 @@
+# AI Agent Multi-Agent 设计
+
+## 1. 定位
+
+Phase 10.1 的 Multi-Agent 目标不是引入 AutoGen、CrewAI 或 LangGraph，也不是让多个 Agent 无约束互相聊天，而是在现有 Java 企业级 AI Agent 项目中建立一套可控的多角色协作骨架。
+
+本项目已经具备 RAG、Tool Calling、Orchestrator、Workflow、Prompt Context、MCP Server transport。Multi-Agent 的价值是把这些能力按角色协作方式组织起来：
+
+- CoordinatorAgent 负责任务调度、轮次控制、状态记录和最终汇总。
+- PlannerAgent 负责识别任务需要 RAG、Tool、Workflow 还是 MCP。
+- KnowledgeAgent 后续负责 RAG 检索和知识口径解释。
+- ToolAgent 后续负责通过 ToolInvocationService 调用受治理 Tool。
+- ReviewerAgent 后续负责检查答案是否安全、是否基于事实、是否遗漏失败原因。
+
+## 2. 为什么不直接引入外部 Multi-Agent 框架
+
+当前项目的首要目标是 Java AI Agent 企业级面试展示。直接引入外部 Multi-Agent 框架会带来几个问题：
+
+- 学习和解释成本高，容易把重点从企业工程能力转移到框架 API。
+- 外部框架通常偏 Python 或自治 Agent 范式，和当前 Spring Boot / Gateway / 租户上下文 / Tool 治理链路不完全贴合。
+- 企业项目更关心权限、审计、状态记录、失败分支和终止条件，而不是多个 Agent 自由对话。
+
+因此 Phase 10.1 先做项目内最小骨架：角色定义、Run/Step/Message 状态、Coordinator 服务和状态查询接口。后续如果需要接 LangGraph 或其他框架，可以把它们放在 Coordinator 内部作为执行策略，而不是替代现有治理链路。
+
+## 3. Run / Step / Message 模型
+
+`MultiAgentRun` 表达一次协作运行：
+
+- runId
+- tenantId / userId
+- userMessage 安全摘要
+- status
+- agents
+- steps
+- messages
+- finalAnswer
+- latencyMs
+
+`MultiAgentStep` 表达一个 Agent 的一次动作：
+
+- stepNo
+- agentName / agentRole
+- actionType
+- status
+- inputSummary
+- outputSummary
+- errorCode / errorMessage
+- latencyMs
+
+`MultiAgentMessage` 表达 Agent 间安全摘要消息：
+
+- fromAgent
+- toAgent
+- messageType
+- contentSummary
+- structuredData
+
+Message 不保存完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie 或敏感 header。
+
+## 4. Phase 10.1 骨架行为
+
+当前阶段 `POST /api/v1/ai/multi-agent/chat` 只做受控单轮骨架：
+
+1. CoordinatorAgent 接收用户任务。
+2. PlannerAgent 根据关键词生成计划摘要。
+3. 记录 run / agents / steps / messages。
+4. 返回一个可解释的最小 answer。
+
+本阶段不执行真实 RAG、Tool、Workflow 或 MCP 调用。这样可以先把角色边界、状态模型、脱敏视图和接口跑通，降低后续接入复杂能力的风险。
+
+## 5. 与 Orchestrator 的区别
+
+Orchestrator 更偏 Tool 调用过程治理：
+
+- run / plan / step
+- controlled 二步只读 Tool 执行
+- stepRef / safe summary
+- runtime / audit / permission 贯通
+
+Multi-Agent 更偏角色协作治理：
+
+- Coordinator / Planner / Knowledge / Tool / Reviewer 角色边界
+- Agent 间消息摘要
+- 最大轮次、最大 Agent 数、最大 Tool 调用次数
+- 后续可把 RAG、Tool、Workflow、MCP 都作为不同 Agent 的动作
+
+一句话：Orchestrator 管“工具步骤怎么受控执行”，Multi-Agent 管“多个职责角色如何协作完成任务”。
+
+## 6. 与 Workflow 的区别
+
+Workflow 是确定性业务流程，例如补货建议：
+
+- 固定步骤定义
+- 固定执行顺序
+- 明确业务边界
+- 适合稳定、可审计的业务流程
+
+Multi-Agent 是面向开放问题的协作框架：
+
+- 先由 PlannerAgent 判断任务类型
+- 再由不同 Agent 承担知识检索、工具执行、结果审查
+- 适合问题形态不完全固定的 Agent 场景
+
+一句话：Workflow 管“确定流程”，Multi-Agent 管“角色协作”。
+
+## 7. 后续 Phase 10.2
+
+Phase 10.2 建议接入最小真实协作：
+
+- PlannerAgent 继续使用轻量规则识别 RAG / Tool / RAG_TOOL。
+- KnowledgeAgent 复用 RagService 做 retrieve。
+- ToolAgent 复用 ToolInvocationService 或现有 Agent Chat / Orchestrator，只允许只读 Tool。
+- ReviewerAgent 基于安全摘要做规则校验，先不强制真实模型审查。
+- Coordinator 控制最大轮次、最大 Tool 调用次数和终止条件。
+
+这样可以形成可演示的“多 Agent 协作回答库存问题”闭环，同时保持企业级可控边界。
