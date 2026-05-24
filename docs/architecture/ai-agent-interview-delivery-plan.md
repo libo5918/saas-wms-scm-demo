@@ -177,3 +177,19 @@
 面试讲解话术：
 
 “我没有一上来引入 AutoGen 或 CrewAI，因为企业级 Multi-Agent 的第一步不是让多个 Agent 自由聊天，而是先把角色边界、运行状态、终止约束和安全摘要设计清楚。Phase 10.1 里 CoordinatorAgent 负责调度和状态记录，PlannerAgent 负责生成计划摘要，KnowledgeAgent、ToolAgent、ReviewerAgent 先作为角色定义保留扩展点。后续 Phase 10.2 再逐步把 RAG、ToolInvocationService 和 Reviewer 校验接进来。这样做的好处是，多 Agent 协作不会绕过现有权限、审计、runtime protection 和 Prompt Context 治理。”
+
+### Phase 10.2：Multi-Agent 最小真实协作
+
+目标：让 Multi-Agent 从骨架进入单轮真实协作，但仍保持企业级可控边界。
+
+当前实现重点：
+
+- `PlannerAgent` 使用规则化 planner 识别 `RAG_ONLY`、`TOOL_ONLY`、`RAG_TOOL` 等任务。
+- `KnowledgeAgent` 复用 `RagService.retrieve` 获取知识片段摘要。
+- `ToolAgent` 复用 `ToolCallingChatService`，继续走已有 Tool 权限、audit、runtime protection 和 Orchestrator。
+- `ReviewerAgent` 做规则化审查，拦截敏感信息、虚假的知识库依据和 Tool 失败语义遗漏。
+- `CoordinatorAgent` 汇总安全摘要，用服务端模板生成最终 answer。
+
+面试讲解话术：
+
+“Phase 10.2 不是做几个 Agent 互相聊天，而是把企业 Agent 常见职责拆成 Planner、Knowledge、Tool、Reviewer，并且让每个角色只做自己边界内的事。KnowledgeAgent 不自己实现检索，而是复用 RAG；ToolAgent 不直接访问业务系统，而是复用已治理的 Tool Calling 主链路；ReviewerAgent 先做规则审查，保证回答不编造、不泄露、不掩盖 Tool 失败。这样可以体现 Multi-Agent 的协作价值，同时避免复杂自治带来的不稳定。”

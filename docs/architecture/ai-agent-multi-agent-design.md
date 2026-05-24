@@ -114,3 +114,32 @@ Phase 10.2 建议接入最小真实协作：
 - Coordinator 控制最大轮次、最大 Tool 调用次数和终止条件。
 
 这样可以形成可演示的“多 Agent 协作回答库存问题”闭环，同时保持企业级可控边界。
+
+## 8. Phase 10.2：最小真实协作落地
+
+Phase 10.2 已把上面的建议落成单轮受控协作：
+
+1. `PlannerAgent` 规则化识别任务类型：`RAG_ONLY`、`TOOL_ONLY`、`RAG_TOOL`、`WORKFLOW`、`MCP_TOOL`、`GENERAL`。
+2. `KnowledgeAgent` 在 `needRag=true` 且传入 `knowledgeBaseId` 时复用 `RagService.retrieve`，只保存知识片段摘要。
+3. `ToolAgent` 在 `needTool=true` 时复用 `ToolCallingChatService`，继续走 Tool 权限、audit、runtime protection、display schema 和 Orchestrator。
+4. `ReviewerAgent` 做规则化审查：不允许 RAG 未召回时声称“根据知识库”，不允许泄露 token、authorization、cookie、API Key、rawData、prompt 等敏感信息。
+5. `CoordinatorAgent` 汇总各 Agent 的安全摘要，使用服务端模板生成 `finalAnswer`。
+
+本阶段仍不做复杂多轮自治，也不让 Agent 自由互相聊天。核心目标是让面试中能讲清楚企业级 Multi-Agent 的角色边界、状态记录和治理链路。
+
+## 9. Phase 10.2 与已有模块的复用关系
+
+- RAG：复用 `RagService.retrieve`。
+- Tool：复用 `ToolCallingChatService`，间接复用 `ToolInvocationService`、Tool 权限、Tool audit、runtime protection、Orchestrator。
+- Review：当前为规则化审查，后续可升级模型审查。
+
+面试表达：
+
+> Multi-Agent 不直接绕过业务系统。ToolAgent 必须复用已经治理过的 Tool Calling 主链路，这样租户、权限、审计、熔断、display schema 都保持一致。
+
+## 10. 后续 Phase 10.3
+
+- 增加 `maxRounds`、`maxToolCalls` 的强约束。
+- ReviewerAgent 可升级为模型审查，但保留规则兜底。
+- Coordinator 可切换到模型总结，但仍使用 Prompt Context 治理输入。
+- 增强失败分支和状态接口展示。

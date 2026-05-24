@@ -177,6 +177,10 @@ ai:
       max-tool-calls: ${AI_AGENT_MULTI_AGENT_MAX_TOOL_CALLS:3}
       record-messages: ${AI_AGENT_MULTI_AGENT_RECORD_MESSAGES:true}
       max-records: ${AI_AGENT_MULTI_AGENT_MAX_RECORDS:100}
+      rag-enabled: ${AI_AGENT_MULTI_AGENT_RAG_ENABLED:true}
+      tool-enabled: ${AI_AGENT_MULTI_AGENT_TOOL_ENABLED:true}
+      review-enabled: ${AI_AGENT_MULTI_AGENT_REVIEW_ENABLED:true}
+      model-summary-enabled: ${AI_AGENT_MULTI_AGENT_MODEL_SUMMARY_ENABLED:false}
     providers:
       - name: mock
         type: mock

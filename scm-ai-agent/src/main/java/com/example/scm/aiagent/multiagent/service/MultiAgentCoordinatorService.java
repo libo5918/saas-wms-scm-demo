@@ -11,8 +11,11 @@ import com.example.scm.aiagent.multiagent.model.AgentRoleDefinition;
 import com.example.scm.aiagent.multiagent.model.MultiAgentActionType;
 import com.example.scm.aiagent.multiagent.model.MultiAgentAgentState;
 import com.example.scm.aiagent.multiagent.model.MultiAgentDefinition;
+import com.example.scm.aiagent.multiagent.model.MultiAgentIntentType;
 import com.example.scm.aiagent.multiagent.model.MultiAgentMessage;
 import com.example.scm.aiagent.multiagent.model.MultiAgentMessageType;
+import com.example.scm.aiagent.multiagent.model.MultiAgentPlan;
+import com.example.scm.aiagent.multiagent.model.MultiAgentReviewResult;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRole;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRun;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRunStatus;
@@ -30,31 +33,45 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Multi-Agent Coordinator 最小骨架，Phase 10.1 只记录受控单轮协作状态。 */
+/** Multi-Agent Coordinator，负责单轮受控协作、状态记录与最终答案汇总。 */
 @Slf4j
 @Service
 public class MultiAgentCoordinatorService {
 
     private static final String COORDINATOR_AGENT = "CoordinatorAgent";
     private static final String PLANNER_AGENT = "PlannerAgent";
+    private static final String KNOWLEDGE_AGENT = "KnowledgeAgent";
+    private static final String TOOL_AGENT = "ToolAgent";
+    private static final String REVIEWER_AGENT = "ReviewerAgent";
 
     private final AiAgentProperties properties;
     private final MultiAgentDefinitionRegistry definitionRegistry;
     private final MultiAgentRunStore runStore;
+    private final MultiAgentPlannerService plannerService;
+    private final MultiAgentKnowledgeService knowledgeService;
+    private final MultiAgentToolService toolService;
+    private final MultiAgentReviewService reviewService;
 
     public MultiAgentCoordinatorService(AiAgentProperties properties,
                                         MultiAgentDefinitionRegistry definitionRegistry,
-                                        MultiAgentRunStore runStore) {
+                                        MultiAgentRunStore runStore,
+                                        MultiAgentPlannerService plannerService,
+                                        MultiAgentKnowledgeService knowledgeService,
+                                        MultiAgentToolService toolService,
+                                        MultiAgentReviewService reviewService) {
         this.properties = properties;
         this.definitionRegistry = definitionRegistry;
         this.runStore = runStore;
+        this.plannerService = plannerService;
+        this.knowledgeService = knowledgeService;
+        this.toolService = toolService;
+        this.reviewService = reviewService;
     }
 
     public MultiAgentChatResponse chat(MultiAgentChatRequest request, AgentRequestContext context) {
         long started = System.currentTimeMillis();
         String runId = StringUtils.hasText(request.getRunId()) ? request.getRunId() : UUID.randomUUID().toString();
         MultiAgentDefinition definition = definitionRegistry.getDefaultDefinition();
-        Instant createdAt = Instant.now();
 
         MultiAgentRun run = MultiAgentRun.builder()
                 .runId(runId)
@@ -62,59 +79,56 @@ public class MultiAgentCoordinatorService {
                 .userId(context.userId())
                 .userMessage(safeText(request.getMessage(), 300))
                 .status(MultiAgentRunStatus.RUNNING)
-                .createdAt(createdAt)
+                .createdAt(Instant.now())
                 .build();
+        run.getAgents().addAll(definition.getAgents().stream().map(this::toInitialState).toList());
 
-        run.getAgents().addAll(definition.getAgents().stream()
-                .map(this::toInitialState)
-                .toList());
+        addSuccessStep(run, 1, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.NOOP,
+                "用户任务进入 Multi-Agent Coordinator", "已接收用户任务，开始单轮受控协作");
 
-        MultiAgentStep coordinatorStep = successStep(1, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR,
-                MultiAgentActionType.NOOP, "用户任务已进入 Multi-Agent Coordinator",
-                "已接收用户任务，Phase 10.1 仅记录受控协作骨架");
-        run.getSteps().add(coordinatorStep);
-        updateAgent(run, COORDINATOR_AGENT, MultiAgentStepStatus.SUCCESS, coordinatorStep.getOutputSummary());
+        MultiAgentPlan plan = plannerService.plan(request);
+        run.setIntentType(plan.getIntentType());
+        run.setPlanSummary(plan.toSafeMap());
+        addSuccessStep(run, 2, PLANNER_AGENT, MultiAgentRole.PLANNER, MultiAgentActionType.PLAN,
+                "基于用户问题生成受控计划", plan.getReason());
 
-        String planSummary = buildPlanSummary(request);
-        MultiAgentStep plannerStep = successStep(2, PLANNER_AGENT, MultiAgentRole.PLANNER,
-                MultiAgentActionType.PLAN, "基于用户问题生成安全计划摘要", planSummary);
-        run.getSteps().add(plannerStep);
-        updateAgent(run, PLANNER_AGENT, MultiAgentStepStatus.SUCCESS, planSummary);
+        Map<String, Object> rag = knowledgeService.retrieve(request, context, plan, properties.getMultiAgent().isRagEnabled());
+        run.setRag(rag);
+        addResultStep(run, 3, KNOWLEDGE_AGENT, MultiAgentRole.KNOWLEDGE, MultiAgentActionType.RAG_RETRIEVE,
+                "根据 Planner 计划决定是否检索知识库", rag);
+
+        Map<String, Object> tool = toolService.execute(request, context, plan, runId, properties.getMultiAgent().isToolEnabled());
+        run.setTool(tool);
+        addResultStep(run, 4, TOOL_AGENT, MultiAgentRole.TOOL, MultiAgentActionType.TOOL_CALL,
+                "根据 Planner 计划决定是否调用只读 Tool", tool);
+
+        String draftAnswer = buildDraftAnswer(plan, rag, tool);
+        MultiAgentReviewResult review = properties.getMultiAgent().isReviewEnabled()
+                ? reviewService.review(draftAnswer, rag, tool)
+                : MultiAgentReviewResult.builder().passed(true).issues(List.of()).suggestions(List.of()).safetyLevel("SKIPPED").build();
+        run.setReview(review.toSafeMap());
+        addReviewStep(run, 5, review);
+
+        String finalAnswer = review.isPassed() ? draftAnswer : buildConservativeAnswer(draftAnswer, review);
+        addSuccessStep(run, 6, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER,
+                "汇总 Planner/Knowledge/Tool/Reviewer 安全摘要", safeText(finalAnswer, 500));
 
         if (properties.getMultiAgent().isRecordMessages()) {
-            run.getMessages().add(MultiAgentMessage.builder()
-                    .messageId("msg-" + runId + "-1")
-                    .fromAgent(COORDINATOR_AGENT)
-                    .toAgent(PLANNER_AGENT)
-                    .messageType(MultiAgentMessageType.TASK)
-                    .contentSummary("请求 PlannerAgent 生成协作计划摘要")
-                    .structuredData(Map.of("mode", request.getMode() == null ? "default" : request.getMode()))
-                    .createdAt(Instant.now())
-                    .build());
-            run.getMessages().add(MultiAgentMessage.builder()
-                    .messageId("msg-" + runId + "-2")
-                    .fromAgent(PLANNER_AGENT)
-                    .toAgent(COORDINATOR_AGENT)
-                    .messageType(MultiAgentMessageType.PLAN_SUMMARY)
-                    .contentSummary(planSummary)
-                    .structuredData(Map.of("phase", "10.1", "executedExternalActions", false))
-                    .createdAt(Instant.now())
-                    .build());
+            recordMessages(run, plan, review);
         }
 
-        String answer = "已创建 Multi-Agent 协作运行骨架：CoordinatorAgent 负责调度与状态记录，"
-                + "PlannerAgent 已生成计划摘要；Phase 10.1 暂不执行真实 RAG、Tool、Workflow 或 MCP 调用。";
         long latencyMs = System.currentTimeMillis() - started;
-        run.setFinalAnswer(answer);
+        run.setFinalAnswer(finalAnswer);
         run.setSuccess(true);
         run.setStatus(MultiAgentRunStatus.SUCCESS);
         run.setFinishedAt(Instant.now());
         run.setLatencyMs(latencyMs);
         runStore.save(run);
 
-        log.info("AI multi-agent run finished, tenantId={}, userId={}, runId={}, multiAgentEnabled={}, agentName={}, agentRole={}, actionType={}, status={}, maxRounds={}, maxAgents={}, maxToolCalls={}, latencyMs={}",
+        log.info("AI multi-agent run finished, tenantId={}, userId={}, runId={}, multiAgentEnabled={}, agentName={}, agentRole={}, actionType={}, status={}, intentType={}, ragRetrievedCount={}, selectedTool={}, reviewPassed={}, maxRounds={}, maxAgents={}, maxToolCalls={}, latencyMs={}",
                 context.tenantId(), context.userId(), runId, properties.getMultiAgent().isEnabled(),
-                PLANNER_AGENT, MultiAgentRole.PLANNER, MultiAgentActionType.PLAN, run.getStatus(),
+                COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER, run.getStatus(),
+                run.getIntentType(), rag.getOrDefault("retrievedCount", 0), selectedTool(tool), review.isPassed(),
                 properties.getMultiAgent().getMaxRounds(), properties.getMultiAgent().getMaxAgents(),
                 properties.getMultiAgent().getMaxToolCalls(), latencyMs);
         return toResponse(run);
@@ -127,9 +141,7 @@ public class MultiAgentCoordinatorService {
     }
 
     public List<MultiAgentChatResponse> listRuns(int limit) {
-        return runStore.list(limit).stream()
-                .map(this::toResponse)
-                .toList();
+        return runStore.list(limit).stream().map(this::toResponse).toList();
     }
 
     private MultiAgentAgentState toInitialState(AgentRoleDefinition definition) {
@@ -141,10 +153,10 @@ public class MultiAgentCoordinatorService {
                 .build();
     }
 
-    private MultiAgentStep successStep(int stepNo, String agentName, MultiAgentRole role,
-                                       MultiAgentActionType actionType, String inputSummary, String outputSummary) {
+    private void addSuccessStep(MultiAgentRun run, int stepNo, String agentName, MultiAgentRole role,
+                                MultiAgentActionType actionType, String inputSummary, String outputSummary) {
         Instant now = Instant.now();
-        return MultiAgentStep.builder()
+        MultiAgentStep step = MultiAgentStep.builder()
                 .stepId("step-" + stepNo)
                 .stepNo(stepNo)
                 .agentName(agentName)
@@ -157,6 +169,111 @@ public class MultiAgentCoordinatorService {
                 .finishedAt(now)
                 .latencyMs(0)
                 .build();
+        run.getSteps().add(step);
+        updateAgent(run, agentName, MultiAgentStepStatus.SUCCESS, outputSummary);
+    }
+
+    private void addResultStep(MultiAgentRun run, int stepNo, String agentName, MultiAgentRole role,
+                               MultiAgentActionType actionType, String inputSummary, Map<String, Object> result) {
+        String status = String.valueOf(result.getOrDefault("status", "SUCCESS"));
+        MultiAgentStepStatus stepStatus = switch (status) {
+            case "SKIPPED" -> MultiAgentStepStatus.SKIPPED;
+            case "FAILED" -> MultiAgentStepStatus.FAILED;
+            default -> MultiAgentStepStatus.SUCCESS;
+        };
+        Instant now = Instant.now();
+        MultiAgentStep step = MultiAgentStep.builder()
+                .stepId("step-" + stepNo)
+                .stepNo(stepNo)
+                .agentName(agentName)
+                .agentRole(role)
+                .actionType(actionType)
+                .status(stepStatus)
+                .inputSummary(inputSummary)
+                .outputSummary(summary(result))
+                .errorCode(String.valueOf(result.getOrDefault("errorCode", "")))
+                .errorMessage(String.valueOf(result.getOrDefault("errorMessage", result.getOrDefault("skipReason", ""))))
+                .startedAt(now)
+                .finishedAt(now)
+                .latencyMs(numberValue(result.get("latencyMs")))
+                .build();
+        run.getSteps().add(step);
+        updateAgent(run, agentName, stepStatus, step.getOutputSummary());
+    }
+
+    private void addReviewStep(MultiAgentRun run, int stepNo, MultiAgentReviewResult review) {
+        MultiAgentStepStatus status = review.isPassed() ? MultiAgentStepStatus.SUCCESS : MultiAgentStepStatus.FAILED;
+        Instant now = Instant.now();
+        MultiAgentStep step = MultiAgentStep.builder()
+                .stepId("step-" + stepNo)
+                .stepNo(stepNo)
+                .agentName(REVIEWER_AGENT)
+                .agentRole(MultiAgentRole.REVIEWER)
+                .actionType(MultiAgentActionType.REVIEW)
+                .status(status)
+                .inputSummary("审查最终回答是否基于事实且不泄露敏感信息")
+                .outputSummary(review.isPassed() ? "ReviewerAgent 审查通过" : "ReviewerAgent 发现风险：" + review.getIssues())
+                .startedAt(now)
+                .finishedAt(now)
+                .latencyMs(0)
+                .build();
+        run.getSteps().add(step);
+        updateAgent(run, REVIEWER_AGENT, status, step.getOutputSummary());
+    }
+
+    private String buildDraftAnswer(MultiAgentPlan plan, Map<String, Object> rag, Map<String, Object> tool) {
+        StringBuilder answer = new StringBuilder("Multi-Agent 单轮协作结果：");
+        answer.append("PlannerAgent 将任务识别为 ").append(plan.getIntentType()).append("。");
+        if (plan.isNeedRag()) {
+            long retrievedCount = numberValue(rag.get("retrievedCount"));
+            if (retrievedCount > 0) {
+                answer.append("KnowledgeAgent 检索到 ").append(retrievedCount).append(" 条知识片段，可用于解释规则或口径。");
+            } else {
+                answer.append("KnowledgeAgent 未召回知识库片段，不编造知识库规则。");
+            }
+        }
+        if (plan.isNeedTool()) {
+            Map<?, ?> execution = tool.get("execution") instanceof Map<?, ?> map ? map : Map.of();
+            boolean success = Boolean.TRUE.equals(execution.get("success"));
+            if (success) {
+                answer.append("ToolAgent 已完成只读工具查询，")
+                        .append(String.valueOf(valueOrDefault(execution, "displaySummary", "已返回工具结果"))).append("。");
+            } else {
+                answer.append("ToolAgent 查询失败，原因：")
+                        .append(String.valueOf(valueOrDefault(execution, "errorMessage",
+                                tool.getOrDefault("skipReason", "未知错误")))).append("。");
+            }
+        }
+        if (plan.getIntentType() == MultiAgentIntentType.GENERAL) {
+            answer.append("当前未识别到必须执行的 RAG 或 Tool 动作，已完成受控协作骨架记录。");
+        }
+        return answer.toString();
+    }
+
+    private String buildConservativeAnswer(String draftAnswer, MultiAgentReviewResult review) {
+        return "ReviewerAgent 发现回答存在风险，已按保守模式返回。风险：" + review.getIssues()
+                + "。可参考的安全摘要：" + safeText(draftAnswer, 300);
+    }
+
+    private void recordMessages(MultiAgentRun run, MultiAgentPlan plan, MultiAgentReviewResult review) {
+        run.getMessages().add(MultiAgentMessage.builder()
+                .messageId("msg-" + run.getRunId() + "-plan")
+                .fromAgent(PLANNER_AGENT)
+                .toAgent(COORDINATOR_AGENT)
+                .messageType(MultiAgentMessageType.PLAN_SUMMARY)
+                .contentSummary(plan.getReason())
+                .structuredData(plan.toSafeMap())
+                .createdAt(Instant.now())
+                .build());
+        run.getMessages().add(MultiAgentMessage.builder()
+                .messageId("msg-" + run.getRunId() + "-review")
+                .fromAgent(REVIEWER_AGENT)
+                .toAgent(COORDINATOR_AGENT)
+                .messageType(MultiAgentMessageType.RESULT_SUMMARY)
+                .contentSummary(review.isPassed() ? "审查通过" : "审查发现风险")
+                .structuredData(review.toSafeMap())
+                .createdAt(Instant.now())
+                .build());
     }
 
     private void updateAgent(MultiAgentRun run, String agentName, MultiAgentStepStatus status, String summary) {
@@ -169,30 +286,50 @@ public class MultiAgentCoordinatorService {
                 });
     }
 
-    private String buildPlanSummary(MultiAgentChatRequest request) {
-        String message = request.getMessage() == null ? "" : request.getMessage();
-        boolean hasToolIntent = message.contains("物料") || message.contains("库存") || message.contains("订单");
-        boolean hasRagIntent = message.contains("解释") || message.contains("规则") || message.contains("口径");
-        if (hasRagIntent && hasToolIntent) {
-            return "识别为后续可扩展的 RAG + Tool 多 Agent 协作任务";
+    private String summary(Map<String, Object> result) {
+        if (result.containsKey("skipReason")) {
+            return "SKIPPED: " + result.get("skipReason");
         }
-        if (hasToolIntent) {
-            return "识别为后续可扩展的 Tool 多 Agent 协作任务";
+        if (result.containsKey("retrievedCount")) {
+            return "retrievedCount=" + result.get("retrievedCount");
         }
-        if (hasRagIntent) {
-            return "识别为后续可扩展的 Knowledge 多 Agent 协作任务";
+        if (result.containsKey("execution")) {
+            Map<?, ?> execution = result.get("execution") instanceof Map<?, ?> map ? map : Map.of();
+            return "tool=" + result.get("selectedTool") + ", success=" + execution.get("success")
+                    + ", displaySummary=" + execution.get("displaySummary");
         }
-        return "识别为通用 Multi-Agent 协作任务，当前阶段仅记录计划摘要";
+        return String.valueOf(result.getOrDefault("status", "SUCCESS"));
+    }
+
+    private String selectedTool(Map<String, Object> tool) {
+        return String.valueOf(tool.getOrDefault("selectedTool", ""));
+    }
+
+    private Object valueOrDefault(Map<?, ?> map, String key, Object defaultValue) {
+        Object value = map.get(key);
+        return value == null ? defaultValue : value;
+    }
+
+    private long numberValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     private String safeText(String value, int maxLength) {
         if (!StringUtils.hasText(value)) {
-            return value;
+            return value == null ? "" : value;
         }
         String sanitized = value
                 .replaceAll("(?i)authorization\\s*[:=]\\s*\\S+", "[REDACTED]")
                 .replaceAll("(?i)cookie\\s*[:=]\\s*\\S+", "[REDACTED]")
-                .replaceAll("(?i)token\\s*[:=]\\s*\\S+", "[REDACTED]");
+                .replaceAll("(?i)token\\s*[:=]\\s*\\S+", "[REDACTED]")
+                .replaceAll("(?i)api\\s*key\\s*[:=]\\s*\\S+", "[REDACTED]");
         return sanitized.length() <= maxLength ? sanitized : sanitized.substring(0, maxLength);
     }
 
@@ -200,7 +337,12 @@ public class MultiAgentCoordinatorService {
         return MultiAgentChatResponse.builder()
                 .runId(run.getRunId())
                 .status(run.getStatus())
+                .intentType(run.getIntentType())
                 .answer(run.getFinalAnswer())
+                .planSummary(run.getPlanSummary())
+                .rag(run.getRag())
+                .tool(run.getTool())
+                .review(run.getReview())
                 .agents(run.getAgents().stream().map(this::toAgentView).toList())
                 .steps(run.getSteps().stream().map(this::toStepView).toList())
                 .messages(run.getMessages().stream().map(this::toMessageView).toList())

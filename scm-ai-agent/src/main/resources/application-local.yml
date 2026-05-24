@@ -129,3 +129,7 @@ ai:
       max-tool-calls: 3
       record-messages: true
       max-records: 100
+      rag-enabled: true
+      tool-enabled: true
+      review-enabled: true
+      model-summary-enabled: false

@@ -824,3 +824,78 @@ X-User-Roles: ROLE_ADMIN
 可以这样讲：
 
 “Phase 10.1 做的是 Multi-Agent 的工程骨架，而不是复杂自治。它先把 Coordinator、Planner、Knowledge、Tool、Reviewer 的角色边界定义清楚，并记录 run、step、message 的脱敏状态。这样后续把 RAG、Tool、Workflow、MCP 接进来时，每个 Agent 都有明确职责，也能统一受权限、审计、runtime protection 和上下文脱敏约束。”
+
+## 12. Phase 10.2 Multi-Agent 最小真实协作演示
+
+### 12.1 RAG + Tool Multi-Agent Chat
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-demo-multi-agent-102",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intentType": "RAG_TOOL",
+    "planSummary": {
+      "needRag": true,
+      "needTool": true
+    },
+    "rag": {
+      "retrievedCount": 1
+    },
+    "tool": {
+      "execution": {
+        "success": true
+      }
+    },
+    "review": {
+      "passed": true
+    }
+  }
+}
+```
+
+### 12.2 Run Status
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-demo-multi-agent-102
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关注点：
+
+- `PlannerAgent` 负责计划。
+- `KnowledgeAgent` 负责 RAG 摘要。
+- `ToolAgent` 负责 Tool Calling 摘要。
+- `ReviewerAgent` 负责安全审查。
+- 状态接口不返回完整 rawData、prompt、模型响应或敏感 header。
+
+### 12.3 面试讲解补充
+
+“Phase 10.2 已经不是纯骨架，而是最小真实协作。PlannerAgent 判断问题需要 RAG 和 Tool，KnowledgeAgent 复用知识库检索，ToolAgent 复用 Tool Calling 主链路，ReviewerAgent 负责规则审查，CoordinatorAgent 最后汇总。这个设计体现的是企业级 Multi-Agent 的可控协作，而不是多个 Agent 无约束对话。”

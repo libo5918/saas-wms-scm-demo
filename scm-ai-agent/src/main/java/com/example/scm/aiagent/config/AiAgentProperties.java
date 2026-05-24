@@ -524,5 +524,17 @@ public class AiAgentProperties {
 
         /** in-memory run store 最大保留记录数。 */
         private int maxRecords = 100;
+
+        /** 是否允许 KnowledgeAgent 调用 RAG retrieve。 */
+        private boolean ragEnabled = true;
+
+        /** 是否允许 ToolAgent 复用只读 Tool / Orchestrator 能力。 */
+        private boolean toolEnabled = true;
+
+        /** 是否启用 ReviewerAgent 规则化审查。 */
+        private boolean reviewEnabled = true;
+
+        /** 是否使用模型汇总 Multi-Agent 最终答案；Phase 10.2 默认使用服务端模板。 */
+        private boolean modelSummaryEnabled = false;
     }
 }

@@ -65,7 +65,11 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.multi-agent.max-agents", "6")
                 .withProperty("ai.agent.multi-agent.max-tool-calls", "2")
                 .withProperty("ai.agent.multi-agent.record-messages", "false")
-                .withProperty("ai.agent.multi-agent.max-records", "80");
+                .withProperty("ai.agent.multi-agent.max-records", "80")
+                .withProperty("ai.agent.multi-agent.rag-enabled", "false")
+                .withProperty("ai.agent.multi-agent.tool-enabled", "false")
+                .withProperty("ai.agent.multi-agent.review-enabled", "false")
+                .withProperty("ai.agent.multi-agent.model-summary-enabled", "true");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -119,6 +123,10 @@ class ToolAdapterPropertiesTest {
         assertEquals(2, properties.getMultiAgent().getMaxToolCalls());
         assertFalse(properties.getMultiAgent().isRecordMessages());
         assertEquals(80, properties.getMultiAgent().getMaxRecords());
+        assertFalse(properties.getMultiAgent().isRagEnabled());
+        assertFalse(properties.getMultiAgent().isToolEnabled());
+        assertFalse(properties.getMultiAgent().isReviewEnabled());
+        assertTrue(properties.getMultiAgent().isModelSummaryEnabled());
     }
 
     @Test
@@ -155,6 +163,10 @@ class ToolAdapterPropertiesTest {
         assertEquals(3, properties.getMultiAgent().getMaxToolCalls());
         assertTrue(properties.getMultiAgent().isRecordMessages());
         assertEquals(100, properties.getMultiAgent().getMaxRecords());
+        assertTrue(properties.getMultiAgent().isRagEnabled());
+        assertTrue(properties.getMultiAgent().isToolEnabled());
+        assertTrue(properties.getMultiAgent().isReviewEnabled());
+        assertFalse(properties.getMultiAgent().isModelSummaryEnabled());
     }
 
     @Test

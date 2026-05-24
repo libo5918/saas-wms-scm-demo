@@ -4105,3 +4105,179 @@ X-User-Roles: ROLE_ADMIN
 ```
 
 状态接口不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie 或敏感 header。
+
+## 38. Phase 10.2 Multi-Agent 最小真实协作
+
+Phase 10.2 在 Phase 10.1 骨架上接入最小真实协作：
+
+- `PlannerAgent`：规则化识别 `RAG_ONLY`、`TOOL_ONLY`、`RAG_TOOL` 等任务类型。
+- `KnowledgeAgent`：复用 `RagService.retrieve`，只返回知识片段摘要。
+- `ToolAgent`：复用 `ToolCallingChatService`，继续走 Tool 权限、audit、runtime protection、display schema 和 Orchestrator。
+- `ReviewerAgent`：规则化检查敏感信息、RAG 依据声明和 Tool 失败语义。
+- `CoordinatorAgent`：汇总安全摘要并生成最终 answer。
+
+### 38.1 配置
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      enabled: true
+      max-rounds: 3
+      max-agents: 5
+      max-tool-calls: 3
+      record-messages: true
+      max-records: 100
+      rag-enabled: true
+      tool-enabled: true
+      review-enabled: true
+      model-summary-enabled: false
+```
+
+### 38.2 RAG_ONLY 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase102-rag",
+  "message": "解释库存可用数量口径",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intentType": "RAG_ONLY",
+    "rag": {
+      "status": "SUCCESS",
+      "retrievedCount": 1
+    },
+    "review": {
+      "passed": true
+    }
+  }
+}
+```
+
+### 38.3 TOOL_ONLY 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase102-tool",
+  "message": "帮我查物料 MAT-001",
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intentType": "TOOL_ONLY",
+    "tool": {
+      "selectedTool": "mdm.getMaterial",
+      "execution": {
+        "success": true,
+        "displayTitle": "物料信息"
+      }
+    }
+  }
+}
+```
+
+### 38.4 RAG_TOOL 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase102-rag-tool",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intentType": "RAG_TOOL",
+    "rag": {
+      "retrievedCount": 1
+    },
+    "tool": {
+      "execution": {
+        "success": true
+      }
+    },
+    "review": {
+      "passed": true
+    },
+    "steps": [
+      {"agentName": "PlannerAgent"},
+      {"agentName": "KnowledgeAgent"},
+      {"agentName": "ToolAgent"},
+      {"agentName": "ReviewerAgent"}
+    ]
+  }
+}
+```
+
+### 38.5 Run Status 示例
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-multi-agent-phase102-rag-tool
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+状态接口返回 run、agents、steps、messages、planSummary、rag、tool、review 等脱敏概要，不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie 或敏感 header。
+
+### 38.6 边界
+
+Phase 10.2 仍不引入 AutoGen、CrewAI、LangGraph，不实现复杂多轮自治，不新增写操作 Tool，不改变已有 Chat、RAG、Tool Calling、Agent Chat、Workflow、MCP 返回结构。
