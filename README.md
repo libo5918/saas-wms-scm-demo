@@ -2,6 +2,16 @@
 
 面向 SaaS WMS / SCM 场景的后端训练项目。当前重点是用多模块方式逐步落地主数据、采购、库存、销售这几条核心链路。
 
+## AI Agent 面试演示入口
+
+当前项目已在 `scm-ai-agent` 模块中形成 Java AI Agent 企业级面试展示闭环，覆盖 RAG、Tool Calling、RAG + Tool Agent Chat、Prompt Context / Advisor 风格上下文治理、Orchestrator、Workflow、MCP-style Tool Adapter、权限审计和 runtime protection。
+
+推荐从以下文档开始演示：
+
+- `docs/architecture/ai-agent-interview-demo-guide.md`：完整 gateway 18080 演示顺序、接口示例、能力矩阵和面试讲解稿。
+- `docs/architecture/ai-agent-interview-delivery-plan.md`：面试展示优先交付路线。
+- `docs/operations/ai-agent-tools.md`：AI Agent Tools / Orchestrator / Workflow / MCP-style 各阶段操作说明。
+
 ## 当前范围
 
 - 只做后端与中间件集成，不做前端页面

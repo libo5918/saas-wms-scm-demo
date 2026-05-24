@@ -108,6 +108,21 @@
 
 “MCP 解决的是外部 Agent 如何发现和调用企业内部工具的问题。这个项目没有重新造一套 Tool 执行体系，而是在现有 ToolRegistry 和 ToolInvocationService 外面包了一层 MCP-style adapter。这样外部客户端看到的是标准化的 tool list 和 invoke，内部仍然复用权限、审计、熔断、display schema 等企业级治理能力。当前阶段是 HTTP MCP-style adapter，后续如果接标准 MCP Server，只需要替换协议 transport 层，核心 Tool 治理链路不用重写。”
 
+### Phase 8.1：面试交付收敛
+
+目标：把已有能力收敛成一套可运行、可讲解、可演示的 Java AI Agent 企业级项目交付物。
+
+当前实现重点：
+
+- 新增 `docs/architecture/ai-agent-interview-demo-guide.md`，集中整理演示顺序、启动配置、接口调用示例、能力矩阵和面试讲解稿。
+- 演示顺序覆盖 Chat、RAG、Tool Calling、Agent Chat、runtime status、Orchestrator、Workflow 和 MCP-style Adapter。
+- 不继续新增复杂业务功能，不改变已有 API 返回结构。
+- 明确当前项目已具备面试展示所需的 RAG、Tool、Orchestrator、Workflow、MCP-style、权限审计、runtime protection、Prompt Context 和测试隔离能力。
+
+面试讲解话术：
+
+“Phase 8.1 做的是交付收敛，而不是继续堆功能。前面各阶段已经把 RAG、Tool Calling、Agent Chat、Orchestrator、Workflow 和 MCP-style adapter 都跑通了，这一阶段把它们整理成一条面试可演示路径：先导入知识库，再验证 RAG，再查实时 Tool，再组合 RAG + Tool，最后展示 Workflow 和 MCP-style 外部工具暴露。这样面试时我不仅能讲设计，也能按 gateway 18080 把完整链路跑出来。”
+
 ## 4. 面试讲解主线
 
 推荐讲法：
@@ -118,8 +133,9 @@
 4. 再讲 Orchestrator：run / plan / step、stepRef、安全摘要、受控二步只读执行。
 5. 再讲 Prompt Context：RAG、Tool、Orchestrator 通过 Advisor 风格 Provider 统一注入模型上下文。
 6. 再讲 Workflow：固定业务流程如何复用 Tool 权限、审计、runtime 保护，并在 Summary 阶段接入 RAG。
-7. 最后讲 MCP：企业内部 Tool 如何以标准化接口暴露给外部 Agent，同时保留权限、审计和 runtime 保护。
-8. 再讲扩展：标准 MCP Server、Multi-Agent、复杂长任务编排是后续方向，项目已预留治理边界。
+7. 再讲 MCP：企业内部 Tool 如何以标准化接口暴露给外部 Agent，同时保留权限、审计和 runtime 保护。
+8. 最后按 `docs/architecture/ai-agent-interview-demo-guide.md` 展示完整 gateway 18080 调用链路。
+9. 再讲扩展：标准 MCP Server、Multi-Agent、复杂长任务编排是后续方向，项目已预留治理边界。
 
 ## 5. 推进原则
 

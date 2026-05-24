@@ -3660,3 +3660,70 @@ Phase 7.1 完成后，MCP 最小演示已经足够支撑面试讲解。下一步
 - 补齐 README / 操作手册中的启动、导入知识库、调用接口步骤。
 - 形成从 RAG、Tool、Agent Chat、Workflow 到 MCP-style adapter 的完整讲解路径。
 
+## 35. Phase 8.1 面试交付收敛
+
+### 35.1 目标与边界
+
+Phase 8.1 不继续新增复杂业务功能，而是把当前 Tools + RAG + Orchestrator + Workflow + Prompt Context + MCP-style Adapter 能力收敛成可运行、可讲解、可演示的面试交付物。
+
+本阶段不改变 `/api/v1/ai/chat`、`/api/v1/ai/tool-calling/chat`、`/api/v1/ai/agent/chat`、RAG、Workflow 或 MCP-style Adapter 的返回结构，不新增写操作 Tool，不实现完整 MCP Server、Multi-Agent 或复杂长任务编排。
+
+### 35.2 交付文档
+
+新增面试演示总览：
+
+- `docs/architecture/ai-agent-interview-demo-guide.md`
+
+该文档集中说明：
+
+- 本地启动和推荐配置。
+- gateway 18080 完整演示顺序。
+- 基础 Chat、RAG、Tool Calling、Agent Chat、runtime status、Orchestrator、Workflow、MCP-style Adapter 的调用示例。
+- 项目能力矩阵。
+- 可直接用于面试表达的讲解稿。
+- Phase 8.2 / Phase 9.1 后续建议。
+
+### 35.3 完整演示顺序
+
+推荐按以下顺序演示：
+
+1. `POST /api/v1/ai/chat`：证明基础模型聊天和模型路由可用。
+2. `POST /api/v1/ai/rag/import/docs`：导入 SCM/WMS 示例知识库。
+3. `POST /api/v1/ai/rag/retrieve`：验证知识库可检索。
+4. `POST /api/v1/ai/rag/chat`：验证 RAG 问答。
+5. `POST /api/v1/ai/tool-calling/chat`：验证 Tool Calling 闭环。
+6. `POST /api/v1/ai/agent/chat`：验证 RAG + Tool + Prompt Context 组合问答。
+7. `GET /api/v1/ai/tools/runtime/status`：验证 runtime 保护状态。
+8. `GET /api/v1/ai/tool-calling/orchestrations/{runId}`：验证 Orchestrator 步骤轨迹。
+9. `GET /api/v1/ai/workflows`：查看 Workflow 定义。
+10. `POST /api/v1/ai/workflows/{workflowCode}/run`：运行补货建议 Workflow。
+11. `GET /api/v1/ai/workflows/runs/{runId}`：查看 Workflow 状态。
+12. `GET /api/v1/ai/mcp/tools`：查看 MCP-style Tool list。
+13. `POST /api/v1/ai/mcp/tools/{toolName}/invoke`：验证外部客户端风格 Tool 调用。
+
+每个接口的 method、URL、headers、body 和关键预期字段见 `docs/architecture/ai-agent-interview-demo-guide.md`。
+
+### 35.4 面试讲解主线
+
+推荐讲解主线：
+
+- 先讲项目背景：这是一个 SCM/WMS 企业后端项目，不是孤立 AI demo。
+- 再讲 RAG：解决企业规则、口径、流程解释。
+- 再讲 Tool Calling：解决实时业务事实查询。
+- 再讲 Agent Chat：把 RAG 和 Tool 组合成“知识 + 实时数据”的回答闭环。
+- 再讲 Prompt Context：用 Advisor 风格上下文治理替代散落拼 prompt。
+- 再讲 Orchestrator：治理 Agent Tool 调用过程、步骤状态和受控二步执行。
+- 再讲 Workflow：表达明确业务流程，复用 Tool 和 RAG 生成补货建议。
+- 最后讲 MCP-style Adapter：外部 Agent 如何标准化发现和调用内部 Tool，同时不绕过权限、审计和 runtime protection。
+
+### 35.5 当前可展示能力结论
+
+当前项目已经足够用于 Java AI Agent 企业级开发面试展示：
+
+- 能跑：gateway 18080 能覆盖 Chat / RAG / Tool / Agent / Workflow / MCP-style。
+- 能讲：每条能力都有对应设计文档和职责边界。
+- 能测：`scm-ai-agent` Maven test 不依赖真实模型、真实业务服务、MySQL、Milvus、Embedding API 或外部网络。
+- 能扩展：后续可继续接标准 MCP Server、Multi-Agent 或长任务编排。
+
+Phase 8.2 建议继续做演示材料增强，而不是继续堆低收益功能。
+
