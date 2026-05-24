@@ -74,15 +74,39 @@
 
 “`/api/v1/ai/agent/chat` 更像自由问答 Agent，会根据问题动态组合 RAG 和 Tool；Workflow 则是明确业务步骤的流程编排，比如补货建议必须先查物料、再查库存、最后生成建议。Phase 6.2 把 RAG 放在 Summary 阶段，用知识库解释业务口径，用 Tool 保证实时数据准确，这就是企业 Agent 常见的‘流程 + 知识 + 实时数据’闭环。”
 
-### Phase 7.1：MCP Server 最小演示
+### Phase 6.3：Workflow Engine 最小抽象
 
-目标：面试中能说明项目可以把内部 Tool 暴露给标准 MCP 客户端。
+目标：把固定 Workflow 中写死的步骤调用拆成 Engine / Executor / Context，形成可扩展步骤执行框架。
 
-建议能力：
+当前实现重点：
 
-- 暴露只读 Tool list 和 invoke 的 MCP 最小接口。
-- 只接入 `mdm.getMaterial`、`inventory.getBalance` 等安全只读 Tool。
-- 保留权限、审计、runtime 保护。
+- `AgentWorkflowService` 变成门面服务，只负责 definitions、run、status。
+- `AgentWorkflowEngine` 负责创建 run，并按 definition.steps 顺序调度。
+- `AgentWorkflowStepExecutorRegistry` 负责根据 step definition 找 executor。
+- `ToolWorkflowStepExecutor` 负责 Tool 步骤，复用 ToolInvocationService，保留权限、audit、runtime protection。
+- `SummaryWorkflowStepExecutor` 负责 Summary 步骤，按需检索 RAG 并生成 finalAnswer。
+- `AgentWorkflowExecutionContext` 负责跨步骤传递安全摘要，例如从 `query_material` 的 safeFields 中取 `materialId` 给库存步骤。
+- 当前仍不实现完整通用工作流平台，不做 BPMN、并行、异步恢复、人工审批或写操作。
+
+面试讲解话术：
+
+“Phase 6.1/6.2 先把业务流程闭环跑通，Phase 6.3 再把硬编码三步拆成 Engine + Executor。这样新增流程时不是复制一个 WorkflowService2，而是新增 definition，复用已有 Tool/Summary executor；如果出现新步骤类型，再扩展一个 executor。这体现的是企业项目常见的渐进式抽象：先闭环，再抽象，不一开始就造一个大而全的工作流平台。”
+
+### Phase 7.1：MCP-style Tool Adapter 最小演示
+
+目标：面试中能说明项目可以把企业内部已治理 Tool 以 MCP 风格暴露给外部 Agent、IDE 或客户端。
+
+当前实现重点：
+
+- 新增 `GET /api/v1/ai/mcp/tools`，返回允许暴露的只读 Tool 列表。
+- 新增 `POST /api/v1/ai/mcp/tools/{toolName}/invoke`，以 MCP 风格调用只读 Tool。
+- 默认只暴露 `mdm.getMaterial`、`inventory.getBalance` 两个安全只读 Tool。
+- MCP-style invoke 复用 `ToolInvocationService`，因此权限、audit、runtime timeout / retry / circuit breaker 都继续生效。
+- 返回 display 安全视图，不返回完整 rawData、内部 URL、token、API Key、敏感 header、完整 prompt 或完整模型响应。
+
+面试讲解话术：
+
+“MCP 解决的是外部 Agent 如何发现和调用企业内部工具的问题。这个项目没有重新造一套 Tool 执行体系，而是在现有 ToolRegistry 和 ToolInvocationService 外面包了一层 MCP-style adapter。这样外部客户端看到的是标准化的 tool list 和 invoke，内部仍然复用权限、审计、熔断、display schema 等企业级治理能力。当前阶段是 HTTP MCP-style adapter，后续如果接标准 MCP Server，只需要替换协议 transport 层，核心 Tool 治理链路不用重写。”
 
 ## 4. 面试讲解主线
 
@@ -94,7 +118,8 @@
 4. 再讲 Orchestrator：run / plan / step、stepRef、安全摘要、受控二步只读执行。
 5. 再讲 Prompt Context：RAG、Tool、Orchestrator 通过 Advisor 风格 Provider 统一注入模型上下文。
 6. 再讲 Workflow：固定业务流程如何复用 Tool 权限、审计、runtime 保护，并在 Summary 阶段接入 RAG。
-7. 最后讲扩展：Workflow Engine、MCP、Multi-Agent 是后续扩展方向，项目已预留治理边界。
+7. 最后讲 MCP：企业内部 Tool 如何以标准化接口暴露给外部 Agent，同时保留权限、审计和 runtime 保护。
+8. 再讲扩展：标准 MCP Server、Multi-Agent、复杂长任务编排是后续方向，项目已预留治理边界。
 
 ## 5. 推进原则
 

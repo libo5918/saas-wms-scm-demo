@@ -71,7 +71,43 @@ RAG 结果只放入 `generate_advice.safeFields.rag` 的脱敏概要中：
 
 `contentSnippet` 需要限制长度。Workflow status 不返回完整文档原文、完整 `rawData`、完整 prompt、完整模型响应、用户凭证、敏感 header 或内部 HTTP header。
 
-## 6. 后续演进
+## 6. Phase 6.3：Workflow Engine 最小抽象
+
+Phase 6.3 将固定流程中的步骤执行逻辑抽象为最小 Engine / Executor / Context 结构，解决新增流程时复制 `WorkflowService2` 的问题。
+
+```mermaid
+flowchart TD
+    A["AgentWorkflowService<br/>对外门面"] --> B["AgentWorkflowEngine<br/>顺序调度 steps"]
+    B --> C["AgentWorkflowStepExecutorRegistry"]
+    C --> D["ToolWorkflowStepExecutor"]
+    C --> E["SummaryWorkflowStepExecutor"]
+    B --> F["AgentWorkflowExecutionContext<br/>安全摘要上下文"]
+    D --> G["ToolInvocationService<br/>权限 / audit / runtime 保护"]
+    E --> H["RagService.retrieve"]
+    E --> I["AgentChatService"]
+```
+
+职责边界：
+
+- `AgentWorkflowService`：负责 list definitions、run workflow、get run status，不承载具体步骤逻辑。
+- `AgentWorkflowEngine`：创建 run，按 `AgentWorkflowDefinition.steps` 顺序执行步骤，汇总 run 状态。
+- `AgentWorkflowStepExecutorRegistry`：按 step definition 找到 executor。
+- `ToolWorkflowStepExecutor`：解析 Tool 参数、调用 Tool、构建 display schema 和 safeFields。
+- `SummaryWorkflowStepExecutor`：检查前置步骤、按需检索 RAG、生成 Summary prompt、调用模型生成 finalAnswer。
+- `AgentWorkflowExecutionContext`：按 stepCode 存取安全输出，例如 `query_material.safeFields.materialId`。
+
+Context 只保存安全摘要，不保存完整 `rawData`、完整 prompt、完整模型响应、用户 token、authorization、cookie、敏感 header 或内部 HTTP header。
+
+新增 Workflow 的扩展方式：
+
+1. 新增 `AgentWorkflowDefinition` 和 steps。
+2. 复用已有 `TOOL` / `SUMMARY` executor。
+3. 如果出现新的 stepType，再新增对应 `AgentWorkflowStepExecutor`。
+4. 参数解析放在 resolver 或 executor 中，保持白名单解析和安全摘要传递。
+
+Phase 6.3 仍不是完整通用工作流平台，不支持 BPMN、并行网关、异步恢复、人工审批或长任务调度。这一层的价值是为面试演示提供“从硬编码流程演进到可扩展步骤执行框架”的企业级设计样板。
+
+## 7. 后续演进
 
 Phase 6.1 不实现通用工作流引擎。后续可以逐步增加：
 
@@ -81,4 +117,4 @@ Phase 6.1 不实现通用工作流引擎。后续可以逐步增加：
 - 长任务和异步状态。
 - 与 MCP / 外部编排平台的集成。
 
-Phase 6.3 优先做 Workflow Engine 最小抽象，例如 StepExecutor 注册表、参数解析器、条件跳过和统一步骤执行上下文，避免后续每新增一个业务流程就复制一个 `WorkflowService2`。
+Phase 6.4 可以在现有 Engine 基础上增加更面试友好的配置化 definition 或一个新的只读 Workflow 示例，用来证明 Engine 扩展不需要复制 Service。

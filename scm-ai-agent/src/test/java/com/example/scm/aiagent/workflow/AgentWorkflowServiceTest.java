@@ -11,6 +11,10 @@ import com.example.scm.aiagent.tool.service.ToolInvocationService;
 import com.example.scm.aiagent.toolcalling.display.ToolCallingDisplaySchemaBuilder;
 import com.example.scm.aiagent.workflow.dto.AgentWorkflowRunRequest;
 import com.example.scm.aiagent.workflow.dto.AgentWorkflowRunResponse;
+import com.example.scm.aiagent.workflow.engine.AgentWorkflowEngine;
+import com.example.scm.aiagent.workflow.executor.AgentWorkflowStepExecutorRegistry;
+import com.example.scm.aiagent.workflow.executor.SummaryWorkflowStepExecutor;
+import com.example.scm.aiagent.workflow.executor.ToolWorkflowStepExecutor;
 import com.example.scm.aiagent.workflow.service.AgentWorkflowDefinitionRegistry;
 import com.example.scm.aiagent.workflow.service.AgentWorkflowParameterResolver;
 import com.example.scm.aiagent.workflow.service.AgentWorkflowRunStore;
@@ -39,6 +43,7 @@ class AgentWorkflowServiceTest {
     private AgentChatService agentChatService;
     private RagService ragService;
     private AgentWorkflowService workflowService;
+    private AgentWorkflowRunStore runStore;
     private AgentRequestContext context;
 
     @BeforeEach
@@ -46,15 +51,20 @@ class AgentWorkflowServiceTest {
         toolInvocationService = mock(ToolInvocationService.class);
         agentChatService = mock(AgentChatService.class);
         ragService = mock(RagService.class);
+        runStore = new AgentWorkflowRunStore();
+        ToolWorkflowStepExecutor toolExecutor = new ToolWorkflowStepExecutor(
+                new AgentWorkflowParameterResolver(),
+                toolInvocationService,
+                new ToolCallingDisplaySchemaBuilder());
+        SummaryWorkflowStepExecutor summaryExecutor = new SummaryWorkflowStepExecutor(agentChatService, ragService);
+        AgentWorkflowEngine workflowEngine = new AgentWorkflowEngine(
+                runStore,
+                new AgentWorkflowStepExecutorRegistry(List.of(toolExecutor, summaryExecutor)));
         workflowService = new AgentWorkflowService(
                 new AgentWorkflowDefinitionRegistry(),
-                new AgentWorkflowRunStore(),
-                new AgentWorkflowParameterResolver(),
+                runStore,
                 new AgentWorkflowViewMapper(),
-                toolInvocationService,
-                new ToolCallingDisplaySchemaBuilder(),
-                agentChatService,
-                ragService);
+                workflowEngine);
         context = new AgentRequestContext(1L, 10001L, "admin", List.of("ROLE_ADMIN"));
         ChatResponse chatResponse = new ChatResponse();
         chatResponse.setAnswer("补货建议草案：当前库存可用数量为 12，请人工确认是否补货。");

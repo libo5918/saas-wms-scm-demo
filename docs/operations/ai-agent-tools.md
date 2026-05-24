@@ -3332,3 +3332,331 @@ X-User-Roles: ROLE_ADMIN
 
 Phase 6.2 的价值是把“业务流程 + 企业知识 + 实时业务数据”放到一个可演示闭环里，便于面试中说明 Workflow 和 Agent Chat 的职责边界。
 
+## 33. Phase 6.3 Workflow Engine 最小抽象
+
+### 33.1 目标与边界
+
+Phase 6.3 将 Phase 6.1 / 6.2 中写死在 `AgentWorkflowService` 内的步骤执行逻辑拆成最小 Workflow Engine：
+
+- `AgentWorkflowService`：对外门面，负责 list、run、status。
+- `AgentWorkflowEngine`：按 `AgentWorkflowDefinition.steps` 顺序调度步骤。
+- `AgentWorkflowStepExecutor`：每类步骤的执行扩展点。
+- `AgentWorkflowExecutionContext`：在步骤之间传递安全摘要和必要中间变量。
+
+本阶段不是完整 BPMN / Flowable / Activiti / Temporal 级平台，不实现并行、异步恢复、人工审批、复杂长任务或写操作 Tool。
+
+### 33.2 Engine / Executor / Context 设计
+
+`AgentWorkflowEngine` 接收 workflow definition、run request 和用户上下文，创建 run 后按 stepNo 顺序执行步骤。每个步骤由 `AgentWorkflowStepExecutorRegistry` 找到匹配 executor。
+
+当前内置 executor：
+
+- `ToolWorkflowStepExecutor`：执行 `TOOL` 步骤，负责参数解析、Tool 调用、display schema 构建、safeFields 生成。
+- `SummaryWorkflowStepExecutor`：执行 `SUMMARY` 步骤，负责检查前置步骤、按需 RAG retrieve、构造 Summary prompt、调用模型并写入 finalAnswer。
+
+`AgentWorkflowExecutionContext` 只保存安全摘要，例如：
+
+- run / definition / request / AgentRequestContext
+- completedSteps
+- stepOutputs
+- ragSummary
+- finalAnswer
+
+禁止在 context 中保存完整 `rawData`、完整 prompt、完整模型响应、token、authorization、cookie 或敏感 header。
+
+### 33.3 参数解析与条件跳过
+
+参数解析继续复用 `AgentWorkflowParameterResolver`：
+
+- `materialCode`：来自 `parameters.materialCode` 或用户 message。
+- `materialId`：来自 `query_material.safeFields.materialId`。
+- `warehouseId` / `locationId`：来自 parameters 或用户 message。
+
+参数不足时，当前步骤进入 `SKIPPED`：
+
+- `inputResolved=false`
+- `skipReason` 说明缺失参数
+- 不调用真实 Tool
+- 不写伪 audit
+
+Summary 步骤依赖前置步骤成功；如果前置 Tool 未全部成功，Summary 进入 `SKIPPED`，finalAnswer 保留失败语义。
+
+### 33.4 新增 Workflow 的扩展方式
+
+后续新增固定业务 Workflow 时，不再复制 `WorkflowService2`。推荐路径：
+
+1. 在 `AgentWorkflowDefinitionRegistry` 中新增 workflow definition 和 steps。
+2. 如果 stepType 已存在，例如 `TOOL` 或 `SUMMARY`，优先复用现有 executor。
+3. 如果需要新的步骤类型，再新增一个 `AgentWorkflowStepExecutor` 实现。
+4. 参数解析逻辑放到 resolver 或 executor 内的白名单解析，不写进 service 门面。
+
+这样可以在不引入大型工作流平台的前提下，展示企业级可扩展步骤执行框架。
+
+### 33.5 Gateway 18080 Workflow Run 验证
+
+```http
+POST http://localhost:18080/api/v1/ai/workflows/scm_stock_replenishment_advice/run
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-workflow-phase63-001",
+  "message": "帮我生成物料 MAT-001 在仓库ID 2001、库位ID 3001 的补货建议草案，并说明库存可用数量口径",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "scoreThreshold": 0.1,
+  "parameters": {
+    "warehouseId": 2001,
+    "locationId": 3001
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-workflow-phase63-001",
+    "workflowCode": "scm_stock_replenishment_advice",
+    "status": "SUCCESS",
+    "steps": [
+      { "stepCode": "query_material", "stepType": "TOOL", "status": "SUCCESS" },
+      { "stepCode": "query_inventory_balance", "stepType": "TOOL", "status": "SUCCESS" },
+      {
+        "stepCode": "generate_advice",
+        "stepType": "SUMMARY",
+        "status": "SUCCESS",
+        "safeFields": {
+          "rag": {
+            "knowledgeBaseId": "kb-scm-demo",
+            "retrievedCount": 1
+          }
+        }
+      }
+    ],
+    "finalAnswer": "模型基于 Tool 安全摘要和 RAG 规则生成的中文补货建议草案"
+  }
+}
+```
+
+### 33.6 Gateway 18080 Workflow Status 验证
+
+```http
+GET http://localhost:18080/api/v1/ai/workflows/runs/run-workflow-phase63-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+预期：返回字段与 Phase 6.2 兼容，仍包含 run、steps、safeFields 和 finalAnswer，不返回完整 rawData、完整 prompt、完整模型响应或敏感凭证。
+
+### 33.7 与 Orchestrator 的职责区别
+
+- Orchestrator：面向 Agent Tool 调用治理，关注模型规划、候选工具、stepRef、runtime protection、权限审计和受控二步执行。
+- Workflow Engine：面向明确业务流程，关注 definition steps、executor、参数解析、条件跳过、状态记录和最终业务结论。
+
+两者可以复用 ToolInvocationService，因此权限、audit、runtime protection 都能保持一致。
+
+## 34. Phase 7.1 MCP-style Tool Adapter 最小演示
+
+### 34.1 目标与边界
+
+Phase 7.1 在 Tools + RAG + Orchestrator + Workflow + Prompt Context 已具备面试展示闭环的基础上，新增 HTTP 形式的 MCP-style Tool Adapter，用于说明企业内部已治理 Tool 如何以标准化方式暴露给外部 Agent、IDE 或客户端。
+
+本阶段不是完整 MCP Server 协议栈，不接入真实外部 MCP Client，不新增写操作 Tool，也不重复实现一套 Tool 执行体系。MCP-style adapter 只做安全视图和入口适配，底层继续复用现有 ToolRegistry、ToolInvocationService、权限、audit 和 runtime protection。
+
+### 34.2 MCP 在本项目中的定位
+
+MCP 解决的是“外部 Agent 如何发现和调用企业内部工具”的标准化问题。本项目当前阶段采用 HTTP MCP-style adapter：
+
+- Tool list：返回允许暴露的只读 Tool 定义、安全 input schema 和展示 schema。
+- Tool invoke：按 MCP 风格调用 Tool，但内部仍走项目现有 Tool 调用链路。
+- 安全治理：只暴露白名单只读 Tool，不返回内部 URL、API Key、token、敏感 header 或完整 rawData。
+
+当前默认暴露：
+
+- `mdm.getMaterial`
+- `inventory.getBalance`
+
+后续如果 `mdm.getWarehouse`、`sales.getOrder`、`purchase.getOrder` 等只读 Tool 需要暴露，应先补齐治理标签、权限语义和安全输出，再加入 MCP 暴露白名单。
+
+### 34.3 MCP-style Tool List
+
+接口：
+
+```http
+GET http://localhost:18080/api/v1/ai/mcp/tools
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "tenantId": 1,
+    "toolCount": 2,
+    "tools": [
+      {
+        "name": "mdm.getMaterial",
+        "description": "查询物料主数据",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "materialCode": {
+              "type": "string"
+            }
+          }
+        },
+        "displaySchema": {
+          "type": "display",
+          "fields": [
+            "displayTitle",
+            "displaySummary",
+            "displayFields",
+            "displayItems"
+          ]
+        },
+        "domain": "mdm",
+        "category": "material",
+        "routeTags": [
+          "mdm",
+          "material",
+          "read"
+        ],
+        "readOnly": true,
+        "requiredPermissions": [
+          "ai.tool.read",
+          "ai.tool.mdm.read"
+        ]
+      }
+    ]
+  }
+}
+```
+
+返回内容不包含内部 HTTP URL、adapter 内部细节、API Key、token、敏感 header 或业务 rawData。
+
+### 34.4 MCP-style Tool Invoke
+
+接口：
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/tools/mdm.getMaterial/invoke
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+请求体：
+
+```json
+{
+  "runId": "run-mcp-phase71-material-001",
+  "arguments": {
+    "materialCode": "MAT-001"
+  }
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-mcp-phase71-material-001",
+    "toolName": "mdm.getMaterial",
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "display": {
+      "displayTitle": "物料信息",
+      "displaySummary": "已查询到物料 MAT-001（螺丝）",
+      "displayFields": [
+        {
+          "key": "materialCode",
+          "label": "物料编码",
+          "value": "MAT-001"
+        }
+      ],
+      "displayItems": []
+    },
+    "latencyMs": 20
+  }
+}
+```
+
+库存 Tool 调用示例：
+
+```http
+POST http://localhost:18080/api/v1/ai/mcp/tools/inventory.getBalance/invoke
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-mcp-phase71-inventory-001",
+  "arguments": {
+    "materialId": 1,
+    "warehouseId": 2001,
+    "locationId": 3001
+  }
+}
+```
+
+MCP invoke 响应只返回 display 安全视图和稳定错误语义，不返回完整 `rawData`。
+
+### 34.5 如何复用现有 Tool 治理链路
+
+MCP-style invoke 不直接调用业务 HTTP 服务，而是复用 `ToolInvocationService`：
+
+1. `McpToolController` 接收外部 MCP-style 请求。
+2. `McpToolExposureService` 校验 Tool 是否允许 MCP 暴露、是否只读、是否在白名单中。
+3. 通过 `ToolInvocationService` 调用真实 Tool。
+4. 原有 `ToolPermissionService`、Tool audit、runtime timeout / retry / circuit breaker 继续生效。
+5. 执行结果通过 `ToolCallingDisplaySchemaBuilder` 转成 display 安全视图。
+
+因此 MCP 只是外部暴露层，不是新的执行体系。权限失败、runtime 熔断、参数错误等仍保持原有 Tool 调用链路的真实失败语义。
+
+### 34.6 MCP-style Adapter 与标准 MCP Server 的区别
+
+当前阶段是 HTTP MCP-style adapter：
+
+- 使用 REST endpoint 暴露 tool list / invoke。
+- 便于通过 gateway 18080 演示和测试。
+- 复用项目内已有认证、租户上下文和 Tool 治理链路。
+
+标准 MCP Server 通常还会涉及 MCP transport、client session、标准协议消息和外部 IDE / Agent 客户端适配。后续如果要升级为标准 MCP Server，可以保留当前 `McpToolExposureService`，只替换或新增协议 transport 层。
+
+### 34.7 后续方向
+
+Phase 7.1 完成后，MCP 最小演示已经足够支撑面试讲解。下一步建议进入 Phase 8.1，做面试交付收敛：
+
+- 整理一套端到端演示脚本。
+- 补齐 README / 操作手册中的启动、导入知识库、调用接口步骤。
+- 形成从 RAG、Tool、Agent Chat、Workflow 到 MCP-style adapter 的完整讲解路径。
+
