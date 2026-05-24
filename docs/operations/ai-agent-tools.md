@@ -4281,3 +4281,99 @@ X-User-Roles: ROLE_ADMIN
 ### 38.6 边界
 
 Phase 10.2 仍不引入 AutoGen、CrewAI、LangGraph，不实现复杂多轮自治，不新增写操作 Tool，不改变已有 Chat、RAG、Tool Calling、Agent Chat、Workflow、MCP 返回结构。
+
+## 39. Phase 10.3 Multi-Agent 约束与总结治理
+
+Phase 10.3 增强 Multi-Agent 的企业级可控能力：
+
+- `max-rounds` / `max-tool-calls` 生效为硬约束。
+- Run 状态返回 `constraints`、`roundCount`、`toolCallCount`、`terminatedReason`。
+- ReviewerAgent 增强规则审查。
+- Coordinator 支持 `model-summary-enabled`，默认关闭，模型失败自动回退模板。
+
+### 39.1 配置
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      enabled: true
+      max-rounds: 3
+      max-tool-calls: 3
+      model-summary-enabled: false
+```
+
+如果希望演示模型总结，可改为：
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      model-summary-enabled: true
+```
+
+### 39.2 Chat 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase103-001",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "plannerMode": "spring-ai",
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "intentType": "RAG_TOOL",
+    "constraints": {
+      "roundCount": 1,
+      "toolCallCount": 1,
+      "maxRounds": 3,
+      "maxToolCalls": 3,
+      "exceeded": false
+    },
+    "summaryMode": "template",
+    "fallbackUsed": false,
+    "review": {
+      "passed": true
+    }
+  }
+}
+```
+
+### 39.3 Status 示例
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-multi-agent-phase103-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+状态接口继续只返回脱敏摘要，不返回完整 rawData、prompt、模型响应、token、authorization、cookie 或敏感 header。
+
+### 39.4 受控终止说明
+
+- `max-rounds < 1`：Coordinator 直接终止 run，不进入 Planner / Tool。
+- `max-tool-calls < 1` 且 Planner 判断需要 Tool：ToolAgent 标记跳过，不执行真实 Tool。
+- 终止原因写入 `terminatedReason` 和 `constraints.terminatedReason`。

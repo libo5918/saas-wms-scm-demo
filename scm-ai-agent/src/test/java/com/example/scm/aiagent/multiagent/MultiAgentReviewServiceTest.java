@@ -38,4 +38,24 @@ class MultiAgentReviewServiceTest {
 
         assertTrue(result.isPassed());
     }
+    @Test
+    void shouldWarnWhenToolSuccessButAnswerMissesDisplaySummary() {
+        MultiAgentReviewResult result = reviewService.review(
+                "ToolAgent 已完成查询。",
+                Map.of("retrievedCount", 0),
+                Map.of("execution", Map.of("success", true, "displaySummary", "已查询到物料 MAT-001")));
+
+        assertFalse(result.isPassed());
+    }
+
+    @Test
+    void shouldSuggestWhenRagRetrievedButAnswerMissesRuleSummary() {
+        MultiAgentReviewResult result = reviewService.review(
+                "ToolAgent 已完成查询，已查询到物料 MAT-001。",
+                Map.of("retrievedCount", 1),
+                Map.of("execution", Map.of("success", true, "displaySummary", "已查询到物料 MAT-001")));
+
+        assertTrue(result.isPassed());
+        assertFalse(result.getSuggestions().isEmpty());
+    }
 }

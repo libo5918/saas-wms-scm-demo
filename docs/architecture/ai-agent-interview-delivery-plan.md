@@ -193,3 +193,19 @@
 面试讲解话术：
 
 “Phase 10.2 不是做几个 Agent 互相聊天，而是把企业 Agent 常见职责拆成 Planner、Knowledge、Tool、Reviewer，并且让每个角色只做自己边界内的事。KnowledgeAgent 不自己实现检索，而是复用 RAG；ToolAgent 不直接访问业务系统，而是复用已治理的 Tool Calling 主链路；ReviewerAgent 先做规则审查，保证回答不编造、不泄露、不掩盖 Tool 失败。这样可以体现 Multi-Agent 的协作价值，同时避免复杂自治带来的不稳定。”
+
+### Phase 10.3：Multi-Agent 可控约束与总结治理
+
+目标：增强 Multi-Agent 的企业级可控能力，让它不仅“能协作”，还“能被限制、能被审查、能安全总结”。
+
+当前实现重点：
+
+- `maxRounds` / `maxToolCalls` 生效为硬约束。
+- 超过限制时受控终止或跳过 Tool，不执行真实 Tool。
+- 状态接口返回 `constraints`、`roundCount`、`toolCallCount`、`terminatedReason`。
+- ReviewerAgent 增强规则审查，检查敏感信息、Tool displaySummary、RAG 规则引用和 Tool 失败语义。
+- Coordinator 支持 `model-summary-enabled`，默认关闭；开启后复用 `AgentChatService` 做模型总结，失败回退模板。
+
+面试讲解话术：
+
+“Phase 10.3 体现的是企业级 Multi-Agent 的治理能力。多 Agent 不是越自由越好，而是要有最大轮次、最大工具调用次数、失败终止、审查和总结回退。这样即使后续接模型总结，也不会绕过安全摘要和审查逻辑。”

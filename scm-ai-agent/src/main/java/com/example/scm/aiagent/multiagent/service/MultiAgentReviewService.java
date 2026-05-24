@@ -25,11 +25,19 @@ public class MultiAgentReviewService {
             issues.add("RAG 未召回但回答声称使用知识库依据");
             suggestions.add("未召回知识库时应明确说明未找到知识片段，不能编造规则");
         }
+        if (retrievedCount > 0 && !answerContains(answer, "规则") && !answerContains(answer, "口径")
+                && !answerContains(answer, "KnowledgeAgent")) {
+            suggestions.add("RAG 已召回，但 finalAnswer 未明显引用规则或口径摘要");
+        }
         Map<?, ?> execution = tool.get("execution") instanceof Map<?, ?> map ? map : Map.of();
         Object success = execution.get("success");
         if (Boolean.FALSE.equals(success) && !answerContains(answer, String.valueOf(execution.get("errorMessage")))) {
             issues.add("Tool 失败时最终回答未保留真实失败原因");
             suggestions.add("补充 Tool errorMessage，避免用户误以为查询成功");
+        }
+        if (Boolean.TRUE.equals(success) && !answerContains(answer, String.valueOf(execution.get("displaySummary")))) {
+            issues.add("Tool 成功时 finalAnswer 未包含关键 displaySummary");
+            suggestions.add("最终回答应优先体现 Tool 返回的实时业务事实");
         }
         boolean passed = issues.isEmpty();
         return MultiAgentReviewResult.builder()
@@ -51,6 +59,7 @@ public class MultiAgentReviewService {
                 || lower.contains("apikey")
                 || lower.contains("rawdata")
                 || lower.contains("prompt")
+                || lower.contains("model response")
                 || lower.contains("token");
     }
 

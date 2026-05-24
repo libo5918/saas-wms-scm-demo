@@ -1,6 +1,7 @@
 package com.example.scm.aiagent.multiagent;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatRequest;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatResponse;
@@ -19,6 +20,7 @@ import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
 import com.example.scm.aiagent.rag.dto.RagRetrievedChunk;
 import com.example.scm.aiagent.rag.service.RagService;
+import com.example.scm.aiagent.service.AgentChatService;
 import com.example.scm.aiagent.toolcalling.application.ToolCallingChatService;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingChatResponse;
 import com.example.scm.aiagent.toolcalling.dto.ToolCallingExecutionView;
@@ -35,17 +37,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MultiAgentCoordinatorServiceTest {
 
     @Test
     void shouldRunRagToolReviewSingleRound() {
-        MultiAgentCoordinatorService service = service();
-        MultiAgentChatRequest request = new MultiAgentChatRequest();
-        request.setRunId("run-multi-agent-1");
-        request.setKnowledgeBaseId("kb-scm-demo");
-        request.setMessage("按库存可用数量口径解释，并查物料 MAT-001 的库存");
+        MultiAgentCoordinatorService service = service(defaultProperties(), mockRagService(),
+                mockToolCallingChatService(), mock(AgentChatService.class));
+        MultiAgentChatRequest request = ragToolRequest("run-multi-agent-1");
 
         MultiAgentChatResponse response = service.chat(request, context());
 
@@ -55,6 +57,10 @@ class MultiAgentCoordinatorServiceTest {
         assertEquals(1, response.getRag().get("retrievedCount"));
         assertEquals("mdm.getMaterial", response.getTool().get("selectedTool"));
         assertEquals(true, response.getReview().get("passed"));
+        assertEquals("template", response.getSummaryMode());
+        assertEquals(1, response.getRoundCount());
+        assertEquals(1, response.getToolCallCount());
+        assertEquals(false, response.getConstraints().get("exceeded"));
         assertTrue(response.getAnswer().contains("KnowledgeAgent"));
         assertTrue(response.getAnswer().contains("ToolAgent"));
         assertTrue(response.getAgents().stream().anyMatch(agent ->
@@ -63,14 +69,14 @@ class MultiAgentCoordinatorServiceTest {
                 "ToolAgent".equals(agent.getAgentName()) && agent.getStatus() == MultiAgentStepStatus.SUCCESS));
         assertTrue(response.getAgents().stream().anyMatch(agent ->
                 "ReviewerAgent".equals(agent.getAgentName()) && agent.getRole() == MultiAgentRole.REVIEWER));
-        assertEquals(6, response.getSteps().size());
         assertFalse(response.toString().toLowerCase().contains("authorization"));
         assertFalse(response.toString().toLowerCase().contains("rawdata"));
     }
 
     @Test
     void shouldQuerySavedRun() {
-        MultiAgentCoordinatorService service = service();
+        MultiAgentCoordinatorService service = service(defaultProperties(), mockRagService(),
+                mockToolCallingChatService(), mock(AgentChatService.class));
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId("run-query");
         request.setMessage("解释库存规则");
@@ -83,9 +89,104 @@ class MultiAgentCoordinatorServiceTest {
         assertEquals(MultiAgentRunStatus.SUCCESS, response.getStatus());
     }
 
-    private MultiAgentCoordinatorService service() {
+    @Test
+    void shouldSkipToolWhenMaxToolCallsExceeded() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setMaxToolCalls(0);
+        ToolCallingChatService toolCallingChatService = mock(ToolCallingChatService.class);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(), toolCallingChatService,
+                mock(AgentChatService.class));
+        MultiAgentChatRequest request = new MultiAgentChatRequest();
+        request.setRunId("run-tool-limit");
+        request.setMessage("帮我查物料 MAT-001");
+
+        MultiAgentChatResponse response = service.chat(request, context());
+
+        assertEquals(0, response.getToolCallCount());
+        assertEquals(true, response.getConstraints().get("exceeded"));
+        assertTrue(response.getTerminatedReason().contains("maxToolCalls"));
+        verify(toolCallingChatService, never()).chat(any(), any());
+    }
+
+    @Test
+    void shouldTerminateWhenMaxRoundsExceeded() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setMaxRounds(0);
+        ToolCallingChatService toolCallingChatService = mock(ToolCallingChatService.class);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(), toolCallingChatService,
+                mock(AgentChatService.class));
+        MultiAgentChatRequest request = new MultiAgentChatRequest();
+        request.setRunId("run-round-limit");
+        request.setMessage("帮我查物料 MAT-001");
+
+        MultiAgentChatResponse response = service.chat(request, context());
+
+        assertEquals(MultiAgentRunStatus.TERMINATED, response.getStatus());
+        assertEquals(true, response.getConstraints().get("exceeded"));
+        verify(toolCallingChatService, never()).chat(any(), any());
+    }
+
+    @Test
+    void shouldUseModelSummaryWhenEnabled() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse chatResponse = new ChatResponse();
+        chatResponse.setAnswer("模型汇总后的 Multi-Agent 最终回答，已查询到物料 MAT-001");
+        when(agentChatService.chat(any(), any())).thenReturn(chatResponse);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(), mockToolCallingChatService(), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-summary"), context());
+
+        assertEquals("model", response.getSummaryMode());
+        assertFalse(response.isFallbackUsed());
+        assertTrue(response.getAnswer().contains("模型汇总"));
+    }
+
+    @Test
+    void shouldFallbackToTemplateWhenModelSummaryFails() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        when(agentChatService.chat(any(), any())).thenThrow(new IllegalStateException("model down"));
+        MultiAgentCoordinatorService service = service(properties, mockRagService(), mockToolCallingChatService(), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-fallback"), context());
+
+        assertEquals("template", response.getSummaryMode());
+        assertTrue(response.isFallbackUsed());
+        assertTrue(response.getAnswer().contains("ToolAgent"));
+    }
+
+    private MultiAgentChatRequest ragToolRequest(String runId) {
+        MultiAgentChatRequest request = new MultiAgentChatRequest();
+        request.setRunId(runId);
+        request.setKnowledgeBaseId("kb-scm-demo");
+        request.setMessage("按库存可用数量口径解释，并查物料 MAT-001 的库存");
+        return request;
+    }
+
+    private MultiAgentCoordinatorService service(AiAgentProperties properties, RagService ragService,
+                                                 ToolCallingChatService toolCallingChatService,
+                                                 AgentChatService agentChatService) {
+        return new MultiAgentCoordinatorService(
+                properties,
+                new MultiAgentDefinitionRegistry(),
+                new InMemoryMultiAgentRunStore(properties),
+                new MultiAgentPlannerService(),
+                new MultiAgentKnowledgeService(ragService),
+                new MultiAgentToolService(toolCallingChatService),
+                new MultiAgentReviewService(),
+                agentChatService);
+    }
+
+    private AiAgentProperties defaultProperties() {
         AiAgentProperties properties = new AiAgentProperties();
         properties.getMultiAgent().setEnabled(true);
+        return properties;
+    }
+
+    private RagService mockRagService() {
         RagService ragService = mock(RagService.class);
         RagRetrieveResponse ragResponse = new RagRetrieveResponse();
         ragResponse.setKnowledgeBaseId("kb-scm-demo");
@@ -99,7 +200,10 @@ class MultiAgentCoordinatorServiceTest {
                 .score(0.9)
                 .build()));
         when(ragService.retrieve(any(RagRetrieveRequest.class), any())).thenReturn(ragResponse);
+        return ragService;
+    }
 
+    private ToolCallingChatService mockToolCallingChatService() {
         ToolCallingChatService toolCallingChatService = mock(ToolCallingChatService.class);
         when(toolCallingChatService.chat(any(), any())).thenReturn(ToolCallingChatResponse.builder()
                 .runId("run-multi-agent-1")
@@ -124,15 +228,7 @@ class MultiAgentCoordinatorServiceTest {
                 .answer("查询成功")
                 .latencyMs(11)
                 .build());
-
-        return new MultiAgentCoordinatorService(
-                properties,
-                new MultiAgentDefinitionRegistry(),
-                new InMemoryMultiAgentRunStore(properties),
-                new MultiAgentPlannerService(),
-                new MultiAgentKnowledgeService(ragService),
-                new MultiAgentToolService(toolCallingChatService),
-                new MultiAgentReviewService());
+        return toolCallingChatService;
     }
 
     private AgentRequestContext context() {

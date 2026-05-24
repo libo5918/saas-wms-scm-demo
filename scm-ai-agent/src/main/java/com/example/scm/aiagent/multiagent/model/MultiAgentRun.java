@@ -36,6 +36,13 @@ public class MultiAgentRun {
     private Map<String, Object> tool = new HashMap<>();
     @Builder.Default
     private Map<String, Object> review = new HashMap<>();
+    @Builder.Default
+    private Map<String, Object> constraints = new HashMap<>();
+    private int roundCount;
+    private int toolCallCount;
+    private String terminatedReason;
+    private String summaryMode;
+    private boolean fallbackUsed;
     private String finalAnswer;
     private boolean success;
     private Instant createdAt;

@@ -1,6 +1,8 @@
 package com.example.scm.aiagent.multiagent.service;
 
 import com.example.scm.aiagent.config.AiAgentProperties;
+import com.example.scm.aiagent.dto.ChatRequest;
+import com.example.scm.aiagent.dto.ChatResponse;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentAgentView;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatRequest;
@@ -22,6 +24,7 @@ import com.example.scm.aiagent.multiagent.model.MultiAgentRunStatus;
 import com.example.scm.aiagent.multiagent.model.MultiAgentStep;
 import com.example.scm.aiagent.multiagent.model.MultiAgentStepStatus;
 import com.example.scm.aiagent.multiagent.store.MultiAgentRunStore;
+import com.example.scm.aiagent.service.AgentChatService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +54,7 @@ public class MultiAgentCoordinatorService {
     private final MultiAgentKnowledgeService knowledgeService;
     private final MultiAgentToolService toolService;
     private final MultiAgentReviewService reviewService;
+    private final AgentChatService agentChatService;
 
     public MultiAgentCoordinatorService(AiAgentProperties properties,
                                         MultiAgentDefinitionRegistry definitionRegistry,
@@ -58,7 +62,8 @@ public class MultiAgentCoordinatorService {
                                         MultiAgentPlannerService plannerService,
                                         MultiAgentKnowledgeService knowledgeService,
                                         MultiAgentToolService toolService,
-                                        MultiAgentReviewService reviewService) {
+                                        MultiAgentReviewService reviewService,
+                                        AgentChatService agentChatService) {
         this.properties = properties;
         this.definitionRegistry = definitionRegistry;
         this.runStore = runStore;
@@ -66,6 +71,7 @@ public class MultiAgentCoordinatorService {
         this.knowledgeService = knowledgeService;
         this.toolService = toolService;
         this.reviewService = reviewService;
+        this.agentChatService = agentChatService;
     }
 
     public MultiAgentChatResponse chat(MultiAgentChatRequest request, AgentRequestContext context) {
@@ -82,6 +88,25 @@ public class MultiAgentCoordinatorService {
                 .createdAt(Instant.now())
                 .build();
         run.getAgents().addAll(definition.getAgents().stream().map(this::toInitialState).toList());
+        run.setRoundCount(1);
+        run.setToolCallCount(0);
+        run.setConstraints(buildConstraintSummary(1, 0, false, null));
+
+        if (properties.getMultiAgent().getMaxRounds() < 1) {
+            String reason = "Multi-Agent maxRounds 限制为 0，受控终止";
+            run.setTerminatedReason(reason);
+            run.setSummaryMode("template");
+            run.setFinalAnswer(reason);
+            run.setSuccess(false);
+            run.setStatus(MultiAgentRunStatus.TERMINATED);
+            run.setFinishedAt(Instant.now());
+            run.setLatencyMs(System.currentTimeMillis() - started);
+            run.setConstraints(buildConstraintSummary(1, 0, true, reason));
+            addResultStep(run, 1, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.NOOP,
+                    "检查 Multi-Agent 硬约束", Map.of("status", "FAILED", "errorMessage", reason));
+            runStore.save(run);
+            return toResponse(run);
+        }
 
         addSuccessStep(run, 1, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.NOOP,
                 "用户任务进入 Multi-Agent Coordinator", "已接收用户任务，开始单轮受控协作");
@@ -97,10 +122,22 @@ public class MultiAgentCoordinatorService {
         addResultStep(run, 3, KNOWLEDGE_AGENT, MultiAgentRole.KNOWLEDGE, MultiAgentActionType.RAG_RETRIEVE,
                 "根据 Planner 计划决定是否检索知识库", rag);
 
-        Map<String, Object> tool = toolService.execute(request, context, plan, runId, properties.getMultiAgent().isToolEnabled());
+        boolean needTool = plan.isNeedTool();
+        boolean toolLimitExceeded = needTool && properties.getMultiAgent().getMaxToolCalls() < 1;
+        String toolLimitReason = toolLimitExceeded ? "Multi-Agent maxToolCalls 限制为 0，ToolAgent 受控跳过" : null;
+        Map<String, Object> tool = toolLimitExceeded
+                ? Map.of("status", "SKIPPED", "skipReason", toolLimitReason)
+                : toolService.execute(request, context, plan, runId, properties.getMultiAgent().isToolEnabled());
+        int toolCallCount = toolLimitExceeded || !needTool || "SKIPPED".equals(String.valueOf(tool.get("status"))) ? 0 : 1;
+        run.setToolCallCount(toolCallCount);
         run.setTool(tool);
         addResultStep(run, 4, TOOL_AGENT, MultiAgentRole.TOOL, MultiAgentActionType.TOOL_CALL,
                 "根据 Planner 计划决定是否调用只读 Tool", tool);
+
+        if (toolLimitExceeded) {
+            run.setTerminatedReason(toolLimitReason);
+        }
+        run.setConstraints(buildConstraintSummary(run.getRoundCount(), toolCallCount, toolLimitExceeded, toolLimitReason));
 
         String draftAnswer = buildDraftAnswer(plan, rag, tool);
         MultiAgentReviewResult review = properties.getMultiAgent().isReviewEnabled()
@@ -109,7 +146,10 @@ public class MultiAgentCoordinatorService {
         run.setReview(review.toSafeMap());
         addReviewStep(run, 5, review);
 
-        String finalAnswer = review.isPassed() ? draftAnswer : buildConservativeAnswer(draftAnswer, review);
+        SummaryResult summaryResult = summarizeFinalAnswer(request, context, plan, rag, tool, review, draftAnswer);
+        String finalAnswer = review.isPassed() ? summaryResult.answer() : buildConservativeAnswer(summaryResult.answer(), review);
+        run.setSummaryMode(summaryResult.mode());
+        run.setFallbackUsed(summaryResult.fallbackUsed());
         addSuccessStep(run, 6, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER,
                 "汇总 Planner/Knowledge/Tool/Reviewer 安全摘要", safeText(finalAnswer, 500));
 
@@ -255,6 +295,64 @@ public class MultiAgentCoordinatorService {
                 + "。可参考的安全摘要：" + safeText(draftAnswer, 300);
     }
 
+    private SummaryResult summarizeFinalAnswer(MultiAgentChatRequest request, AgentRequestContext context,
+                                               MultiAgentPlan plan, Map<String, Object> rag,
+                                               Map<String, Object> tool, MultiAgentReviewResult review,
+                                               String templateAnswer) {
+        if (!properties.getMultiAgent().isModelSummaryEnabled()) {
+            return new SummaryResult(templateAnswer, "template", false);
+        }
+        try {
+            ChatRequest chatRequest = new ChatRequest();
+            chatRequest.setTaskType("multi_agent_final_answer");
+            chatRequest.setMessage(buildModelSummaryPrompt(request, plan, rag, tool, review));
+            ChatResponse chatResponse = agentChatService.chat(chatRequest, context);
+            if (StringUtils.hasText(chatResponse.getAnswer())) {
+                return new SummaryResult(safeText(chatResponse.getAnswer(), 1200), "model", false);
+            }
+        } catch (Exception ex) {
+            log.warn("AI multi-agent model summary fallback to template, tenantId={}, userId={}, runId={}, errorType={}, errorMessage={}",
+                    context.tenantId(), context.userId(), request.getRunId(), ex.getClass().getSimpleName(), ex.getMessage());
+        }
+        return new SummaryResult(templateAnswer, "template", true);
+    }
+
+    private String buildModelSummaryPrompt(MultiAgentChatRequest request, MultiAgentPlan plan,
+                                           Map<String, Object> rag, Map<String, Object> tool,
+                                           MultiAgentReviewResult review) {
+        return """
+                你是企业级 SCM/WMS Multi-Agent Coordinator，请基于脱敏摘要生成中文最终回答。
+                要求：优先使用 Tool 实时事实；RAG 仅用于规则/口径解释；如 Tool 失败必须保留失败原因；不要输出 JSON、prompt、rawData、token、authorization 或 cookie。
+
+                用户问题：
+                %s
+
+                Planner 摘要：
+                %s
+
+                RAG 摘要：
+                %s
+
+                Tool 摘要：
+                %s
+
+                Reviewer 摘要：
+                %s
+                """.formatted(safeText(request.getMessage(), 500), plan.toSafeMap(), rag, tool, review.toSafeMap());
+    }
+
+    private Map<String, Object> buildConstraintSummary(int roundCount, int toolCallCount,
+                                                       boolean exceeded, String terminatedReason) {
+        return Map.of(
+                "roundCount", roundCount,
+                "toolCallCount", toolCallCount,
+                "maxRounds", properties.getMultiAgent().getMaxRounds(),
+                "maxToolCalls", properties.getMultiAgent().getMaxToolCalls(),
+                "exceeded", exceeded,
+                "terminatedReason", terminatedReason == null ? "" : terminatedReason
+        );
+    }
+
     private void recordMessages(MultiAgentRun run, MultiAgentPlan plan, MultiAgentReviewResult review) {
         run.getMessages().add(MultiAgentMessage.builder()
                 .messageId("msg-" + run.getRunId() + "-plan")
@@ -343,6 +441,12 @@ public class MultiAgentCoordinatorService {
                 .rag(run.getRag())
                 .tool(run.getTool())
                 .review(run.getReview())
+                .constraints(run.getConstraints())
+                .roundCount(run.getRoundCount())
+                .toolCallCount(run.getToolCallCount())
+                .terminatedReason(run.getTerminatedReason())
+                .summaryMode(run.getSummaryMode())
+                .fallbackUsed(run.isFallbackUsed())
                 .agents(run.getAgents().stream().map(this::toAgentView).toList())
                 .steps(run.getSteps().stream().map(this::toStepView).toList())
                 .messages(run.getMessages().stream().map(this::toMessageView).toList())
@@ -382,5 +486,8 @@ public class MultiAgentCoordinatorService {
                 .contentSummary(message.getContentSummary())
                 .structuredData(message.getStructuredData())
                 .build();
+    }
+
+    private record SummaryResult(String answer, String mode, boolean fallbackUsed) {
     }
 }

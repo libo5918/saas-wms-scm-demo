@@ -143,3 +143,19 @@ Phase 10.2 已把上面的建议落成单轮受控协作：
 - ReviewerAgent 可升级为模型审查，但保留规则兜底。
 - Coordinator 可切换到模型总结，但仍使用 Prompt Context 治理输入。
 - 增强失败分支和状态接口展示。
+
+## 11. Phase 10.3：可控约束与总结治理
+
+Phase 10.3 已补充 Multi-Agent 的企业级控制能力：
+
+1. `maxRounds` 从配置绑定升级为硬约束。当前仍是单轮协作，如果配置小于 1，Coordinator 会直接受控终止，不进入 Tool 执行。
+2. `maxToolCalls` 从配置绑定升级为硬约束。如果 Planner 判断需要 Tool，但 `maxToolCalls=0`，ToolAgent 会被跳过，不调用真实 Tool。
+3. Run / Status 返回 `constraints`、`roundCount`、`toolCallCount`、`terminatedReason`、`summaryMode`、`fallbackUsed`。
+4. ReviewerAgent 增强审查规则：
+   - Tool 成功但最终答案缺少关键 `displaySummary` 时给出 issue；
+   - RAG 有召回但回答未体现规则/口径时给出 suggestion；
+   - Tool 失败但回答没有保留 errorMessage 时给出 issue；
+   - 拦截 authorization、cookie、token、api key、rawData、prompt、model response 等敏感关键词。
+5. Coordinator 支持 `model-summary-enabled` 开关。默认关闭，走模板总结；开启后复用已有 `AgentChatService` 做模型总结，失败自动回退模板。
+
+Phase 10.3 仍然不做复杂多轮自治，不引入外部 Multi-Agent 框架，不新增写操作 Tool。

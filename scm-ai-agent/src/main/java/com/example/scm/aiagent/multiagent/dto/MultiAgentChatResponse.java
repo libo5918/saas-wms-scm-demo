@@ -21,6 +21,12 @@ public class MultiAgentChatResponse {
     private Map<String, Object> rag;
     private Map<String, Object> tool;
     private Map<String, Object> review;
+    private Map<String, Object> constraints;
+    private int roundCount;
+    private int toolCallCount;
+    private String terminatedReason;
+    private String summaryMode;
+    private boolean fallbackUsed;
     private List<MultiAgentAgentView> agents;
     private List<MultiAgentStepView> steps;
     private List<MultiAgentMessageView> messages;
