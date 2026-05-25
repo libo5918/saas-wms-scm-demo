@@ -4377,3 +4377,94 @@ X-User-Roles: ROLE_ADMIN
 - `max-rounds < 1`：Coordinator 直接终止 run，不进入 Planner / Tool。
 - `max-tool-calls < 1` 且 Planner 判断需要 Tool：ToolAgent 标记跳过，不执行真实 Tool。
 - 终止原因写入 `terminatedReason` 和 `constraints.terminatedReason`。
+
+## 40. Phase 10.4 Multi-Agent Reviewer 受控修正
+
+Phase 10.4 在 Multi-Agent 单轮受控协作基础上增加 Reviewer 驱动的一次修正。默认关闭，开启后只有 ReviewerAgent 审查失败时才触发，且最多一次。
+
+配置示例：
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      review-repair-enabled: true
+      max-repair-attempts: 1
+      repair-mode: template
+      max-rounds: 3
+```
+
+`repair-mode=model` 时会复用现有模型调用能力进行修正，模型失败自动回退 `template`。修正输入只包含 Planner / RAG / Tool / Reviewer 的安全摘要，不包含完整 rawData、prompt、模型响应、token 或敏感 header。
+
+### 40.1 Multi-Agent Chat 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase104-001",
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-multi-agent-phase104-001",
+    "intentType": "RAG_TOOL",
+    "repairEnabled": true,
+    "repairAttempted": false,
+    "repairCount": 0,
+    "repairMode": "template",
+    "review": {
+      "passed": true
+    },
+    "reviewAfterRepair": {},
+    "answer": "Multi-Agent 最终中文回答"
+  }
+}
+```
+
+如果初次审查失败且配置允许，预期字段会变为：
+
+```json
+{
+  "repairAttempted": true,
+  "repairCount": 1,
+  "roundCount": 2,
+  "reviewAfterRepair": {
+    "passed": true,
+    "issues": [],
+    "suggestions": [],
+    "safetyLevel": "LOW"
+  }
+}
+```
+
+### 40.2 Run Status 示例
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-multi-agent-phase104-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+Status 只返回脱敏概要，不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key 或敏感 header。

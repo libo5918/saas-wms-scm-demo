@@ -20,7 +20,9 @@ public class MultiAgentPlannerService {
                 && containsAny(message, "物料", "库存", "仓库", "库位", "销售订单", "采购订单", "订单"));
         boolean hasWorkflowIntent = containsAny(message, "补货建议", "建议草案", "流程草案");
 
-        MultiAgentIntentType intentType = resolveIntentType(hasRagIntent, hasToolIntent, hasWorkflowIntent, request);
+        boolean hasKnowledgeBaseHint = StringUtils.hasText(request.getKnowledgeBaseId());
+        MultiAgentIntentType intentType = resolveIntentType(hasRagIntent || hasKnowledgeBaseHint,
+                hasToolIntent, hasWorkflowIntent, request);
         boolean needRag = intentType == MultiAgentIntentType.RAG_ONLY || intentType == MultiAgentIntentType.RAG_TOOL;
         boolean needTool = intentType == MultiAgentIntentType.TOOL_ONLY || intentType == MultiAgentIntentType.RAG_TOOL
                 || intentType == MultiAgentIntentType.MCP_TOOL;

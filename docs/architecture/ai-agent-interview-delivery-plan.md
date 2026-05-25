@@ -209,3 +209,20 @@
 面试讲解话术：
 
 “Phase 10.3 体现的是企业级 Multi-Agent 的治理能力。多 Agent 不是越自由越好，而是要有最大轮次、最大工具调用次数、失败终止、审查和总结回退。这样即使后续接模型总结，也不会绕过安全摘要和审查逻辑。”
+
+### Phase 10.4：Reviewer 驱动的一次受控修正
+
+目标：让 Multi-Agent 不仅能审查答案，还能在审查失败时进行一次受控修正，并再次审查。
+
+已体现的企业级能力：
+
+- `maxRounds` 限制修正不能无限循环。
+- `maxRepairAttempts=1` 保证本阶段最多一次修正。
+- `repair-mode=template` 保证稳定可测试。
+- `repair-mode=model` 展示模型修正能力，失败自动回退模板。
+- `reviewAfterRepair` 记录修正后的二次审查结果。
+- 全链路只使用安全摘要，不持久化完整 prompt、rawData、模型响应或敏感 header。
+
+面试讲解话术：
+
+> 我在 Multi-Agent 里没有做无限自我反思，因为企业场景更关注稳定性、成本和可审计。ReviewerAgent 发现答案有问题后，CoordinatorAgent 最多只允许一次修正，修正也必须受 maxRounds 和 maxRepairAttempts 约束。这样既能展示多 Agent 的审查与改写能力，又不会变成不可控的自治循环。

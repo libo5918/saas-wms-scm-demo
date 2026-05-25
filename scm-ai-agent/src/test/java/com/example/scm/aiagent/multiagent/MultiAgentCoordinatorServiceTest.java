@@ -79,7 +79,7 @@ class MultiAgentCoordinatorServiceTest {
                 mockToolCallingChatService(), mock(AgentChatService.class));
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId("run-query");
-        request.setMessage("解释库存规则");
+        request.setMessage("explain inventory rule");
         service.chat(request, context());
 
         MultiAgentChatResponse response = service.getRun("run-query");
@@ -98,8 +98,9 @@ class MultiAgentCoordinatorServiceTest {
                 mock(AgentChatService.class));
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId("run-tool-limit");
-        request.setMessage("帮我查物料 MAT-001");
+        request.setMessage("闂佹眹鍩勯崹濂稿窗濡ゅ懎鍨傛繝濠傜墕閽冪喖鏌曟竟顖氬暊閹稿懘姊?MAT-001");
 
+        request.setRequestedDomain("mdm");
         MultiAgentChatResponse response = service.chat(request, context());
 
         assertEquals(0, response.getToolCallCount());
@@ -117,7 +118,7 @@ class MultiAgentCoordinatorServiceTest {
                 mock(AgentChatService.class));
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId("run-round-limit");
-        request.setMessage("帮我查物料 MAT-001");
+        request.setMessage("闂佹眹鍩勯崹濂稿窗濡ゅ懎鍨傛繝濠傜墕閽冪喖鏌曟竟顖氬暊閹稿懘姊?MAT-001");
 
         MultiAgentChatResponse response = service.chat(request, context());
 
@@ -132,15 +133,16 @@ class MultiAgentCoordinatorServiceTest {
         properties.getMultiAgent().setModelSummaryEnabled(true);
         AgentChatService agentChatService = mock(AgentChatService.class);
         ChatResponse chatResponse = new ChatResponse();
-        chatResponse.setAnswer("模型汇总后的 Multi-Agent 最终回答，已查询到物料 MAT-001");
+        chatResponse.setAnswer("model summary with 闂佽崵鍠愰悷銉р偓姘煎墴瀹曞綊顢涢悙鑼厬闂佹寧绻傞幊鎰玻?and material summary MAT-001");
         when(agentChatService.chat(any(), any())).thenReturn(chatResponse);
-        MultiAgentCoordinatorService service = service(properties, mockRagService(), mockToolCallingChatService(), agentChatService);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
 
         MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-summary"), context());
 
         assertEquals("model", response.getSummaryMode());
         assertFalse(response.isFallbackUsed());
-        assertTrue(response.getAnswer().contains("模型汇总"));
+        assertTrue(response.getAnswer().contains("material summary MAT-001"));
     }
 
     @Test
@@ -149,7 +151,8 @@ class MultiAgentCoordinatorServiceTest {
         properties.getMultiAgent().setModelSummaryEnabled(true);
         AgentChatService agentChatService = mock(AgentChatService.class);
         when(agentChatService.chat(any(), any())).thenThrow(new IllegalStateException("model down"));
-        MultiAgentCoordinatorService service = service(properties, mockRagService(), mockToolCallingChatService(), agentChatService);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
 
         MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-fallback"), context());
 
@@ -158,11 +161,127 @@ class MultiAgentCoordinatorServiceTest {
         assertTrue(response.getAnswer().contains("ToolAgent"));
     }
 
+    @Test
+    void shouldNotRepairWhenReviewRepairDisabled() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse badAnswer = new ChatResponse();
+        badAnswer.setAnswer("model answer without tool facts");
+        when(agentChatService.chat(any(), any())).thenReturn(badAnswer);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-repair-disabled"), context());
+
+        assertFalse(response.isRepairEnabled());
+        assertFalse(response.isRepairAttempted());
+        assertEquals(0, response.getRepairCount());
+        assertEquals(false, response.getReview().get("passed"));
+        assertTrue(response.getAnswer().contains("ReviewerAgent"));
+    }
+
+    @Test
+    void shouldRepairOnceWithTemplateWhenReviewFails() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        properties.getMultiAgent().setReviewRepairEnabled(true);
+        properties.getMultiAgent().setRepairMode("template");
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse badAnswer = new ChatResponse();
+        badAnswer.setAnswer("model answer without tool facts");
+        when(agentChatService.chat(any(), any())).thenReturn(badAnswer);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-template-repair"), context());
+
+        assertTrue(response.isRepairEnabled());
+        assertTrue(response.isRepairAttempted());
+        assertEquals(1, response.getRepairCount());
+        assertEquals("template", response.getRepairMode());
+        assertFalse(response.isRepairFallbackUsed());
+        assertEquals(2, response.getRoundCount());
+        assertEquals(true, response.getReviewAfterRepair().get("passed"));
+        assertTrue(response.getAnswer().contains("material summary MAT-001"));
+        verify(agentChatService).chat(any(), any());
+    }
+
+    @Test
+    void shouldNotRepairWhenMaxRoundsInsufficient() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        properties.getMultiAgent().setReviewRepairEnabled(true);
+        properties.getMultiAgent().setMaxRounds(1);
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse badAnswer = new ChatResponse();
+        badAnswer.setAnswer("model answer without tool facts");
+        when(agentChatService.chat(any(), any())).thenReturn(badAnswer);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-repair-round-limit"), context());
+
+        assertFalse(response.isRepairAttempted());
+        assertEquals(0, response.getRepairCount());
+        assertEquals(1, response.getRoundCount());
+        assertEquals(true, response.getConstraints().get("exceeded"));
+        assertTrue(response.getTerminatedReason().contains("maxRounds"));
+    }
+
+    @Test
+    void shouldRepairWithModelWhenEnabled() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        properties.getMultiAgent().setReviewRepairEnabled(true);
+        properties.getMultiAgent().setRepairMode("model");
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse badAnswer = new ChatResponse();
+        badAnswer.setAnswer("model answer without tool facts");
+        ChatResponse repairedAnswer = new ChatResponse();
+        repairedAnswer.setAnswer("KnowledgeAgent rule summary and Tool result: material summary MAT-001");
+        when(agentChatService.chat(any(), any())).thenReturn(badAnswer, repairedAnswer);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-repair"), context());
+
+        assertTrue(response.isRepairAttempted());
+        assertEquals(1, response.getRepairCount());
+        assertEquals("model", response.getRepairMode());
+        assertFalse(response.isRepairFallbackUsed());
+        assertEquals(true, response.getReviewAfterRepair().get("passed"));
+        assertTrue(response.getAnswer().contains("material summary MAT-001"));
+    }
+
+    @Test
+    void shouldFallbackToTemplateWhenModelRepairFails() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setModelSummaryEnabled(true);
+        properties.getMultiAgent().setReviewRepairEnabled(true);
+        properties.getMultiAgent().setRepairMode("model");
+        AgentChatService agentChatService = mock(AgentChatService.class);
+        ChatResponse badAnswer = new ChatResponse();
+        badAnswer.setAnswer("model answer without tool facts");
+        when(agentChatService.chat(any(), any())).thenReturn(badAnswer).thenThrow(new IllegalStateException("repair down"));
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatServiceWithSummary("material summary MAT-001"), agentChatService);
+
+        MultiAgentChatResponse response = service.chat(ragToolRequest("run-model-repair-fallback"), context());
+
+        assertTrue(response.isRepairAttempted());
+        assertEquals("template", response.getRepairMode());
+        assertTrue(response.isRepairFallbackUsed());
+        assertEquals(true, response.getReviewAfterRepair().get("passed"));
+        assertTrue(response.getAnswer().contains("material summary MAT-001"));
+    }
+
     private MultiAgentChatRequest ragToolRequest(String runId) {
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId(runId);
         request.setKnowledgeBaseId("kb-scm-demo");
-        request.setMessage("按库存可用数量口径解释，并查物料 MAT-001 的库存");
+        request.setMessage("explain inventory available quantity rule and query material MAT-001 inventory");
+        request.setRequestedDomain("mdm");
         return request;
     }
 
@@ -194,9 +313,9 @@ class MultiAgentCoordinatorServiceTest {
         ragResponse.setChunks(List.of(RagRetrievedChunk.builder()
                 .documentId("doc-1")
                 .chunkId("chunk-1")
-                .title("库存规则")
+                .title("inventory rule")
                 .source("docs/examples/scm-wms-rules.md")
-                .content("库存可用数量等于现存数量减去锁定数量")
+                .content("available quantity equals on hand quantity minus locked quantity")
                 .score(0.9)
                 .build()));
         when(ragService.retrieve(any(RagRetrieveRequest.class), any())).thenReturn(ragResponse);
@@ -213,11 +332,11 @@ class MultiAgentCoordinatorServiceTest {
                         .success(true)
                         .toolName("mdm.getMaterial")
                         .data(ToolCallingDisplayData.builder()
-                                .displayTitle("物料信息")
-                                .displaySummary("已查询到物料 MAT-001")
+                                .displayTitle("Material")
+                                .displaySummary("material summary MAT-001")
                                 .displayFields(List.of(ToolCallingDisplayField.builder()
                                         .key("materialCode")
-                                        .label("物料编码")
+                                        .label("Material Code")
                                         .value("MAT-001")
                                         .build()))
                                 .displayItems(List.of())
@@ -225,7 +344,35 @@ class MultiAgentCoordinatorServiceTest {
                                 .build())
                         .latencyMs(10)
                         .build())
-                .answer("查询成功")
+                .answer("query success")
+                .latencyMs(11)
+                .build());
+        return toolCallingChatService;
+    }
+
+    private ToolCallingChatService mockToolCallingChatServiceWithSummary(String displaySummary) {
+        ToolCallingChatService toolCallingChatService = mock(ToolCallingChatService.class);
+        when(toolCallingChatService.chat(any(), any())).thenReturn(ToolCallingChatResponse.builder()
+                .runId("run-multi-agent-1")
+                .selectedTool("mdm.getMaterial")
+                .toolArguments(Map.of("materialCode", "MAT-001"))
+                .execution(ToolCallingExecutionView.builder()
+                        .success(true)
+                        .toolName("mdm.getMaterial")
+                        .data(ToolCallingDisplayData.builder()
+                                .displayTitle("Material")
+                                .displaySummary(displaySummary)
+                                .displayFields(List.of(ToolCallingDisplayField.builder()
+                                        .key("materialCode")
+                                        .label("Material Code")
+                                        .value("MAT-001")
+                                        .build()))
+                                .displayItems(List.of())
+                                .rawData(Map.of("authorization", "secret"))
+                                .build())
+                        .latencyMs(10)
+                        .build())
+                .answer("query success")
                 .latencyMs(11)
                 .build());
         return toolCallingChatService;

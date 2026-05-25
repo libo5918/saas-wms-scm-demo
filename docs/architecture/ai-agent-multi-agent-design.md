@@ -159,3 +159,18 @@ Phase 10.3 已补充 Multi-Agent 的企业级控制能力：
 5. Coordinator 支持 `model-summary-enabled` 开关。默认关闭，走模板总结；开启后复用已有 `AgentChatService` 做模型总结，失败自动回退模板。
 
 Phase 10.3 仍然不做复杂多轮自治，不引入外部 Multi-Agent 框架，不新增写操作 Tool。
+
+## 12. Phase 10.4：Reviewer 驱动的一次受控修正
+
+Phase 10.4 在 Phase 10.3 的约束基础上增加“审查失败后最多一次修正”：
+
+1. `review-repair-enabled=false` 时保持 Phase 10.3 行为，只审查不修正。
+2. `review-repair-enabled=true` 且 ReviewerAgent 审查不通过时，CoordinatorAgent 可以基于 Planner / RAG / Tool / Review 的安全摘要生成修正回答。
+3. 修正计入 `roundCount`，并受 `maxRounds` 限制；如果轮次不足，不执行修正，返回受控终止原因。
+4. `max-repair-attempts` 默认 1，本阶段不允许无限循环，也不允许多个 Agent 自由互相聊天。
+5. `repair-mode=template` 使用服务端模板修正，稳定、可测试；`repair-mode=model` 使用模型修正，失败后自动回退模板修正。
+6. Run / Status 新增脱敏字段：`repairEnabled`、`repairAttempted`、`repairCount`、`repairMode`、`repairFallbackUsed`、`reviewAfterRepair`。
+
+面试表达：
+
+> 企业级 Multi-Agent 不能只让 Agent 产出答案，还要有审查、修正和终止约束。Phase 10.4 里 ReviewerAgent 如果发现答案没有引用 Tool 事实、遗漏错误原因或存在敏感信息，CoordinatorAgent 最多只做一次受控修正，然后再次审查。这样既体现了 Multi-Agent 协作闭环，也避免了无限自我反思和不可控成本。

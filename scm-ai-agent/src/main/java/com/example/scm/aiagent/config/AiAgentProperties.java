@@ -536,5 +536,14 @@ public class AiAgentProperties {
 
         /** 是否使用模型汇总 Multi-Agent 最终答案；Phase 10.2 默认使用服务端模板。 */
         private boolean modelSummaryEnabled = false;
+
+        /** 是否允许 ReviewerAgent 审查失败后触发一次受控修正，默认关闭以保持 Phase 10.3 行为。 */
+        private boolean reviewRepairEnabled = false;
+
+        /** 单次 Multi-Agent run 允许的最大修正次数，Phase 10.4 默认最多一次。 */
+        private int maxRepairAttempts = 1;
+
+        /** Reviewer 修正模式：template 使用服务端模板，model 使用模型修正并可回退模板。 */
+        private String repairMode = "template";
     }
 }

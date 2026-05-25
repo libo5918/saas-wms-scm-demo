@@ -27,6 +27,12 @@ public class MultiAgentChatResponse {
     private String terminatedReason;
     private String summaryMode;
     private boolean fallbackUsed;
+    private boolean repairEnabled;
+    private boolean repairAttempted;
+    private int repairCount;
+    private String repairMode;
+    private boolean repairFallbackUsed;
+    private Map<String, Object> reviewAfterRepair;
     private List<MultiAgentAgentView> agents;
     private List<MultiAgentStepView> steps;
     private List<MultiAgentMessageView> messages;

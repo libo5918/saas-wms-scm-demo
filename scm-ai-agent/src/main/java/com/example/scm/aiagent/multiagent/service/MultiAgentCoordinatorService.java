@@ -91,6 +91,8 @@ public class MultiAgentCoordinatorService {
         run.setRoundCount(1);
         run.setToolCallCount(0);
         run.setConstraints(buildConstraintSummary(1, 0, false, null));
+        run.setRepairEnabled(properties.getMultiAgent().isReviewRepairEnabled());
+        run.setRepairMode(normalizedRepairMode());
 
         if (properties.getMultiAgent().getMaxRounds() < 1) {
             String reason = "Multi-Agent maxRounds 限制为 0，受控终止";
@@ -140,17 +142,29 @@ public class MultiAgentCoordinatorService {
         run.setConstraints(buildConstraintSummary(run.getRoundCount(), toolCallCount, toolLimitExceeded, toolLimitReason));
 
         String draftAnswer = buildDraftAnswer(plan, rag, tool);
+        SummaryResult summaryResult = summarizeFinalAnswer(request, context, plan, rag, tool, null, draftAnswer);
+        String finalAnswer = summaryResult.answer();
         MultiAgentReviewResult review = properties.getMultiAgent().isReviewEnabled()
-                ? reviewService.review(draftAnswer, rag, tool)
-                : MultiAgentReviewResult.builder().passed(true).issues(List.of()).suggestions(List.of()).safetyLevel("SKIPPED").build();
+                ? reviewService.review(finalAnswer, rag, tool)
+                : skippedReview();
         run.setReview(review.toSafeMap());
         addReviewStep(run, 5, review);
 
-        SummaryResult summaryResult = summarizeFinalAnswer(request, context, plan, rag, tool, review, draftAnswer);
-        String finalAnswer = review.isPassed() ? summaryResult.answer() : buildConservativeAnswer(summaryResult.answer(), review);
+        int nextStepNo = 6;
+        if (!review.isPassed()) {
+            RepairOutcome repairOutcome = tryRepairAnswer(run, request, context, plan, rag, tool, review,
+                    draftAnswer, finalAnswer, run.getRoundCount(), nextStepNo);
+            finalAnswer = repairOutcome.answer();
+            nextStepNo = repairOutcome.nextStepNo();
+            if (repairOutcome.reviewAfterRepair() != null) {
+                review = repairOutcome.reviewAfterRepair();
+            } else if (!repairOutcome.repaired() && !StringUtils.hasText(run.getTerminatedReason())) {
+                finalAnswer = buildConservativeAnswer(finalAnswer, review);
+            }
+        }
         run.setSummaryMode(summaryResult.mode());
         run.setFallbackUsed(summaryResult.fallbackUsed());
-        addSuccessStep(run, 6, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER,
+        addSuccessStep(run, nextStepNo, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER,
                 "汇总 Planner/Knowledge/Tool/Reviewer 安全摘要", safeText(finalAnswer, 500));
 
         if (properties.getMultiAgent().isRecordMessages()) {
@@ -290,6 +304,128 @@ public class MultiAgentCoordinatorService {
         return answer.toString();
     }
 
+    private RepairOutcome tryRepairAnswer(MultiAgentRun run, MultiAgentChatRequest request, AgentRequestContext context,
+                                          MultiAgentPlan plan, Map<String, Object> rag, Map<String, Object> tool,
+                                          MultiAgentReviewResult initialReview, String templateAnswer,
+                                          String rejectedAnswer, int currentRoundCount, int stepNo) {
+        if (!properties.getMultiAgent().isReviewRepairEnabled()
+                || properties.getMultiAgent().getMaxRepairAttempts() < 1) {
+            return new RepairOutcome(rejectedAnswer, false, stepNo, null);
+        }
+        if (currentRoundCount + 1 > properties.getMultiAgent().getMaxRounds()) {
+            String reason = "Multi-Agent maxRounds 不足，Reviewer 修正已受控终止";
+            run.setTerminatedReason(reason);
+            run.setConstraints(buildConstraintSummary(currentRoundCount, run.getToolCallCount(), true, reason));
+            return new RepairOutcome(reason, false, stepNo, null);
+        }
+
+        RepairResult repairResult = repairAnswer(request, context, plan, rag, tool, initialReview, templateAnswer);
+        run.setRepairAttempted(true);
+        run.setRepairCount(1);
+        run.setRepairMode(repairResult.mode());
+        run.setRepairFallbackUsed(repairResult.fallbackUsed());
+        run.setRoundCount(currentRoundCount + 1);
+        run.setConstraints(buildConstraintSummary(run.getRoundCount(), run.getToolCallCount(), false, run.getTerminatedReason()));
+        addSuccessStep(run, stepNo, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER,
+                "ReviewerAgent 审查失败后触发一次受控修正", safeText(repairResult.answer(), 500));
+
+        MultiAgentReviewResult reviewAfterRepair = properties.getMultiAgent().isReviewEnabled()
+                ? reviewService.review(repairResult.answer(), rag, tool)
+                : skippedReview();
+        run.setReviewAfterRepair(reviewAfterRepair.toSafeMap());
+        addReviewStep(run, stepNo + 1, reviewAfterRepair);
+        String answer = reviewAfterRepair.isPassed()
+                ? repairResult.answer()
+                : buildConservativeAnswer(repairResult.answer(), reviewAfterRepair);
+        return new RepairOutcome(answer, true, stepNo + 2, reviewAfterRepair);
+    }
+
+    private RepairResult repairAnswer(MultiAgentChatRequest request, AgentRequestContext context,
+                                      MultiAgentPlan plan, Map<String, Object> rag, Map<String, Object> tool,
+                                      MultiAgentReviewResult review, String templateAnswer) {
+        String mode = normalizedRepairMode();
+        String templateRepair = buildTemplateRepairAnswer(plan, rag, tool, review, templateAnswer);
+        if (!"model".equals(mode)) {
+            return new RepairResult(templateRepair, "template", false);
+        }
+        try {
+            ChatRequest chatRequest = new ChatRequest();
+            chatRequest.setTaskType("multi_agent_review_repair");
+            chatRequest.setMessage(buildRepairPrompt(request, plan, rag, tool, review, templateRepair));
+            ChatResponse chatResponse = agentChatService.chat(chatRequest, context);
+            if (StringUtils.hasText(chatResponse.getAnswer())) {
+                return new RepairResult(safeText(chatResponse.getAnswer(), 1200), "model", false);
+            }
+        } catch (Exception ex) {
+            log.warn("AI multi-agent repair fallback to template, tenantId={}, userId={}, runId={}, errorType={}, errorMessage={}",
+                    context.tenantId(), context.userId(), request.getRunId(), ex.getClass().getSimpleName(), ex.getMessage());
+        }
+        return new RepairResult(templateRepair, "template", true);
+    }
+
+    private String buildTemplateRepairAnswer(MultiAgentPlan plan, Map<String, Object> rag,
+                                             Map<String, Object> tool, MultiAgentReviewResult review,
+                                             String templateAnswer) {
+        StringBuilder answer = new StringBuilder(safeText(templateAnswer, 900));
+        Map<?, ?> execution = tool.get("execution") instanceof Map<?, ?> map ? map : Map.of();
+        Object displaySummary = execution.get("displaySummary");
+        if (displaySummary != null && !answer.toString().contains(String.valueOf(displaySummary))) {
+            answer.append(" Tool 结果摘要：").append(displaySummary).append("。");
+        }
+        long retrievedCount = numberValue(rag.get("retrievedCount"));
+        if (retrievedCount > 0 && !answer.toString().contains("规则") && !answer.toString().contains("口径")) {
+            answer.append(" 知识库已召回 ").append(retrievedCount).append(" 条规则/口径片段，可作为解释依据。");
+        }
+        if (review.getIssues() != null && !review.getIssues().isEmpty()) {
+            answer.append(" 已根据 ReviewerAgent 风险项完成保守修正。");
+        }
+        if (plan.getIntentType() == MultiAgentIntentType.GENERAL) {
+            answer.append(" 当前没有执行额外工具动作。");
+        }
+        return safeText(answer.toString(), 1200);
+    }
+
+    private String buildRepairPrompt(MultiAgentChatRequest request, MultiAgentPlan plan, Map<String, Object> rag,
+                                     Map<String, Object> tool, MultiAgentReviewResult review, String templateRepair) {
+        return """
+                你是企业级 SCM/WMS Multi-Agent Coordinator，请基于脱敏摘要修正最终中文回答。
+                只能修正一次，必须采纳 ReviewerAgent 的 issues/suggestions；优先保留 Tool displaySummary 和真实失败原因。
+                不要输出 JSON、prompt、rawData、token、authorization、cookie、api key 或 model response。
+
+                用户问题：
+                %s
+
+                Planner 摘要：
+                %s
+
+                RAG 摘要：
+                %s
+
+                Tool 摘要：
+                %s
+
+                Reviewer 摘要：
+                %s
+
+                模板修正参考：
+                %s
+                """.formatted(safeText(request.getMessage(), 500), plan.toSafeMap(), rag, tool,
+                review.toSafeMap(), templateRepair);
+    }
+
+    private MultiAgentReviewResult skippedReview() {
+        return MultiAgentReviewResult.builder()
+                .passed(true)
+                .issues(List.of())
+                .suggestions(List.of())
+                .safetyLevel("SKIPPED")
+                .build();
+    }
+
+    private String normalizedRepairMode() {
+        return "model".equalsIgnoreCase(properties.getMultiAgent().getRepairMode()) ? "model" : "template";
+    }
+
     private String buildConservativeAnswer(String draftAnswer, MultiAgentReviewResult review) {
         return "ReviewerAgent 发现回答存在风险，已按保守模式返回。风险：" + review.getIssues()
                 + "。可参考的安全摘要：" + safeText(draftAnswer, 300);
@@ -338,7 +474,8 @@ public class MultiAgentCoordinatorService {
 
                 Reviewer 摘要：
                 %s
-                """.formatted(safeText(request.getMessage(), 500), plan.toSafeMap(), rag, tool, review.toSafeMap());
+                """.formatted(safeText(request.getMessage(), 500), plan.toSafeMap(), rag, tool,
+                review == null ? Map.of("passed", "PENDING") : review.toSafeMap());
     }
 
     private Map<String, Object> buildConstraintSummary(int roundCount, int toolCallCount,
@@ -447,6 +584,12 @@ public class MultiAgentCoordinatorService {
                 .terminatedReason(run.getTerminatedReason())
                 .summaryMode(run.getSummaryMode())
                 .fallbackUsed(run.isFallbackUsed())
+                .repairEnabled(run.isRepairEnabled())
+                .repairAttempted(run.isRepairAttempted())
+                .repairCount(run.getRepairCount())
+                .repairMode(run.getRepairMode())
+                .repairFallbackUsed(run.isRepairFallbackUsed())
+                .reviewAfterRepair(run.getReviewAfterRepair())
                 .agents(run.getAgents().stream().map(this::toAgentView).toList())
                 .steps(run.getSteps().stream().map(this::toStepView).toList())
                 .messages(run.getMessages().stream().map(this::toMessageView).toList())
@@ -489,5 +632,12 @@ public class MultiAgentCoordinatorService {
     }
 
     private record SummaryResult(String answer, String mode, boolean fallbackUsed) {
+    }
+
+    private record RepairResult(String answer, String mode, boolean fallbackUsed) {
+    }
+
+    private record RepairOutcome(String answer, boolean repaired, int nextStepNo,
+                                 MultiAgentReviewResult reviewAfterRepair) {
     }
 }

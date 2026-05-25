@@ -69,7 +69,10 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.multi-agent.rag-enabled", "false")
                 .withProperty("ai.agent.multi-agent.tool-enabled", "false")
                 .withProperty("ai.agent.multi-agent.review-enabled", "false")
-                .withProperty("ai.agent.multi-agent.model-summary-enabled", "true");
+                .withProperty("ai.agent.multi-agent.model-summary-enabled", "true")
+                .withProperty("ai.agent.multi-agent.review-repair-enabled", "true")
+                .withProperty("ai.agent.multi-agent.max-repair-attempts", "1")
+                .withProperty("ai.agent.multi-agent.repair-mode", "model");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -127,6 +130,9 @@ class ToolAdapterPropertiesTest {
         assertFalse(properties.getMultiAgent().isToolEnabled());
         assertFalse(properties.getMultiAgent().isReviewEnabled());
         assertTrue(properties.getMultiAgent().isModelSummaryEnabled());
+        assertTrue(properties.getMultiAgent().isReviewRepairEnabled());
+        assertEquals(1, properties.getMultiAgent().getMaxRepairAttempts());
+        assertEquals("model", properties.getMultiAgent().getRepairMode());
     }
 
     @Test
@@ -167,6 +173,9 @@ class ToolAdapterPropertiesTest {
         assertTrue(properties.getMultiAgent().isToolEnabled());
         assertTrue(properties.getMultiAgent().isReviewEnabled());
         assertFalse(properties.getMultiAgent().isModelSummaryEnabled());
+        assertFalse(properties.getMultiAgent().isReviewRepairEnabled());
+        assertEquals(1, properties.getMultiAgent().getMaxRepairAttempts());
+        assertEquals("template", properties.getMultiAgent().getRepairMode());
     }
 
     @Test
