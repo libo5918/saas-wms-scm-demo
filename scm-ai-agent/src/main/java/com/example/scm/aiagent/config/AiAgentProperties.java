@@ -545,5 +545,14 @@ public class AiAgentProperties {
 
         /** Reviewer 修正模式：template 使用服务端模板，model 使用模型修正并可回退模板。 */
         private String repairMode = "template";
+
+        /** 是否启用 Multi-Agent 会话级安全摘要记忆，默认关闭以保持兼容。 */
+        private boolean memoryEnabled = false;
+
+        /** in-memory memory store 最大保留摘要条数。 */
+        private int memoryMaxRecords = 100;
+
+        /** 单次协作最多读取的最近记忆摘要条数。 */
+        private int memoryReadLimit = 5;
     }
 }

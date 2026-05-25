@@ -133,3 +133,4 @@ ai:
       tool-enabled: true
       review-enabled: true
       model-summary-enabled: false
+      memory-enabled: true

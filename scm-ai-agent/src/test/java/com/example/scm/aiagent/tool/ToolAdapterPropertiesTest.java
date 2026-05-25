@@ -72,7 +72,10 @@ class ToolAdapterPropertiesTest {
                 .withProperty("ai.agent.multi-agent.model-summary-enabled", "true")
                 .withProperty("ai.agent.multi-agent.review-repair-enabled", "true")
                 .withProperty("ai.agent.multi-agent.max-repair-attempts", "1")
-                .withProperty("ai.agent.multi-agent.repair-mode", "model");
+                .withProperty("ai.agent.multi-agent.repair-mode", "model")
+                .withProperty("ai.agent.multi-agent.memory-enabled", "true")
+                .withProperty("ai.agent.multi-agent.memory-max-records", "60")
+                .withProperty("ai.agent.multi-agent.memory-read-limit", "4");
 
         AiAgentProperties properties = Binder.get(environment)
                 .bind("ai.agent", Bindable.of(AiAgentProperties.class))
@@ -133,6 +136,9 @@ class ToolAdapterPropertiesTest {
         assertTrue(properties.getMultiAgent().isReviewRepairEnabled());
         assertEquals(1, properties.getMultiAgent().getMaxRepairAttempts());
         assertEquals("model", properties.getMultiAgent().getRepairMode());
+        assertTrue(properties.getMultiAgent().isMemoryEnabled());
+        assertEquals(60, properties.getMultiAgent().getMemoryMaxRecords());
+        assertEquals(4, properties.getMultiAgent().getMemoryReadLimit());
     }
 
     @Test
@@ -176,6 +182,9 @@ class ToolAdapterPropertiesTest {
         assertFalse(properties.getMultiAgent().isReviewRepairEnabled());
         assertEquals(1, properties.getMultiAgent().getMaxRepairAttempts());
         assertEquals("template", properties.getMultiAgent().getRepairMode());
+        assertFalse(properties.getMultiAgent().isMemoryEnabled());
+        assertEquals(100, properties.getMultiAgent().getMemoryMaxRecords());
+        assertEquals(5, properties.getMultiAgent().getMemoryReadLimit());
     }
 
     @Test

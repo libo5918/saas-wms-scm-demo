@@ -3,7 +3,9 @@ package com.example.scm.aiagent.multiagent.controller;
 import com.example.scm.aiagent.model.AgentRequestContext;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatRequest;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatResponse;
+import com.example.scm.aiagent.multiagent.dto.MultiAgentMemoryView;
 import com.example.scm.aiagent.multiagent.service.MultiAgentCoordinatorService;
+import com.example.scm.aiagent.multiagent.service.MultiAgentMemoryService;
 import com.example.scm.common.core.BusinessException;
 import com.example.scm.common.core.CommonErrorCode;
 import com.example.scm.common.core.Result;
@@ -12,6 +14,7 @@ import com.example.scm.common.security.GatewayHeaders;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,9 +34,12 @@ import java.util.List;
 public class MultiAgentController {
 
     private final MultiAgentCoordinatorService coordinatorService;
+    private final MultiAgentMemoryService memoryService;
 
-    public MultiAgentController(MultiAgentCoordinatorService coordinatorService) {
+    public MultiAgentController(MultiAgentCoordinatorService coordinatorService,
+                                MultiAgentMemoryService memoryService) {
         this.coordinatorService = coordinatorService;
+        this.memoryService = memoryService;
     }
 
     @PostMapping("/chat")
@@ -69,6 +75,28 @@ public class MultiAgentController {
         log.info("AI multi-agent run list request received, tenantId={}, userId={}, limit={}",
                 context.tenantId(), context.userId(), limit);
         return Result.success(coordinatorService.listRuns(limit == null ? 20 : limit));
+    }
+
+    @GetMapping("/memory/{conversationId}")
+    public Result<MultiAgentMemoryView> getMemory(@PathVariable("conversationId") String conversationId,
+                                                  @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                  @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                  @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("AI multi-agent memory detail request received, tenantId={}, userId={}, conversationId={}",
+                context.tenantId(), context.userId(), conversationId);
+        return Result.success(memoryService.getMemory(conversationId, context));
+    }
+
+    @DeleteMapping("/memory/{conversationId}")
+    public Result<MultiAgentMemoryView> clearMemory(@PathVariable("conversationId") String conversationId,
+                                                    @RequestHeader(value = GatewayHeaders.USER_ID, required = false) Long userId,
+                                                    @RequestHeader(value = GatewayHeaders.USERNAME, required = false) String username,
+                                                    @RequestHeader(value = GatewayHeaders.USER_ROLES, required = false) String roles) {
+        AgentRequestContext context = buildContext(userId, username, roles);
+        log.info("AI multi-agent memory clear request received, tenantId={}, userId={}, conversationId={}",
+                context.tenantId(), context.userId(), conversationId);
+        return Result.success(memoryService.clearMemory(conversationId, context));
     }
 
     private AgentRequestContext buildContext(Long userId, String username, String roles) {

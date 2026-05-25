@@ -14,6 +14,8 @@ import java.util.Map;
 public class MultiAgentChatRequest {
 
     private String runId;
+    private String conversationId;
+    private Boolean memoryEnabled;
 
     @NotBlank(message = "message must not be blank")
     private String message;

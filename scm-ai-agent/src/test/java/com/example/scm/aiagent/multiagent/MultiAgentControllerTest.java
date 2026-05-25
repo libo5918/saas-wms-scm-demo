@@ -4,12 +4,14 @@ import com.example.scm.aiagent.config.AiAgentSecurityConfig;
 import com.example.scm.aiagent.multiagent.controller.MultiAgentController;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentAgentView;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentChatResponse;
+import com.example.scm.aiagent.multiagent.dto.MultiAgentMemoryView;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentStepView;
 import com.example.scm.aiagent.multiagent.model.MultiAgentActionType;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRole;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRunStatus;
 import com.example.scm.aiagent.multiagent.model.MultiAgentStepStatus;
 import com.example.scm.aiagent.multiagent.service.MultiAgentCoordinatorService;
+import com.example.scm.aiagent.multiagent.service.MultiAgentMemoryService;
 import com.example.scm.common.security.GatewayHeaders;
 import com.example.scm.common.web.GlobalExceptionHandler;
 import com.example.scm.common.web.TenantHeaderInterceptor;
@@ -23,9 +25,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +44,9 @@ class MultiAgentControllerTest {
 
     @MockitoBean
     private MultiAgentCoordinatorService coordinatorService;
+
+    @MockitoBean
+    private MultiAgentMemoryService memoryService;
 
     @Test
     void shouldRunMultiAgentChat() throws Exception {
@@ -93,11 +100,48 @@ class MultiAgentControllerTest {
                 .andExpect(jsonPath("$.code").value("401"));
     }
 
+    @Test
+    void shouldQueryMemory() throws Exception {
+        when(memoryService.getMemory(any(), any())).thenReturn(MultiAgentMemoryView.builder()
+                .conversationId("conv-1")
+                .count(1)
+                .entries(List.of())
+                .build());
+
+        mockMvc.perform(get("/api/v1/ai/multi-agent/memory/conv-1")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.conversationId").value("conv-1"))
+                .andExpect(jsonPath("$.data.count").value(1));
+    }
+
+    @Test
+    void shouldClearMemory() throws Exception {
+        when(memoryService.clearMemory(any(), any())).thenReturn(MultiAgentMemoryView.builder()
+                .conversationId("conv-1")
+                .count(0)
+                .clearedCount(2)
+                .entries(List.of())
+                .build());
+
+        mockMvc.perform(delete("/api/v1/ai/multi-agent/memory/conv-1")
+                        .header(GatewayHeaders.TENANT_ID, "1")
+                        .header(GatewayHeaders.USER_ID, "10001")
+                        .header(GatewayHeaders.USERNAME, "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.conversationId").value("conv-1"))
+                .andExpect(jsonPath("$.data.clearedCount").value(2));
+    }
+
     private MultiAgentChatResponse response(String runId) {
         return MultiAgentChatResponse.builder()
                 .runId(runId)
+                .conversationId("conv-1")
                 .status(MultiAgentRunStatus.SUCCESS)
                 .answer("已创建 Multi-Agent 协作运行骨架")
+                .memory(Map.of("count", 0))
                 .agents(List.of(
                         MultiAgentAgentView.builder()
                                 .agentName("CoordinatorAgent")

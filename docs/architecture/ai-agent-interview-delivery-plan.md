@@ -226,3 +226,21 @@
 面试讲解话术：
 
 > 我在 Multi-Agent 里没有做无限自我反思，因为企业场景更关注稳定性、成本和可审计。ReviewerAgent 发现答案有问题后，CoordinatorAgent 最多只允许一次修正，修正也必须受 maxRounds 和 maxRepairAttempts 约束。这样既能展示多 Agent 的审查与改写能力，又不会变成不可控的自治循环。
+
+### Phase 10.5：Multi-Agent Memory 会话级安全摘要
+
+目标：让 Multi-Agent 在同一 `conversationId` 下具备最小上下文连续性，但仍然保持企业级安全边界。
+
+当前实现重点：
+
+- 请求支持 `conversationId` 和 `memoryEnabled`。
+- 配置支持 `memory-enabled`、`memory-max-records`、`memory-read-limit`。
+- Coordinator 在 Planner 前读取最近 Memory 摘要，在 run 完成后写入本次安全摘要。
+- Memory 类型覆盖用户问题、计划、RAG、Tool、Review、最终回答摘要。
+- 提供 `GET /api/v1/ai/multi-agent/memory/{conversationId}` 查询接口。
+- 提供 `DELETE /api/v1/ai/multi-agent/memory/{conversationId}` 清理接口。
+- Memory 按租户、用户和 conversationId 隔离，不保存完整 prompt、模型响应、rawData、token、authorization、cookie、API Key。
+
+面试讲解话术：
+
+> Agent Memory 不是把历史聊天原文都塞进上下文。企业项目里要先考虑隔离、脱敏、裁剪和可清理。这个项目的 Phase 10.5 做的是最小可演示的会话级 Memory：同一个 conversationId 下只保存安全摘要，包括 Planner、RAG、Tool、Review 和最终回答摘要。下次调用时 Coordinator 可以读取最近几条摘要做上下文衔接。它和 Run/Step 不同，Run/Step 是一次运行轨迹；它和 Audit 不同，Audit 是工具调用审计；它也不是 RAG，RAG 是企业知识库。后续如果要扩展长期记忆，可以把 in-memory store 换成 MySQL/Redis，或把摘要进入向量库，但不能突破脱敏和租户隔离边界。

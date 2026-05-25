@@ -14,6 +14,7 @@ import java.util.Map;
 public class MultiAgentChatResponse {
 
     private String runId;
+    private String conversationId;
     private MultiAgentRunStatus status;
     private MultiAgentIntentType intentType;
     private String answer;
@@ -33,6 +34,10 @@ public class MultiAgentChatResponse {
     private String repairMode;
     private boolean repairFallbackUsed;
     private Map<String, Object> reviewAfterRepair;
+    private boolean memoryEnabled;
+    private int memoryReadCount;
+    private int memoryWriteCount;
+    private Map<String, Object> memory;
     private List<MultiAgentAgentView> agents;
     private List<MultiAgentStepView> steps;
     private List<MultiAgentMessageView> messages;

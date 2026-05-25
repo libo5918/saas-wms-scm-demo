@@ -12,9 +12,11 @@ import com.example.scm.aiagent.multiagent.model.MultiAgentStepStatus;
 import com.example.scm.aiagent.multiagent.service.MultiAgentCoordinatorService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentDefinitionRegistry;
 import com.example.scm.aiagent.multiagent.service.MultiAgentKnowledgeService;
+import com.example.scm.aiagent.multiagent.service.MultiAgentMemoryService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentPlannerService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentReviewService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentToolService;
+import com.example.scm.aiagent.multiagent.store.InMemoryMultiAgentMemoryStore;
 import com.example.scm.aiagent.multiagent.store.InMemoryMultiAgentRunStore;
 import com.example.scm.aiagent.rag.dto.RagRetrieveRequest;
 import com.example.scm.aiagent.rag.dto.RagRetrieveResponse;
@@ -276,6 +278,49 @@ class MultiAgentCoordinatorServiceTest {
         assertTrue(response.getAnswer().contains("material summary MAT-001"));
     }
 
+    @Test
+    void shouldNotReadOrWriteMemoryWhenDisabled() {
+        MultiAgentCoordinatorService service = service(defaultProperties(), mockRagService(),
+                mockToolCallingChatService(), mock(AgentChatService.class));
+        MultiAgentChatRequest request = ragToolRequest("run-memory-disabled");
+        request.setConversationId("conv-1");
+        request.setMemoryEnabled(true);
+
+        MultiAgentChatResponse response = service.chat(request, context());
+
+        assertFalse(response.isMemoryEnabled());
+        assertEquals(0, response.getMemoryReadCount());
+        assertEquals(0, response.getMemoryWriteCount());
+    }
+
+    @Test
+    void shouldReadAndWriteSafeMemoryWhenEnabled() {
+        AiAgentProperties properties = defaultProperties();
+        properties.getMultiAgent().setMemoryEnabled(true);
+        properties.getMultiAgent().setMemoryReadLimit(3);
+        MultiAgentCoordinatorService service = service(properties, mockRagService(),
+                mockToolCallingChatService(), mock(AgentChatService.class));
+
+        MultiAgentChatRequest first = ragToolRequest("run-memory-1");
+        first.setConversationId("conv-1");
+        first.setMemoryEnabled(true);
+        MultiAgentChatResponse firstResponse = service.chat(first, context());
+        assertTrue(firstResponse.isMemoryEnabled());
+        assertEquals(0, firstResponse.getMemoryReadCount());
+        assertTrue(firstResponse.getMemoryWriteCount() > 0);
+
+        MultiAgentChatRequest second = ragToolRequest("run-memory-2");
+        second.setConversationId("conv-1");
+        second.setMemoryEnabled(true);
+        MultiAgentChatResponse secondResponse = service.chat(second, context());
+
+        assertTrue(secondResponse.isMemoryEnabled());
+        assertTrue(secondResponse.getMemoryReadCount() > 0);
+        assertTrue(String.valueOf(secondResponse.getMemory()).contains("FINAL_ANSWER_SUMMARY"));
+        assertFalse(String.valueOf(secondResponse.getMemory()).toLowerCase().contains("authorization"));
+        assertFalse(String.valueOf(secondResponse.getMemory()).toLowerCase().contains("rawdata"));
+    }
+
     private MultiAgentChatRequest ragToolRequest(String runId) {
         MultiAgentChatRequest request = new MultiAgentChatRequest();
         request.setRunId(runId);
@@ -296,6 +341,7 @@ class MultiAgentCoordinatorServiceTest {
                 new MultiAgentKnowledgeService(ragService),
                 new MultiAgentToolService(toolCallingChatService),
                 new MultiAgentReviewService(),
+                new MultiAgentMemoryService(new InMemoryMultiAgentMemoryStore(properties), properties),
                 agentChatService);
     }
 

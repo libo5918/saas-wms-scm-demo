@@ -16,6 +16,7 @@ import com.example.scm.aiagent.multiagent.model.MultiAgentDefinition;
 import com.example.scm.aiagent.multiagent.model.MultiAgentIntentType;
 import com.example.scm.aiagent.multiagent.model.MultiAgentMessage;
 import com.example.scm.aiagent.multiagent.model.MultiAgentMessageType;
+import com.example.scm.aiagent.multiagent.model.MultiAgentMemoryEntry;
 import com.example.scm.aiagent.multiagent.model.MultiAgentPlan;
 import com.example.scm.aiagent.multiagent.model.MultiAgentReviewResult;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRole;
@@ -54,6 +55,7 @@ public class MultiAgentCoordinatorService {
     private final MultiAgentKnowledgeService knowledgeService;
     private final MultiAgentToolService toolService;
     private final MultiAgentReviewService reviewService;
+    private final MultiAgentMemoryService memoryService;
     private final AgentChatService agentChatService;
 
     public MultiAgentCoordinatorService(AiAgentProperties properties,
@@ -63,6 +65,7 @@ public class MultiAgentCoordinatorService {
                                         MultiAgentKnowledgeService knowledgeService,
                                         MultiAgentToolService toolService,
                                         MultiAgentReviewService reviewService,
+                                        MultiAgentMemoryService memoryService,
                                         AgentChatService agentChatService) {
         this.properties = properties;
         this.definitionRegistry = definitionRegistry;
@@ -71,6 +74,7 @@ public class MultiAgentCoordinatorService {
         this.knowledgeService = knowledgeService;
         this.toolService = toolService;
         this.reviewService = reviewService;
+        this.memoryService = memoryService;
         this.agentChatService = agentChatService;
     }
 
@@ -81,6 +85,7 @@ public class MultiAgentCoordinatorService {
 
         MultiAgentRun run = MultiAgentRun.builder()
                 .runId(runId)
+                .conversationId(request.getConversationId())
                 .tenantId(context.tenantId())
                 .userId(context.userId())
                 .userMessage(safeText(request.getMessage(), 300))
@@ -93,6 +98,11 @@ public class MultiAgentCoordinatorService {
         run.setConstraints(buildConstraintSummary(1, 0, false, null));
         run.setRepairEnabled(properties.getMultiAgent().isReviewRepairEnabled());
         run.setRepairMode(normalizedRepairMode());
+        boolean memoryActive = memoryService.isActive(request);
+        List<MultiAgentMemoryEntry> memoryEntries = memoryActive ? memoryService.read(request, context) : List.of();
+        run.setMemoryEnabled(memoryActive);
+        run.setMemoryReadCount(memoryEntries.size());
+        run.setMemory(memoryService.toSummaryMap(request.getConversationId(), memoryEntries));
 
         if (properties.getMultiAgent().getMaxRounds() < 1) {
             String reason = "Multi-Agent maxRounds 限制为 0，受控终止";
@@ -142,6 +152,9 @@ public class MultiAgentCoordinatorService {
         run.setConstraints(buildConstraintSummary(run.getRoundCount(), toolCallCount, toolLimitExceeded, toolLimitReason));
 
         String draftAnswer = buildDraftAnswer(plan, rag, tool);
+        if (memoryActive && run.getMemoryReadCount() > 0) {
+            draftAnswer = draftAnswer + " 已参考当前会话最近 " + run.getMemoryReadCount() + " 条安全摘要。";
+        }
         SummaryResult summaryResult = summarizeFinalAnswer(request, context, plan, rag, tool, null, draftAnswer);
         String finalAnswer = summaryResult.answer();
         MultiAgentReviewResult review = properties.getMultiAgent().isReviewEnabled()
@@ -177,12 +190,17 @@ public class MultiAgentCoordinatorService {
         run.setStatus(MultiAgentRunStatus.SUCCESS);
         run.setFinishedAt(Instant.now());
         run.setLatencyMs(latencyMs);
+        run.setMemoryWriteCount(memoryActive ? memoryService.writeRunMemory(run, plan, rag, tool, review) : 0);
+        if (memoryActive) {
+            run.setMemory(memoryService.toSummaryMap(request.getConversationId(), memoryService.read(request, context)));
+        }
         runStore.save(run);
 
-        log.info("AI multi-agent run finished, tenantId={}, userId={}, runId={}, multiAgentEnabled={}, agentName={}, agentRole={}, actionType={}, status={}, intentType={}, ragRetrievedCount={}, selectedTool={}, reviewPassed={}, maxRounds={}, maxAgents={}, maxToolCalls={}, latencyMs={}",
+        log.info("AI multi-agent run finished, tenantId={}, userId={}, runId={}, multiAgentEnabled={}, agentName={}, agentRole={}, actionType={}, status={}, intentType={}, ragRetrievedCount={}, selectedTool={}, reviewPassed={}, memoryEnabled={}, memoryReadCount={}, memoryWriteCount={}, maxRounds={}, maxAgents={}, maxToolCalls={}, latencyMs={}",
                 context.tenantId(), context.userId(), runId, properties.getMultiAgent().isEnabled(),
                 COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.FINAL_ANSWER, run.getStatus(),
                 run.getIntentType(), rag.getOrDefault("retrievedCount", 0), selectedTool(tool), review.isPassed(),
+                run.isMemoryEnabled(), run.getMemoryReadCount(), run.getMemoryWriteCount(),
                 properties.getMultiAgent().getMaxRounds(), properties.getMultiAgent().getMaxAgents(),
                 properties.getMultiAgent().getMaxToolCalls(), latencyMs);
         return toResponse(run);
@@ -571,6 +589,7 @@ public class MultiAgentCoordinatorService {
     private MultiAgentChatResponse toResponse(MultiAgentRun run) {
         return MultiAgentChatResponse.builder()
                 .runId(run.getRunId())
+                .conversationId(run.getConversationId())
                 .status(run.getStatus())
                 .intentType(run.getIntentType())
                 .answer(run.getFinalAnswer())
@@ -590,6 +609,10 @@ public class MultiAgentCoordinatorService {
                 .repairMode(run.getRepairMode())
                 .repairFallbackUsed(run.isRepairFallbackUsed())
                 .reviewAfterRepair(run.getReviewAfterRepair())
+                .memoryEnabled(run.isMemoryEnabled())
+                .memoryReadCount(run.getMemoryReadCount())
+                .memoryWriteCount(run.getMemoryWriteCount())
+                .memory(run.getMemory())
                 .agents(run.getAgents().stream().map(this::toAgentView).toList())
                 .steps(run.getSteps().stream().map(this::toStepView).toList())
                 .messages(run.getMessages().stream().map(this::toMessageView).toList())

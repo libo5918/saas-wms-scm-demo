@@ -17,6 +17,7 @@ import java.util.Map;
 public class MultiAgentRun {
 
     private String runId;
+    private String conversationId;
     private Long tenantId;
     private Long userId;
     private String userMessage;
@@ -50,6 +51,11 @@ public class MultiAgentRun {
     private boolean repairFallbackUsed;
     @Builder.Default
     private Map<String, Object> reviewAfterRepair = new HashMap<>();
+    private boolean memoryEnabled;
+    private int memoryReadCount;
+    private int memoryWriteCount;
+    @Builder.Default
+    private Map<String, Object> memory = new HashMap<>();
     private String finalAnswer;
     private boolean success;
     private Instant createdAt;

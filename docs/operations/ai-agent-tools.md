@@ -4468,3 +4468,128 @@ X-User-Roles: ROLE_ADMIN
 ```
 
 Status 只返回脱敏概要，不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key 或敏感 header。
+
+## 41. Phase 10.5 Multi-Agent Memory 会话级安全摘要
+
+Phase 10.5 为 Multi-Agent 增加 conversation 级 Memory。该能力默认关闭，只在配置和请求同时开启时生效。
+
+配置示例：
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      memory-enabled: true
+      memory-max-records: 100
+      memory-read-limit: 5
+```
+
+### 41.1 Multi-Agent Chat with Memory 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase105-001",
+  "conversationId": "conv-scm-demo-001",
+  "memoryEnabled": true,
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-multi-agent-phase105-001",
+    "conversationId": "conv-scm-demo-001",
+    "memoryEnabled": true,
+    "memoryReadCount": 0,
+    "memoryWriteCount": 6,
+    "memory": {
+      "conversationId": "conv-scm-demo-001",
+      "count": 5,
+      "entries": [
+        {
+          "type": "FINAL_ANSWER_SUMMARY",
+          "contentSummary": "脱敏后的最终回答摘要"
+        }
+      ]
+    },
+    "answer": "Multi-Agent 最终中文回答"
+  }
+}
+```
+
+第二次使用相同 `conversationId` 调用时，`memoryReadCount` 应大于 0，表示已读取最近安全摘要。
+
+### 41.2 Memory 查询示例
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/memory/conv-scm-demo-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "conv-scm-demo-001",
+    "count": 6,
+    "entries": [
+      {
+        "runId": "run-multi-agent-phase105-001",
+        "type": "FINAL_ANSWER_SUMMARY",
+        "contentSummary": "脱敏后的最终回答摘要"
+      }
+    ]
+  }
+}
+```
+
+### 41.3 Memory 清理示例
+
+```http
+DELETE http://localhost:18080/api/v1/ai/multi-agent/memory/conv-scm-demo-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "conv-scm-demo-001",
+    "count": 0,
+    "clearedCount": 6,
+    "entries": []
+  }
+}
+```
+
+Memory 只保存安全摘要，不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key 或敏感 header。

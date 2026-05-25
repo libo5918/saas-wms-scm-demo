@@ -174,3 +174,43 @@ Phase 10.4 在 Phase 10.3 的约束基础上增加“审查失败后最多一次
 面试表达：
 
 > 企业级 Multi-Agent 不能只让 Agent 产出答案，还要有审查、修正和终止约束。Phase 10.4 里 ReviewerAgent 如果发现答案没有引用 Tool 事实、遗漏错误原因或存在敏感信息，CoordinatorAgent 最多只做一次受控修正，然后再次审查。这样既体现了 Multi-Agent 协作闭环，也避免了无限自我反思和不可控成本。
+
+## 13. Phase 10.5：会话级 Memory 最小闭环
+
+Phase 10.5 增加的是 Multi-Agent 的 conversation 级安全摘要记忆，不是长期记忆系统，也不是向量 Memory。
+
+核心设计：
+
+- `MultiAgentMemoryEntry` 按 `conversationId + tenantId + userId` 隔离。
+- 只保存摘要类型：`USER_MESSAGE_SUMMARY`、`PLAN_SUMMARY`、`RAG_SUMMARY`、`TOOL_SUMMARY`、`REVIEW_SUMMARY`、`FINAL_ANSWER_SUMMARY`。
+- `InMemoryMultiAgentMemoryStore` 支持 append、按 conversationId 查询、清理、按 `memory-max-records` 裁剪。
+- `MultiAgentCoordinatorService` 在 Planner 前读取最近记忆摘要，在 run 结束后写入本次安全摘要。
+- `ReviewerAgent` 与 Memory service 都会过滤 `authorization`、`cookie`、`token`、`api key`、`rawData`、`prompt`、`model response` 等敏感字段。
+
+Memory 与其他记录的区别：
+
+- Run / Step：记录一次协作运行过程，用于状态查询和调试。
+- Audit：记录 Tool 调用审计，用于权限、调用结果、耗时追踪。
+- RAG：外部知识库检索，不等于用户会话记忆。
+- Memory：只保存同一 conversation 下可复用的安全摘要，用于下一次 Multi-Agent 协作的上下文衔接。
+
+配置示例：
+
+```yaml
+ai:
+  agent:
+    multi-agent:
+      memory-enabled: true
+      memory-max-records: 100
+      memory-read-limit: 5
+```
+
+边界：
+
+- 默认关闭，不影响 Phase 10.4 行为。
+- 不保存完整 prompt、完整模型响应、完整 rawData、用户 token、Authorization、Cookie、API Key。
+- 不做 MySQL/Redis 持久化，不做向量 Memory，不做跨用户共享。
+
+面试表达：
+
+> 企业级 Agent 的 Memory 不能简单地把聊天记录全量塞回上下文。这个项目里我先做会话级安全摘要记忆：按租户、用户、conversationId 隔离，只保存 Planner、RAG、Tool、Review 和最终回答的短摘要，并且可查询、可清理、可裁剪。这样既能让同一会话有上下文连续性，又避免泄露 prompt、rawData、token 或完整模型响应。后续如果要升级长期记忆，可以把 Store 换成 MySQL/Redis，或者把摘要再进入向量库，但治理边界不变。
