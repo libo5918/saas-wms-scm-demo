@@ -214,3 +214,39 @@ ai:
 面试表达：
 
 > 企业级 Agent 的 Memory 不能简单地把聊天记录全量塞回上下文。这个项目里我先做会话级安全摘要记忆：按租户、用户、conversationId 隔离，只保存 Planner、RAG、Tool、Review 和最终回答的短摘要，并且可查询、可清理、可裁剪。这样既能让同一会话有上下文连续性，又避免泄露 prompt、rawData、token 或完整模型响应。后续如果要升级长期记忆，可以把 Store 换成 MySQL/Redis，或者把摘要再进入向量库，但治理边界不变。
+## 14. Phase 10.6：Multi-Agent Observability 与演示收敛
+
+Phase 10.6 不新增复杂自治能力，而是把 Multi-Agent run 的过程整理成面试友好的可观测摘要。
+
+新增字段：
+
+- `metrics`：结构化统计字段。
+  - `totalLatencyMs`
+  - `stepCount`
+  - `agentCount`
+  - `ragCalled`
+  - `ragRetrievedCount`
+  - `toolCalled`
+  - `toolCallCount`
+  - `reviewEnabled`
+  - `reviewPassed`
+  - `repairEnabled`
+  - `repairAttempted`
+  - `repairCount`
+  - `memoryEnabled`
+  - `memoryReadCount`
+  - `memoryWriteCount`
+  - `terminated`
+  - `terminatedReason`
+  - `agentMetrics`
+- `traceSummary`：一段脱敏的人类可读轨迹摘要，例如 Planner 识别结果、KnowledgeAgent 检索数量、ToolAgent 调用工具、Reviewer 是否通过、Memory 读写数量、终止原因。
+
+设计边界：
+
+- 只基于已有 Run / Step / Message / Memory 的安全摘要生成。
+- 不读取完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key。
+- 不新增单独 metrics 接口，先复用 `POST /api/v1/ai/multi-agent/chat` 和 `GET /api/v1/ai/multi-agent/runs/{runId}` 的兼容新增字段。
+
+面试表达：
+
+> 企业级 Multi-Agent 不能只看最终 answer，还要能看每个 Agent 做了什么、耗时多少、有没有调用 RAG、有没有调用 Tool、Reviewer 是否通过、是否触发 repair、Memory 是否读写，以及为什么跳过或终止。Phase 10.6 的 metrics / traceSummary 就是为这个目的做的，它不是复杂 APM，而是面试和排障都能快速看懂的轻量观测层。

@@ -56,6 +56,8 @@ public class MultiAgentRun {
     private int memoryWriteCount;
     @Builder.Default
     private Map<String, Object> memory = new HashMap<>();
+    private MultiAgentRunMetrics metrics;
+    private String traceSummary;
     private String finalAnswer;
     private boolean success;
     private Instant createdAt;

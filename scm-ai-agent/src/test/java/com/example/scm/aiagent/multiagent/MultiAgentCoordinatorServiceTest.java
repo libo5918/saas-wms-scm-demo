@@ -13,6 +13,7 @@ import com.example.scm.aiagent.multiagent.service.MultiAgentCoordinatorService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentDefinitionRegistry;
 import com.example.scm.aiagent.multiagent.service.MultiAgentKnowledgeService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentMemoryService;
+import com.example.scm.aiagent.multiagent.service.MultiAgentObservabilityService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentPlannerService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentReviewService;
 import com.example.scm.aiagent.multiagent.service.MultiAgentToolService;
@@ -71,8 +72,20 @@ class MultiAgentCoordinatorServiceTest {
                 "ToolAgent".equals(agent.getAgentName()) && agent.getStatus() == MultiAgentStepStatus.SUCCESS));
         assertTrue(response.getAgents().stream().anyMatch(agent ->
                 "ReviewerAgent".equals(agent.getAgentName()) && agent.getRole() == MultiAgentRole.REVIEWER));
+        assertNotNull(response.getMetrics());
+        assertEquals(5, response.getMetrics().getAgentCount());
+        assertTrue(response.getMetrics().getStepCount() >= 6);
+        assertTrue(response.getMetrics().isRagCalled());
+        assertEquals(1, response.getMetrics().getRagRetrievedCount());
+        assertTrue(response.getMetrics().isToolCalled());
+        assertEquals(1, response.getMetrics().getToolCallCount());
+        assertTrue(response.getMetrics().isReviewEnabled());
+        assertTrue(response.getMetrics().isReviewPassed());
+        assertTrue(response.getTraceSummary().contains("PlannerAgent"));
+        assertTrue(response.getTraceSummary().contains("ToolAgent"));
         assertFalse(response.toString().toLowerCase().contains("authorization"));
         assertFalse(response.toString().toLowerCase().contains("rawdata"));
+        assertFalse(response.getTraceSummary().toLowerCase().contains("token"));
     }
 
     @Test
@@ -126,6 +139,8 @@ class MultiAgentCoordinatorServiceTest {
 
         assertEquals(MultiAgentRunStatus.TERMINATED, response.getStatus());
         assertEquals(true, response.getConstraints().get("exceeded"));
+        assertTrue(response.getMetrics().isTerminated());
+        assertTrue(response.getMetrics().getTerminatedReason().contains("maxRounds"));
         verify(toolCallingChatService, never()).chat(any(), any());
     }
 
@@ -316,6 +331,10 @@ class MultiAgentCoordinatorServiceTest {
 
         assertTrue(secondResponse.isMemoryEnabled());
         assertTrue(secondResponse.getMemoryReadCount() > 0);
+        assertTrue(secondResponse.getMetrics().isMemoryEnabled());
+        assertTrue(secondResponse.getMetrics().getMemoryReadCount() > 0);
+        assertTrue(secondResponse.getMetrics().getMemoryWriteCount() > 0);
+        assertTrue(secondResponse.getTraceSummary().contains("memoryEnabled=true"));
         assertTrue(String.valueOf(secondResponse.getMemory()).contains("FINAL_ANSWER_SUMMARY"));
         assertFalse(String.valueOf(secondResponse.getMemory()).toLowerCase().contains("authorization"));
         assertFalse(String.valueOf(secondResponse.getMemory()).toLowerCase().contains("rawdata"));
@@ -342,6 +361,7 @@ class MultiAgentCoordinatorServiceTest {
                 new MultiAgentToolService(toolCallingChatService),
                 new MultiAgentReviewService(),
                 new MultiAgentMemoryService(new InMemoryMultiAgentMemoryStore(properties), properties),
+                new MultiAgentObservabilityService(),
                 agentChatService);
     }
 

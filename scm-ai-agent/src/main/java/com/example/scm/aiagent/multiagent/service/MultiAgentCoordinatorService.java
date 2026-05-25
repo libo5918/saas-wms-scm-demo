@@ -56,6 +56,7 @@ public class MultiAgentCoordinatorService {
     private final MultiAgentToolService toolService;
     private final MultiAgentReviewService reviewService;
     private final MultiAgentMemoryService memoryService;
+    private final MultiAgentObservabilityService observabilityService;
     private final AgentChatService agentChatService;
 
     public MultiAgentCoordinatorService(AiAgentProperties properties,
@@ -66,6 +67,7 @@ public class MultiAgentCoordinatorService {
                                         MultiAgentToolService toolService,
                                         MultiAgentReviewService reviewService,
                                         MultiAgentMemoryService memoryService,
+                                        MultiAgentObservabilityService observabilityService,
                                         AgentChatService agentChatService) {
         this.properties = properties;
         this.definitionRegistry = definitionRegistry;
@@ -75,6 +77,7 @@ public class MultiAgentCoordinatorService {
         this.toolService = toolService;
         this.reviewService = reviewService;
         this.memoryService = memoryService;
+        this.observabilityService = observabilityService;
         this.agentChatService = agentChatService;
     }
 
@@ -116,6 +119,7 @@ public class MultiAgentCoordinatorService {
             run.setConstraints(buildConstraintSummary(1, 0, true, reason));
             addResultStep(run, 1, COORDINATOR_AGENT, MultiAgentRole.COORDINATOR, MultiAgentActionType.NOOP,
                     "检查 Multi-Agent 硬约束", Map.of("status", "FAILED", "errorMessage", reason));
+            applyObservability(run);
             runStore.save(run);
             return toResponse(run);
         }
@@ -194,6 +198,7 @@ public class MultiAgentCoordinatorService {
         if (memoryActive) {
             run.setMemory(memoryService.toSummaryMap(request.getConversationId(), memoryService.read(request, context)));
         }
+        applyObservability(run);
         runStore.save(run);
 
         log.info("AI multi-agent run finished, tenantId={}, userId={}, runId={}, multiAgentEnabled={}, agentName={}, agentRole={}, actionType={}, status={}, intentType={}, ragRetrievedCount={}, selectedTool={}, reviewPassed={}, memoryEnabled={}, memoryReadCount={}, memoryWriteCount={}, maxRounds={}, maxAgents={}, maxToolCalls={}, latencyMs={}",
@@ -529,6 +534,11 @@ public class MultiAgentCoordinatorService {
                 .build());
     }
 
+    private void applyObservability(MultiAgentRun run) {
+        run.setMetrics(observabilityService.buildMetrics(run));
+        run.setTraceSummary(observabilityService.buildTraceSummary(run).getSummary());
+    }
+
     private void updateAgent(MultiAgentRun run, String agentName, MultiAgentStepStatus status, String summary) {
         run.getAgents().stream()
                 .filter(agent -> agentName.equals(agent.getAgentName()))
@@ -613,6 +623,8 @@ public class MultiAgentCoordinatorService {
                 .memoryReadCount(run.getMemoryReadCount())
                 .memoryWriteCount(run.getMemoryWriteCount())
                 .memory(run.getMemory())
+                .metrics(run.getMetrics())
+                .traceSummary(run.getTraceSummary())
                 .agents(run.getAgents().stream().map(this::toAgentView).toList())
                 .steps(run.getSteps().stream().map(this::toStepView).toList())
                 .messages(run.getMessages().stream().map(this::toMessageView).toList())

@@ -4593,3 +4593,81 @@ X-User-Roles: ROLE_ADMIN
 ```
 
 Memory 只保存安全摘要，不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key 或敏感 header。
+
+## 42. Phase 10.6 Multi-Agent Observability 演示
+
+Phase 10.6 在 Multi-Agent Chat / Run Status 响应中兼容新增 `metrics` 和 `traceSummary` 字段，用于展示每个 Agent 的执行情况和整体治理状态。
+
+### 42.1 Multi-Agent Chat 示例
+
+```http
+POST http://localhost:18080/api/v1/ai/multi-agent/chat
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+```json
+{
+  "runId": "run-multi-agent-phase106-001",
+  "conversationId": "conv-scm-demo-001",
+  "memoryEnabled": true,
+  "message": "按库存可用数量口径解释，并查物料 MAT-001 在仓库ID 2001、库位ID 3001 的库存",
+  "knowledgeBaseId": "kb-scm-demo",
+  "topK": 3,
+  "requestedDomain": "mdm",
+  "routeTags": ["mdm", "material"]
+}
+```
+
+关键预期返回字段：
+
+```json
+{
+  "success": true,
+  "data": {
+    "runId": "run-multi-agent-phase106-001",
+    "intentType": "RAG_TOOL",
+    "metrics": {
+      "stepCount": 6,
+      "agentCount": 5,
+      "ragCalled": true,
+      "ragRetrievedCount": 3,
+      "toolCalled": true,
+      "toolCallCount": 1,
+      "reviewEnabled": true,
+      "reviewPassed": true,
+      "repairAttempted": false,
+      "memoryEnabled": true,
+      "memoryReadCount": 0,
+      "memoryWriteCount": 6,
+      "terminated": false,
+      "agentMetrics": [
+        {
+          "agentName": "PlannerAgent",
+          "role": "PLANNER",
+          "actionCount": 1,
+          "successCount": 1
+        }
+      ]
+    },
+    "traceSummary": "PlannerAgent intent=RAG_TOOL; KnowledgeAgent SUCCESS, retrievedCount=3; ToolAgent SUCCESS, selectedTool=mdm.getMaterial; ReviewerAgent passed=true; repairAttempted=false, repairCount=0; memoryEnabled=true, read=0, write=6; terminatedReason=none"
+  }
+}
+```
+
+### 42.2 Run Status 示例
+
+```http
+GET http://localhost:18080/api/v1/ai/multi-agent/runs/run-multi-agent-phase106-001
+Authorization: Bearer <accessToken>
+X-Tenant-Id: 1
+X-User-Id: 10001
+X-Username: admin
+X-User-Roles: ROLE_ADMIN
+```
+
+关键预期返回字段同 Chat 响应中的 `metrics` 和 `traceSummary`。状态接口仍然不返回完整 prompt、完整模型响应、完整 rawData、token、authorization、cookie、API Key 或敏感 header。

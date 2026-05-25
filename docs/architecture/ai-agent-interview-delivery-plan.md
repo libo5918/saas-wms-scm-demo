@@ -244,3 +244,18 @@
 面试讲解话术：
 
 > Agent Memory 不是把历史聊天原文都塞进上下文。企业项目里要先考虑隔离、脱敏、裁剪和可清理。这个项目的 Phase 10.5 做的是最小可演示的会话级 Memory：同一个 conversationId 下只保存安全摘要，包括 Planner、RAG、Tool、Review 和最终回答摘要。下次调用时 Coordinator 可以读取最近几条摘要做上下文衔接。它和 Run/Step 不同，Run/Step 是一次运行轨迹；它和 Audit 不同，Audit 是工具调用审计；它也不是 RAG，RAG 是企业知识库。后续如果要扩展长期记忆，可以把 in-memory store 换成 MySQL/Redis，或把摘要进入向量库，但不能突破脱敏和租户隔离边界。
+### Phase 10.6：Multi-Agent Observability 与演示收敛
+
+目标：让面试官能直接从一次 Multi-Agent run 里看清楚 Agent 协作链路。
+
+当前实现重点：
+
+- `metrics` 统计 stepCount、agentCount、RAG、Tool、Review、Repair、Memory、终止原因等状态。
+- `agentMetrics` 统计每个 Agent 的 actionCount、successCount、failedCount、skippedCount、latencyMs。
+- `traceSummary` 输出一段人类可读的脱敏轨迹摘要。
+- 不新增复杂接口，直接在 Multi-Agent Chat 和 Run Status 中兼容返回。
+- 不读取或输出完整 prompt、模型响应、rawData、token、authorization、cookie、API Key。
+
+面试讲解话术：
+
+> 我在 Multi-Agent 里不只返回最终答案，还返回 metrics 和 traceSummary。这样可以解释每个 Agent 的职责是否执行：Planner 是否识别任务，Knowledge 是否检索，Tool 是否调用，Reviewer 是否通过，Repair 是否触发，Memory 是否读写。如果出现失败，也能通过 terminatedReason 和 agentMetrics 快速定位是工具限制、轮次限制、检索缺失还是审查失败。这体现的是企业级 Agent 的可观测性和可排障能力，而不是只做一个黑盒聊天接口。

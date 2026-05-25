@@ -7,6 +7,7 @@ import com.example.scm.aiagent.multiagent.dto.MultiAgentChatResponse;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentMemoryView;
 import com.example.scm.aiagent.multiagent.dto.MultiAgentStepView;
 import com.example.scm.aiagent.multiagent.model.MultiAgentActionType;
+import com.example.scm.aiagent.multiagent.model.MultiAgentRunMetrics;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRole;
 import com.example.scm.aiagent.multiagent.model.MultiAgentRunStatus;
 import com.example.scm.aiagent.multiagent.model.MultiAgentStepStatus;
@@ -70,6 +71,8 @@ class MultiAgentControllerTest {
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.agents[0].agentName").value("CoordinatorAgent"))
                 .andExpect(jsonPath("$.data.steps[1].actionType").value("PLAN"))
+                .andExpect(jsonPath("$.data.metrics.stepCount").value(2))
+                .andExpect(jsonPath("$.data.traceSummary").value("PlannerAgent completed"))
                 .andExpect(jsonPath("$.data.rawData").doesNotExist())
                 .andExpect(jsonPath("$.data.prompt").doesNotExist());
     }
@@ -142,6 +145,12 @@ class MultiAgentControllerTest {
                 .status(MultiAgentRunStatus.SUCCESS)
                 .answer("已创建 Multi-Agent 协作运行骨架")
                 .memory(Map.of("count", 0))
+                .metrics(MultiAgentRunMetrics.builder()
+                        .totalLatencyMs(12)
+                        .stepCount(2)
+                        .agentCount(2)
+                        .build())
+                .traceSummary("PlannerAgent completed")
                 .agents(List.of(
                         MultiAgentAgentView.builder()
                                 .agentName("CoordinatorAgent")

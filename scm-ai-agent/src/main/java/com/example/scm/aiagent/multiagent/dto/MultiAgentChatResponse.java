@@ -2,6 +2,7 @@ package com.example.scm.aiagent.multiagent.dto;
 
 import com.example.scm.aiagent.multiagent.model.MultiAgentRunStatus;
 import com.example.scm.aiagent.multiagent.model.MultiAgentIntentType;
+import com.example.scm.aiagent.multiagent.model.MultiAgentRunMetrics;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -38,6 +39,8 @@ public class MultiAgentChatResponse {
     private int memoryReadCount;
     private int memoryWriteCount;
     private Map<String, Object> memory;
+    private MultiAgentRunMetrics metrics;
+    private String traceSummary;
     private List<MultiAgentAgentView> agents;
     private List<MultiAgentStepView> steps;
     private List<MultiAgentMessageView> messages;
