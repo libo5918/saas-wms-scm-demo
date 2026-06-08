@@ -14,16 +14,28 @@ public final class AgentLogger {
     }
 
     public static void info(String message) {
-        System.out.println(prefix("INFO") + message);
+        try {
+            System.out.println(prefix("INFO") + sanitize(message));
+        } catch (Throwable ignored) {
+            // Agent 日志不能影响业务主流程。
+        }
     }
 
     public static void warn(String message) {
-        System.out.println(prefix("WARN") + message);
+        try {
+            System.out.println(prefix("WARN") + sanitize(message));
+        } catch (Throwable ignored) {
+            // Agent 日志不能影响业务主流程。
+        }
     }
 
     public static void error(String message, Throwable throwable) {
-        System.err.println(prefix("ERROR") + message + ", errorType=" + throwable.getClass().getName()
-                + ", errorMessage=" + sanitize(throwable.getMessage()));
+        try {
+            System.err.println(prefix("ERROR") + sanitize(message) + ", errorType=" + throwable.getClass().getName()
+                    + ", errorMessage=" + sanitize(throwable.getMessage()));
+        } catch (Throwable ignored) {
+            // Agent 日志不能影响业务主流程。
+        }
     }
 
     private static String prefix(String level) {
@@ -38,9 +50,11 @@ public final class AgentLogger {
             return "";
         }
         return value
-                .replaceAll("(?i)authorization\\s*[:=]\\s*\\S+", "authorization=[REDACTED]")
-                .replaceAll("(?i)cookie\\s*[:=]\\s*\\S+", "cookie=[REDACTED]")
-                .replaceAll("(?i)token\\s*[:=]\\s*\\S+", "token=[REDACTED]")
-                .replaceAll("(?i)api[-_ ]?key\\s*[:=]\\s*\\S+", "apiKey=[REDACTED]");
+                .replaceAll("(?i)(authorization)\\s*[:=]\\s*[^,\\s}]+", "$1=[REDACTED]")
+                .replaceAll("(?i)(cookie)\\s*[:=]\\s*[^,\\s}]+", "$1=[REDACTED]")
+                .replaceAll("(?i)(accessToken|refreshToken|token)\\s*[:=]\\s*[^,\\s}]+", "$1=[REDACTED]")
+                .replaceAll("(?i)(api[-_ ]?key|apiKey)\\s*[:=]\\s*[^,\\s}]+", "$1=[REDACTED]")
+                .replaceAll("(?i)(password|secret)\\s*[:=]\\s*[^,\\s}]+", "$1=[REDACTED]")
+                .replaceAll("(?i)(rawData|prompt|model response)\\s*[:=]\\s*[^,}]+", "$1=[REDACTED]");
     }
 }

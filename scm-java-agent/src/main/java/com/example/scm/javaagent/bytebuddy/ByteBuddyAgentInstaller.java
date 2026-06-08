@@ -2,6 +2,7 @@ package com.example.scm.javaagent.bytebuddy;
 
 import com.example.scm.javaagent.asm.AsmClassPrinter;
 import com.example.scm.javaagent.config.AgentConfig;
+import com.example.scm.javaagent.config.AgentRuntimeConfig;
 import com.example.scm.javaagent.logging.AgentLogger;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
@@ -35,6 +36,7 @@ public class ByteBuddyAgentInstaller {
     }
 
     public void install(Instrumentation instrumentation) {
+        AgentRuntimeConfig.set(config);
         AgentBuilder.Listener listener = new AgentBuilder.Listener.Adapter() {
             @Override
             public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader, JavaModule module,
@@ -55,7 +57,14 @@ public class ByteBuddyAgentInstaller {
                         .or(nameStartsWith("java."))
                         .or(nameStartsWith("jdk."))
                         .or(nameStartsWith("sun.")))
-                .type(typeDescription -> config.shouldTraceKnownAiAgentClass(typeDescription.getName()))
+                .type(typeDescription -> {
+                    try {
+                        return config.shouldTraceKnownAiAgentClass(typeDescription.getName());
+                    } catch (Throwable ex) {
+                        AgentLogger.warn("Byte Buddy matcher skipped, errorType=" + ex.getClass().getName());
+                        return false;
+                    }
+                })
                 .transform(this::transform)
                 .with(listener)
                 .installOn(instrumentation);
@@ -64,11 +73,15 @@ public class ByteBuddyAgentInstaller {
             @Override
             public byte[] transform(Module module, ClassLoader loader, String className, Class<?> classBeingRedefined,
                                     ProtectionDomain protectionDomain, byte[] classfileBuffer) {
-                if (className != null && config.asmPrint()) {
-                    String dotted = className.replace('/', '.');
-                    if (config.shouldTraceKnownAiAgentClass(dotted)) {
-                        asmClassPrinter.print(classfileBuffer);
+                try {
+                    if (className != null && config.asmPrint()) {
+                        String dotted = className.replace('/', '.');
+                        if (config.shouldTraceKnownAiAgentClass(dotted)) {
+                            asmClassPrinter.print(classfileBuffer);
+                        }
                     }
+                } catch (Throwable ex) {
+                    AgentLogger.warn("ASM transformer skipped, errorType=" + ex.getClass().getName());
                 }
                 return null;
             }
@@ -81,11 +94,17 @@ public class ByteBuddyAgentInstaller {
                                              ClassLoader classLoader,
                                              JavaModule module,
                                              ProtectionDomain protectionDomain) {
-        return builder.visit(Advice.to(MethodTimingAdvice.class)
-                .on(not(isConstructor())
-                        .and(not(isStatic()))
-                        .and(not(isAbstract()))
-                        .and(not(isNative()))
-                        .and(ElementMatchers.not(ElementMatchers.nameStartsWith("lambda$")))));
+        try {
+            return builder.visit(Advice.to(MethodTimingAdvice.class)
+                    .on(not(isConstructor())
+                            .and(not(isStatic()))
+                            .and(not(isAbstract()))
+                            .and(not(isNative()))
+                            .and(ElementMatchers.not(ElementMatchers.nameStartsWith("lambda$")))));
+        } catch (Throwable ex) {
+            AgentLogger.warn("Byte Buddy transform skipped, class=" + typeDescription.getName()
+                    + ", errorType=" + ex.getClass().getName());
+            return builder;
+        }
     }
 }
